@@ -50,6 +50,7 @@ async def create_campaign(name: str, gm_display_name: str) -> tuple[str, Any]:
             campaign_id=campaign.id,
             display_name=gm_display_name.strip(),
             role="gm",
+            join_code=join_code,
             ai_available=ai_available,
         )
         return join_code, state
@@ -80,47 +81,64 @@ async def join_campaign(join_code: str, display_name: str) -> tuple[str, Any]:
             campaign_id=campaign.id,
             display_name=display_name.strip(),
             role=role,  # type: ignore[arg-type]
+            join_code=campaign.join_code,
             ai_available=ai_available,
         )
         return role, state
 
 
-def build_landing(session_state: gr.State) -> gr.Blocks:
-    """Build the landing tab UI; returns a gr.Blocks component."""
-    with gr.Blocks() as landing:
-        gr.Markdown("# StoryWeaver")
+def build_landing(session_state: gr.State) -> None:
+    """Build the landing tab UI.
 
-        with gr.Tab("Create Campaign"):
-            camp_name = gr.Textbox(label="Campaign Name", placeholder="The Kaer of Shadows")
-            gm_name = gr.Textbox(label="Your Display Name (GM)", placeholder="Dungeon Master")
-            create_btn = gr.Button("Create Campaign", variant="primary")
-            create_out = gr.Textbox(label="Join Code", interactive=False)
-            create_status = gr.Markdown("")
+    Handlers return the updated session state through Gradio's output system so
+    the session_state.change() event fires and the app navigates to the correct
+    player/GM dashboard.
+    """
+    gr.Markdown("# StoryWeaver")
+    gr.Markdown(
+        "An AI-assisted narrative companion for tabletop RPGs. "
+        "Create a campaign or join an existing one with a join code."
+    )
 
-            async def on_create(name: str, gm: str) -> tuple[str, str]:
-                try:
-                    code, state = await create_campaign(name, gm)
-                    session_state.value = state
-                    return code, f"Campaign created! Share this code with your players: **{code}**"
-                except CampaignJoinError as exc:
-                    return "", f"Error: {exc}"
+    with gr.Tab("Create Campaign"):
+        camp_name = gr.Textbox(label="Campaign Name", placeholder="The Kaer of Shadows")
+        gm_name = gr.Textbox(label="Your Display Name (GM)", placeholder="Dungeon Master")
+        create_btn = gr.Button("Create Campaign", variant="primary")
+        create_out = gr.Textbox(label="Join Code", interactive=False)
+        create_status = gr.Markdown("")
 
-            create_btn.click(on_create, inputs=[camp_name, gm_name], outputs=[create_out, create_status])
+        async def on_create(name: str, gm: str) -> tuple[str, str, Any]:
+            try:
+                code, state = await create_campaign(name, gm)
+                return (
+                    code,
+                    f"Campaign created! Share this code with your players: **{code}**",
+                    state,
+                )
+            except CampaignJoinError as exc:
+                return "", f"Error: {exc}", None
 
-        with gr.Tab("Join Campaign"):
-            join_code_in = gr.Textbox(label="Join Code", placeholder="ABC12345")
-            join_name = gr.Textbox(label="Your Display Name", placeholder="Gandalf")
-            join_btn = gr.Button("Join", variant="primary")
-            join_status = gr.Markdown("")
+        create_btn.click(
+            on_create,
+            inputs=[camp_name, gm_name],
+            outputs=[create_out, create_status, session_state],
+        )
 
-            async def on_join(code: str, name: str) -> str:
-                try:
-                    role, state = await join_campaign(code, name)
-                    session_state.value = state
-                    return f"Joined as **{role.upper()}**. Welcome, {name}!"
-                except CampaignJoinError as exc:
-                    return f"Error: {exc}"
+    with gr.Tab("Join Campaign"):
+        join_code_in = gr.Textbox(label="Join Code", placeholder="ABC12345")
+        join_name = gr.Textbox(label="Your Display Name", placeholder="Gandalf")
+        join_btn = gr.Button("Join", variant="primary")
+        join_status = gr.Markdown("")
 
-            join_btn.click(on_join, inputs=[join_code_in, join_name], outputs=[join_status])
+        async def on_join(code: str, name: str) -> tuple[str, Any]:
+            try:
+                role, state = await join_campaign(code, name)
+                return f"Joined as **{role.upper()}**. Welcome, {name}!", state
+            except CampaignJoinError as exc:
+                return f"Error: {exc}", None
 
-    return landing
+        join_btn.click(
+            on_join,
+            inputs=[join_code_in, join_name],
+            outputs=[join_status, session_state],
+        )

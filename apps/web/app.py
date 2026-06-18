@@ -7,6 +7,8 @@ import gradio as gr
 from components.banner import build_banner
 from core.schemas import CampaignSession
 from pages.landing import build_landing
+from pages.player.character import build_character_page
+from pages.player.twin_chat import build_twin_chat_page
 
 
 def create_app() -> gr.Blocks:
@@ -15,42 +17,71 @@ def create_app() -> gr.Blocks:
 
         banner = build_banner()
 
-        with gr.Row(visible=True) as landing_row:
+        # ── Landing ───────────────────────────────────────────────────────
+        with gr.Column(visible=True) as landing_col:
             build_landing(session_state)
 
-        with gr.Row(visible=False) as player_row:
-            gr.Markdown("## Player Dashboard\n\n*(Phase 3 implementation pending)*")
+        # ── Player dashboard ──────────────────────────────────────────────
+        with gr.Column(visible=False) as player_col:
+            gr.Markdown("# StoryWeaver — Player Dashboard")
+            with gr.Tabs():
+                build_character_page(session_state)
+                build_twin_chat_page(session_state)
+                with gr.Tab("Story History"):
+                    gr.Markdown("*Story history coming in Phase 5.*")
 
-        with gr.Row(visible=False) as gm_row:
-            gr.Markdown("## GM Dashboard\n\n*(Phase 3–4 implementation pending)*")
+        # ── GM dashboard ──────────────────────────────────────────────────
+        with gr.Column(visible=False) as gm_col:
+            gr.Markdown("# StoryWeaver — GM Dashboard")
+            gm_join_code = gr.Textbox(
+                label="Campaign Join Code — share this with your players",
+                interactive=False,
+                show_copy_button=True,
+            )
+            with gr.Tabs():
+                with gr.Tab("Characters"):
+                    gr.Markdown("*GM characters overview coming in Phase 4.*")
+                with gr.Tab("NPCs"):
+                    gr.Markdown("*NPC management coming in Phase 4.*")
+                with gr.Tab("Story History"):
+                    gr.Markdown("*Story history coming in Phase 5.*")
+                with gr.Tab("World Notes"):
+                    gr.Markdown("*World notes coming in Phase 4.*")
+                with gr.Tab("Session Plan"):
+                    gr.Markdown("*Session planning coming in Phase 8.*")
 
-        def on_session_change(state: CampaignSession | None) -> tuple[dict, dict, dict, dict]:
+        # ── Navigation triggered by session_state changes ────────────────
+        def _navigate(state: CampaignSession | None) -> tuple:
+            """Show the correct panel and conditionally display the AI banner."""
             if state is None:
                 return (
                     gr.update(visible=True),
                     gr.update(visible=False),
                     gr.update(visible=False),
                     gr.update(visible=False),
+                    gr.update(value=""),
                 )
-            ai_banner_visible = not state.ai_available
+            show_banner = not state.ai_available
             if state.role == "gm":
                 return (
                     gr.update(visible=False),
-                    gr.update(visible=ai_banner_visible),
+                    gr.update(visible=show_banner),
                     gr.update(visible=False),
                     gr.update(visible=True),
+                    gr.update(value=state.join_code),
                 )
             return (
                 gr.update(visible=False),
-                gr.update(visible=ai_banner_visible),
+                gr.update(visible=show_banner),
                 gr.update(visible=True),
                 gr.update(visible=False),
+                gr.update(value=""),
             )
 
         session_state.change(
-            on_session_change,
+            _navigate,
             inputs=[session_state],
-            outputs=[landing_row, banner, player_row, gm_row],
+            outputs=[landing_col, banner, player_col, gm_col, gm_join_code],
         )
 
     return app
@@ -58,4 +89,4 @@ def create_app() -> gr.Blocks:
 
 if __name__ == "__main__":
     app = create_app()
-    app.launch()
+    app.launch(theme=gr.themes.Soft())
