@@ -1,0 +1,88 @@
+# History recall scenarios: edge cases
+# Covers: empty session, no matching events for a query.
+
+scenarios:
+
+  - id: empty_session_returns_no_events
+    description: "A session with no recorded events returns an empty list"
+    setup:
+      campaign:
+        name: "Empty Session Test"
+        join_code: "EDGE0001"
+        gm_display_name: "TheGM"
+      sessions:
+        - session_number: 1
+          title: "Session 1: Quiet Night"
+          date_played: "2026-04-01"
+      events: []
+    query:
+      role: "gm"
+      session_id: 0
+    expected:
+      event_count: 0
+
+  - id: campaign_with_no_sessions_returns_no_events
+    description: "A campaign with no sessions and no events returns an empty list"
+    setup:
+      campaign:
+        name: "No Sessions Campaign"
+        join_code: "EDGE0002"
+        gm_display_name: "TheGM"
+      sessions: []
+      events: []
+    query:
+      role: "gm"
+      session_id: null
+    expected:
+      event_count: 0
+
+  - id: player_query_on_all_private_events_returns_empty
+    description: "Player query returns empty list when all events are is_public=False"
+    setup:
+      campaign:
+        name: "All Private Events"
+        join_code: "EDGE0003"
+        gm_display_name: "TheGM"
+      sessions:
+        - session_number: 1
+          title: "Session 1: Secrets"
+          date_played: "2026-04-10"
+      events:
+        - event_type: "world_change"
+          content: "Private plot note A."
+          is_public: false
+          session_index: 0
+        - event_type: "npc_state_change"
+          content: "Private plot note B."
+          is_public: false
+          session_index: 0
+    query:
+      role: "player"
+      session_id: null
+    expected:
+      event_count: 0
+
+  - id: session_filter_on_nonexistent_session_returns_empty
+    description: "Filtering by a session_id that has no events returns an empty list"
+    setup:
+      campaign:
+        name: "Missing Session Test"
+        join_code: "EDGE0004"
+        gm_display_name: "TheGM"
+      sessions:
+        - session_number: 1
+          title: "Session 1: Setup"
+          date_played: "2026-05-01"
+        - session_number: 2
+          title: "Session 2: Empty"
+          date_played: "2026-05-08"
+      events:
+        - event_type: "dialogue"
+          content: "Event only in session 1."
+          is_public: true
+          session_index: 0
+    query:
+      role: "gm"
+      session_id: 1
+    expected:
+      event_count: 0

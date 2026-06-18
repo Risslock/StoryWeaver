@@ -1,0 +1,95 @@
+# History recall scenarios: role-scoped filtering
+# Covers: player context returns only is_public=True events; GM receives all events.
+
+scenarios:
+
+  - id: player_sees_only_public_events
+    description: "Player role query returns only is_public=True events"
+    setup:
+      campaign:
+        name: "History Filter Test"
+        join_code: "HFLT0001"
+        gm_display_name: "TheGM"
+      sessions:
+        - session_number: 1
+          title: "Session 1: The City Gates"
+          date_played: "2026-01-10"
+      events:
+        - event_type: "dialogue"
+          content: "The party spoke with the city guard about the missing merchant."
+          is_public: true
+          session_index: 0
+        - event_type: "world_change"
+          content: "Secret: the guard captain is in league with the thieves guild."
+          is_public: false
+          session_index: 0
+    query:
+      role: "player"
+      session_id: null
+    expected:
+      must_contain_content:
+        - "party spoke with the city guard"
+      must_not_contain_content:
+        - "guard captain is in league"
+
+  - id: gm_sees_all_events_including_private
+    description: "GM role query returns all events including is_public=False"
+    setup:
+      campaign:
+        name: "History Filter Test GM"
+        join_code: "HFLT0002"
+        gm_display_name: "TheGM"
+      sessions:
+        - session_number: 1
+          title: "Session 1: The Market"
+          date_played: "2026-01-10"
+      events:
+        - event_type: "discovery"
+          content: "Players found a hidden door in the merchant's warehouse."
+          is_public: true
+          session_index: 0
+        - event_type: "npc_state_change"
+          content: "GM note: the hidden door leads to a horror cult shrine."
+          is_public: false
+          session_index: 0
+    query:
+      role: "gm"
+      session_id: null
+    expected:
+      must_contain_content:
+        - "Players found a hidden door"
+        - "horror cult shrine"
+
+  - id: player_mixed_public_private_events
+    description: "Mix of public and private events; player sees only public ones"
+    setup:
+      campaign:
+        name: "History Mixed Test"
+        join_code: "HFLT0003"
+        gm_display_name: "TheGM"
+      sessions:
+        - session_number: 1
+          title: "Session 1: Intro"
+          date_played: "2026-02-01"
+      events:
+        - event_type: "dialogue"
+          content: "Heroes introduced themselves at the tavern."
+          is_public: true
+          session_index: 0
+        - event_type: "world_change"
+          content: "Private: the barkeeper is a Brotherhood informant."
+          is_public: false
+          session_index: 0
+        - event_type: "decision"
+          content: "Party decided to investigate the Ork Warband."
+          is_public: true
+          session_index: 0
+    query:
+      role: "player"
+      session_id: null
+    expected:
+      must_contain_content:
+        - "Heroes introduced themselves"
+        - "Party decided to investigate"
+      must_not_contain_content:
+        - "Brotherhood informant"
