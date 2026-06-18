@@ -1,0 +1,73 @@
+# docker-compose.local.yml — Local development stack
+#
+# Services: web (Gradio), ollama (local LLM + embeddings), chromadb (vector store)
+# Storage:  SQLite volume, ChromaDB volume
+# Usage:    docker compose -f deploy/compose/docker-compose.local.yml up
+
+name: storyweaver-local
+
+services:
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.web
+    ports:
+      - "7860:7860"
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:////data/storyweaver.db
+      LLM_PROVIDER: ollama
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1}
+      EMBEDDING_PROVIDER: ollama
+      EMBEDDING_MODEL: nomic-embed-text
+      IMAGE_PROVIDER: ${IMAGE_PROVIDER:-comfyui}
+      COMFYUI_URL: ${COMFYUI_URL:-http://host.docker.internal:8188}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      MAX_TWIN_TURNS: ${MAX_TWIN_TURNS:-20}
+    volumes:
+      - sqlite-data:/data
+    depends_on:
+      ollama:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ollama:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.ollama
+      args:
+        OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1}
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma-data:/chroma/chroma
+    environment:
+      IS_PERSISTENT: "TRUE"
+      ANONYMIZED_TELEMETRY: "FALSE"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  sqlite-data:
+  ollama-models:
+  chroma-data:

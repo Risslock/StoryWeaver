@@ -1,0 +1,55 @@
+[project]
+name = "storyweaver"
+version = "0.1.0"
+requires-python = ">=3.11"
+
+[tool.uv.workspace]
+members = ["apps/*", "packages/*"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.4",
+    "pyright>=1.1",
+    "alembic>=1.13",
+]
+
+# ---------------------------------------------------------------------------
+# Ruff — linting (Python 3.11+, strict ruleset)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "ANN",  # flake8-annotations (type hints)
+]
+ignore = [
+    "ANN101",  # missing type annotation for self
+    "ANN102",  # missing type annotation for cls
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+# ---------------------------------------------------------------------------
+# Pyright — strict type checking
+# ---------------------------------------------------------------------------
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"
+exclude = [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/migrations",
+]

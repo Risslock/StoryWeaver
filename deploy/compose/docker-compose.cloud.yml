@@ -1,0 +1,53 @@
+# docker-compose.cloud.yml — Cloud / production stack
+#
+# Services: web (Gradio), postgres + pgvector (relational DB + vector store)
+# Storage:  Postgres volume
+# LLM:      Cloud provider via LLM_PROVIDER env var (anthropic | openai | huggingface)
+# Usage:    docker compose -f deploy/compose/docker-compose.cloud.yml up
+#
+# Required env vars (set in .env or CI/CD secrets):
+#   DATABASE_URL, LLM_PROVIDER, LLM_API_KEY, HF_API_KEY (if using huggingface)
+
+name: storyweaver-cloud
+
+services:
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.web
+    ports:
+      - "7860:7860"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+      LLM_API_KEY: ${LLM_API_KEY}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-huggingface}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-base-en-v1.5}
+      HF_API_KEY: ${HF_API_KEY:-}
+      IMAGE_PROVIDER: ${IMAGE_PROVIDER:-huggingface}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      MAX_TWIN_TURNS: ${MAX_TWIN_TURNS:-20}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-storyweaver}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-storyweaver}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-storyweaver}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

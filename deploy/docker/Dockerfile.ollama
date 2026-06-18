@@ -1,0 +1,17 @@
+FROM ollama/ollama:latest
+
+# Pull the default model at build time so the container is ready on first run.
+# Override OLLAMA_MODEL in docker-compose to change the model.
+ARG OLLAMA_MODEL=llama3.1
+
+# Start Ollama server, pull the model, then stop. The pulled model is baked
+# into the image layer so runtime startup is fast.
+RUN ollama serve & \
+    sleep 5 && \
+    ollama pull ${OLLAMA_MODEL} && \
+    ollama pull nomic-embed-text && \
+    pkill ollama
+
+EXPOSE 11434
+
+CMD ["ollama", "serve"]

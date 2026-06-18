@@ -1,0 +1,34 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Copy workspace definition and all package manifests first (for layer caching)
+COPY pyproject.toml uv.lock* ./
+COPY apps/web/pyproject.toml apps/web/pyproject.toml
+COPY packages/core/pyproject.toml packages/core/pyproject.toml
+COPY packages/agents/pyproject.toml packages/agents/pyproject.toml
+COPY packages/llm/pyproject.toml packages/llm/pyproject.toml
+COPY packages/imagegen/pyproject.toml packages/imagegen/pyproject.toml
+COPY packages/rag/pyproject.toml packages/rag/pyproject.toml
+COPY packages/storage/pyproject.toml packages/storage/pyproject.toml
+COPY packages/story/pyproject.toml packages/story/pyproject.toml
+COPY packages/rules_earthdawn/pyproject.toml packages/rules_earthdawn/pyproject.toml
+
+# Install dependencies (without project source for caching)
+RUN uv sync --frozen --no-install-workspace
+
+# Copy full source
+COPY . .
+
+# Install workspace packages
+RUN uv sync --frozen
+
+EXPOSE 7860
+
+ENV GRADIO_SERVER_NAME=0.0.0.0
+ENV GRADIO_SERVER_PORT=7860
+
+CMD ["uv", "run", "python", "apps/web/app.py"]

@@ -18,13 +18,13 @@
 
 **Purpose**: Initialize the uv workspace, directory structure, tooling, and container configuration before any feature code.
 
-- [ ] T001 Initialize uv workspace: create root `pyproject.toml` with `[tool.uv.workspace]` members `["apps/*", "packages/*"]` and dev dependency group (pytest≥8, ruff≥0.4, pyright≥1.1, alembic≥1.13)
-- [ ] T002 [P] Create all package directories under `apps/web/` and `packages/` (core, rules_earthdawn, agents, llm, imagegen, rag, storage, story) with stub `pyproject.toml` per research.md §4 subpackage pattern
-- [ ] T003 [P] Configure ruff linting and pyright type-checking in root `pyproject.toml` (target Python 3.11+; strict pyright mode)
-- [ ] T004 [P] Create `.env.example` with all required environment variable keys: `DATABASE_URL`, `LLM_PROVIDER`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `IMAGE_PROVIDER`, `HF_API_KEY`, `COMFYUI_URL`, `EMBEDDING_PROVIDER`
-- [ ] T005 [P] Create `deploy/docker/Dockerfile.web` (apps/web Gradio entry point) and `deploy/docker/Dockerfile.ollama` (Ollama sidecar)
-- [ ] T006 [P] Create `deploy/compose/docker-compose.local.yml` and `deploy/compose/docker-compose.cloud.yml` stubs (services: web, ollama, chromadb for local; web, postgres, pgvector for cloud)
-- [ ] T007 [P] Create `docs/adr/ADR-005-agent-framework.md` documenting Pydantic-AI selection, rationale, and alternatives considered (required before M2 per constitution and plan.md open compliance item)
+- [X] T001 Initialize uv workspace: create root `pyproject.toml` with `[tool.uv.workspace]` members `["apps/*", "packages/*"]` and dev dependency group (pytest≥8, ruff≥0.4, pyright≥1.1, alembic≥1.13)
+- [X] T002 [P] Create all package directories under `apps/web/` and `packages/` (core, rules_earthdawn, agents, llm, imagegen, rag, storage, story) with stub `pyproject.toml` per research.md §4 subpackage pattern
+- [X] T003 [P] Configure ruff linting and pyright type-checking in root `pyproject.toml` (target Python 3.11+; strict pyright mode)
+- [X] T004 [P] Create `.env.example` with all required environment variable keys: `DATABASE_URL`, `LLM_PROVIDER`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `IMAGE_PROVIDER`, `HF_API_KEY`, `COMFYUI_URL`, `EMBEDDING_PROVIDER`
+- [X] T005 [P] Create `deploy/docker/Dockerfile.web` (apps/web Gradio entry point) and `deploy/docker/Dockerfile.ollama` (Ollama sidecar)
+- [X] T006 [P] Create `deploy/compose/docker-compose.local.yml` and `deploy/compose/docker-compose.cloud.yml` stubs (services: web, ollama, chromadb for local; web, postgres, pgvector for cloud)
+- [X] T007 [P] Create `docs/adr/ADR-005-agent-framework.md` documenting Pydantic-AI selection, rationale, and alternatives considered (required before M2 per constitution and plan.md open compliance item)
 
 **Checkpoint**: `uv sync` installs cleanly; `ruff check .` and `pyright` pass on stub files; directory tree matches plan.md project structure.
 

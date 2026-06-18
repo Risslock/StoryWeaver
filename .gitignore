@@ -85,9 +85,8 @@ harness/results/
 harness/outputs/
 
 # --- Docker local overrides ---------------------------------------------------
-# deploy/compose/ base files are committed; local overrides are not
+# deploy/compose/ base files are committed; personal overrides are not
 docker-compose.override.yml
-deploy/compose/*.local.yml
 
 # --- Logs ---------------------------------------------------------------------
 logs/

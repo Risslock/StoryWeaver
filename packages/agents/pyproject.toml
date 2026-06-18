@@ -1,0 +1,17 @@
+[project]
+name = "storyweaver-agents"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "storyweaver-core",
+    "storyweaver-llm",
+    "pydantic-ai>=0.0.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+storyweaver-core = { workspace = true }
+storyweaver-llm = { workspace = true }
