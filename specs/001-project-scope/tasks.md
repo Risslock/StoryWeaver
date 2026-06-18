@@ -36,18 +36,18 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T008 Create `packages/core/config.py` — typed `Settings` dataclass loaded from environment variables via `pydantic-settings`: `database_url`, `llm_provider`, `ollama_base_url`, `ollama_model`, `image_provider`, `hf_api_key`, `comfyui_url`, `embedding_provider`, `max_twin_turns` (default 20)
-- [ ] T009 [P] Create `packages/core/errors.py` — domain exceptions: `AccessDeniedError`, `ProviderUnavailableError`, `EntityNotFoundError`, `CampaignJoinError`, `ValidationError`
-- [ ] T010 Create `packages/core/models.py` — SQLAlchemy 2.x `DeclarativeBase` ORM models for all entities from data-model.md: `Campaign`, `Character`, `NPC`, `DigitalTwin`, `Session`, `StoryEvent`, `SessionPlan` (all fields, indexes, unique constraints, and ON DELETE CASCADE as specified)
-- [ ] T011 Create `packages/core/schemas.py` — Pydantic v2 schemas mirroring all ORM entities: `CampaignSchema`, `CharacterSchema`, `NPCSchema`, `DigitalTwinSchema`, `SessionSchema`, `StoryEventSchema`, `SessionPlanSchema`, `CampaignSession` dataclass; also `PlayerNPCSchema` (Player-visible NPC fields: `id`, `name`, `role`, `race`, `personality`, `portrait_url` — excludes `gm_notes` and `background`)
-- [ ] T012 Create `alembic.ini` at repo root and `packages/core/migrations/` with initial Alembic migration generated from `packages/core/models.py`; configure async DB URL from `packages/core/config.py`
-- [ ] T013 Create `packages/storage/interface.py` — `StorageBackend` ABC with async methods: `get_session()`, `execute()`, `initialize_db()`
-- [ ] T014 Create `packages/storage/sqlite/` — SQLite adapter using `aiosqlite` via SQLAlchemy async engine; set `PRAGMA journal_mode=WAL` at connection-open time for concurrent reader support (research.md §5)
-- [ ] T015 Create `packages/llm/interface.py` — `LLMProvider` ABC with async `generate(prompt: str, system: str) -> str` method
-- [ ] T016 Create `packages/llm/providers/ollama.py` — Ollama provider using OpenAI-compat REST API; reads `OLLAMA_BASE_URL` and `OLLAMA_MODEL` from config; raises `ProviderUnavailableError` on connection failure
-- [ ] T017 Create `apps/web/app.py` — Gradio `gr.Blocks()` app factory: `gr.State(value=None)` holding `CampaignSession`, conditional tab visibility routing (Player tabs vs. GM tabs) based on role, degraded-mode banner integration point
-- [ ] T018 Create `apps/web/components/banner.py` — persistent `gr.HTML` AI-unavailable banner component; shown when `CampaignSession.ai_available = False`; content: "AI features are currently unavailable. Character sheets, story history, and campaign navigation remain accessible."
-- [ ] T019 Create `apps/web/pages/landing.py` — Campaign create flow (name + GM display name → join code displayed) and join flow (join code + display name → role resolution: GM re-join if display name matches `Campaign.gm_display_name`, else Player); AI health check at join time sets `CampaignSession.ai_available`
+- [X] T008 Create `packages/core/config.py` — typed `Settings` dataclass loaded from environment variables via `pydantic-settings`: `database_url`, `llm_provider`, `ollama_base_url`, `ollama_model`, `image_provider`, `hf_api_key`, `comfyui_url`, `embedding_provider`, `max_twin_turns` (default 20)
+- [X] T009 [P] Create `packages/core/errors.py` — domain exceptions: `AccessDeniedError`, `ProviderUnavailableError`, `EntityNotFoundError`, `CampaignJoinError`, `ValidationError`
+- [X] T010 Create `packages/core/models.py` — SQLAlchemy 2.x `DeclarativeBase` ORM models for all entities from data-model.md: `Campaign`, `Character`, `NPC`, `DigitalTwin`, `Session`, `StoryEvent`, `SessionPlan` (all fields, indexes, unique constraints, and ON DELETE CASCADE as specified)
+- [X] T011 Create `packages/core/schemas.py` — Pydantic v2 schemas mirroring all ORM entities: `CampaignSchema`, `CharacterSchema`, `NPCSchema`, `DigitalTwinSchema`, `SessionSchema`, `StoryEventSchema`, `SessionPlanSchema`, `CampaignSession` dataclass; also `PlayerNPCSchema` (Player-visible NPC fields: `id`, `name`, `role`, `race`, `personality`, `portrait_url` — excludes `gm_notes` and `background`)
+- [X] T012 Create `alembic.ini` at repo root and `packages/core/migrations/` with initial Alembic migration generated from `packages/core/models.py`; configure async DB URL from `packages/core/config.py`
+- [X] T013 Create `packages/storage/interface.py` — `StorageBackend` ABC with async methods: `get_session()`, `execute()`, `initialize_db()`
+- [X] T014 Create `packages/storage/sqlite/` — SQLite adapter using `aiosqlite` via SQLAlchemy async engine; set `PRAGMA journal_mode=WAL` at connection-open time for concurrent reader support (research.md §5)
+- [X] T015 Create `packages/llm/interface.py` — `LLMProvider` ABC with async `generate(prompt: str, system: str) -> str` method
+- [X] T016 Create `packages/llm/providers/ollama.py` — Ollama provider using OpenAI-compat REST API; reads `OLLAMA_BASE_URL` and `OLLAMA_MODEL` from config; raises `ProviderUnavailableError` on connection failure
+- [X] T017 Create `apps/web/app.py` — Gradio `gr.Blocks()` app factory: `gr.State(value=None)` holding `CampaignSession`, conditional tab visibility routing (Player tabs vs. GM tabs) based on role, degraded-mode banner integration point
+- [X] T018 Create `apps/web/components/banner.py` — persistent `gr.HTML` AI-unavailable banner component; shown when `CampaignSession.ai_available = False`; content: "AI features are currently unavailable. Character sheets, story history, and campaign navigation remain accessible."
+- [X] T019 Create `apps/web/pages/landing.py` — Campaign create flow (name + GM display name → join code displayed) and join flow (join code + display name → role resolution: GM re-join if display name matches `Campaign.gm_display_name`, else Player); AI health check at join time sets `CampaignSession.ai_available`
 
 **Checkpoint**: `uv run alembic upgrade head` creates the DB schema; app launches with `uv run python apps/web/app.py`; join flow creates and joins a campaign; AI unavailable banner appears when Ollama is unreachable.
 
