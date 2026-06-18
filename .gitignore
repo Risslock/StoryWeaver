@@ -127,5 +127,8 @@ Desktop.ini
 tempCodeRunnerFile.py
 .pypirc
 
+# --- Claude agent instructions (committed for reproducibility) --------------------------------
+ .claude
+
 # --- pyenv (uncomment to commit the Python version pin) ----------------------
 # .python-version

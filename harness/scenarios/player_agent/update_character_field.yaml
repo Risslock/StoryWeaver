@@ -1,0 +1,115 @@
+# Player Agent tool scenarios: update_character_field
+# Covers: valid field update, portrait_url rejection, unknown field rejection, cross-player denial
+
+scenarios:
+
+  - id: pa_update_valid_field
+    tool: update_character_field
+    description: "Player updates a valid field (personality) on their own character"
+    setup:
+      campaign:
+        name: "Test Campaign"
+        join_code: "PAUPD001"
+        gm_display_name: "TheGM"
+      character:
+        player_display_name: "Alice"
+        name: "Brekk Stonefist"
+        race: "Ork"
+        discipline: "Warrior"
+        circle: 2
+        background: "Warclan survivor."
+        personality: "Gruff and direct."
+    tool_input:
+      character_id: "$character.id"
+      field: "personality"
+      value: "Gruff, direct, and fiercely protective of companions."
+    session_context:
+      display_name: "Alice"
+      role: "player"
+    expected:
+      outcome: success
+      result_field: success
+      result_value: true
+      result_field_2: updated_field
+      result_value_2: "personality"
+
+  - id: pa_update_portrait_url_rejected
+    tool: update_character_field
+    description: "portrait_url is not updatable via this tool — must raise ValidationError"
+    setup:
+      campaign:
+        name: "Test Campaign"
+        join_code: "PAUPD002"
+        gm_display_name: "TheGM"
+      character:
+        player_display_name: "Alice"
+        name: "Brekk Stonefist"
+        race: "Ork"
+        discipline: "Warrior"
+        circle: 2
+        background: "Warclan survivor."
+        personality: "Gruff and direct."
+    tool_input:
+      character_id: "$character.id"
+      field: "portrait_url"
+      value: "http://evil.example.com/fake.png"
+    session_context:
+      display_name: "Alice"
+      role: "player"
+    expected:
+      outcome: error
+      error_type: ValidationError
+
+  - id: pa_update_unknown_field_rejected
+    tool: update_character_field
+    description: "Unknown field name must raise ValidationError"
+    setup:
+      campaign:
+        name: "Test Campaign"
+        join_code: "PAUPD003"
+        gm_display_name: "TheGM"
+      character:
+        player_display_name: "Alice"
+        name: "Brekk Stonefist"
+        race: "Ork"
+        discipline: "Warrior"
+        circle: 2
+        background: "Warclan survivor."
+        personality: "Gruff and direct."
+    tool_input:
+      character_id: "$character.id"
+      field: "admin_override"
+      value: true
+    session_context:
+      display_name: "Alice"
+      role: "player"
+    expected:
+      outcome: error
+      error_type: ValidationError
+
+  - id: pa_update_other_player_character_denied
+    tool: update_character_field
+    description: "Updating another player's character must raise AccessDeniedError"
+    setup:
+      campaign:
+        name: "Test Campaign"
+        join_code: "PAUPD004"
+        gm_display_name: "TheGM"
+      character:
+        player_display_name: "Alice"
+        name: "Brekk Stonefist"
+        race: "Ork"
+        discipline: "Warrior"
+        circle: 2
+        background: "Warclan survivor."
+        personality: "Gruff and direct."
+    tool_input:
+      character_id: "$character.id"
+      field: "personality"
+      value: "Hacked personality."
+    session_context:
+      display_name: "Bob"
+      role: "player"
+    expected:
+      outcome: error
+      error_type: AccessDeniedError

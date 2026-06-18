@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import gradio as gr
-
 from components.banner import build_banner
 from core.schemas import CampaignSession
+from pages.gm.characters import build_characters_page
+from pages.gm.npcs import build_npc_page
+from pages.gm.world_notes import build_world_notes_page
 from pages.landing import build_landing
 from pages.player.character import build_character_page
 from pages.player.twin_chat import build_twin_chat_page
@@ -39,14 +41,11 @@ def create_app() -> gr.Blocks:
                 buttons=["copy"],
             )
             with gr.Tabs():
-                with gr.Tab("Characters"):
-                    gr.Markdown("*GM characters overview coming in Phase 4.*")
-                with gr.Tab("NPCs"):
-                    gr.Markdown("*NPC management coming in Phase 4.*")
+                build_characters_page(session_state)
+                build_npc_page(session_state)
                 with gr.Tab("Story History"):
                     gr.Markdown("*Story history coming in Phase 5.*")
-                with gr.Tab("World Notes"):
-                    gr.Markdown("*World notes coming in Phase 4.*")
+                build_world_notes_page(session_state)
                 with gr.Tab("Session Plan"):
                     gr.Markdown("*Session planning coming in Phase 8.*")
 

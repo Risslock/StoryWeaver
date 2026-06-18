@@ -1,0 +1,82 @@
+# GM Agent tool scenarios: toggle_npc_visibility
+# Covers: hidden→visible flow, visible→hidden flow, player sees NPC after reveal
+
+scenarios:
+
+  - id: gm_toggle_hidden_to_visible
+    tool: toggle_npc_visibility
+    description: "GM reveals a hidden NPC — player can see it after toggle"
+    setup:
+      campaign:
+        name: "Visibility Test Campaign"
+        join_code: "GMVIS001"
+        gm_display_name: "TheGM"
+      npc:
+        name: "Shadow Informant"
+        role: "villain"
+        race: "Troll"
+        personality: "Cold and calculating."
+        background: "Spy for a horror cult."
+        gm_notes: "Secret agenda: destroy the party."
+        is_visible_to_players: false
+    tool_input:
+      npc_id: "$npc.id"
+      is_visible: true
+    session_context:
+      display_name: "TheGM"
+      role: "gm"
+    expected:
+      outcome: success
+      result_field: is_visible_to_players
+      result_value: true
+      result_field_2: npc_name
+      result_value_2: "Shadow Informant"
+    post_check:
+      player_visible_query_includes_npc: true
+
+  - id: gm_toggle_visible_to_hidden
+    tool: toggle_npc_visibility
+    description: "GM hides a previously visible NPC — player no longer sees it"
+    setup:
+      campaign:
+        name: "Visibility Test Campaign"
+        join_code: "GMVIS002"
+        gm_display_name: "TheGM"
+      npc:
+        name: "Friendly Merchant"
+        role: "merchant"
+        race: "Dwarf"
+        personality: "Cheerful and talkative."
+        background: "Runs a shop in Throal."
+        gm_notes: "Owes thieves guild debt."
+        is_visible_to_players: true
+    tool_input:
+      npc_id: "$npc.id"
+      is_visible: false
+    session_context:
+      display_name: "TheGM"
+      role: "gm"
+    expected:
+      outcome: success
+      result_field: is_visible_to_players
+      result_value: false
+    post_check:
+      player_visible_query_includes_npc: false
+
+  - id: gm_toggle_nonexistent_npc
+    tool: toggle_npc_visibility
+    description: "Toggle on a non-existent NPC ID must raise EntityNotFoundError"
+    setup:
+      campaign:
+        name: "Visibility Test Campaign"
+        join_code: "GMVIS003"
+        gm_display_name: "TheGM"
+    tool_input:
+      npc_id: "00000000-0000-0000-0000-000000000000"
+      is_visible: true
+    session_context:
+      display_name: "TheGM"
+      role: "gm"
+    expected:
+      outcome: error
+      error_type: EntityNotFoundError
