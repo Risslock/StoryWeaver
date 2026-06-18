@@ -1,30 +1,24 @@
 <!--
 ## Sync Impact Report
 
-**Version Change**: [unversioned template] → 1.0.0
-**Type of Bump**: MINOR — initial population of all placeholders; no prior versioned state existed.
+**Version Change**: 1.0.0 → 1.1.0
+**Type of Bump**: MINOR — expanded README obligation in Principle I and added an explicit README Currency step to the Development Workflow.
 
-### Principles Defined (new)
-- I. Spec-Driven Development (NON-NEGOTIABLE)
-- II. Provider Abstraction
-- III. Package Isolation
-- IV. Local-First, Cloud-Optional
-- V. Harness-Driven Agent Quality
+### Principles Modified
+- I. Spec-Driven Development: expanded README obligation to cover *current implemented state*, not just architecture/intent.
 
-### Sections Added
-- Technology Stack Constraints (Section 2)
-- Development Workflow & IP Compliance (Section 3)
-- Governance
+### Sections Modified
+- Development Workflow: added step 6 (README Currency) as a mandatory post-implementation gate before Milestone gate.
 
 ### Templates Reviewed
-- `.specify/templates/plan-template.md` ✅ — Constitution Check gate references constitution generically; no change required.
-- `.specify/templates/spec-template.md` ✅ — FR/acceptance-criteria pattern compatible with spec-driven principle; no change required.
-- `.specify/templates/tasks-template.md` ✅ — Test-before-implement note aligns with Spec-Driven principle; no change required.
-- `.specify/templates/commands/` ✅ — No command files found; nothing to update.
+- `.specify/templates/plan-template.md` ✅ — Constitution Check gate is generic; no change required.
+- `.specify/templates/spec-template.md` ✅ — No README-related scope conflicts; no change required.
+- `.specify/templates/tasks-template.md` ✅ — Polish phase already includes `Documentation updates in docs/`;
+  README currency is now a named principle step — no structural change to template required.
 
 ### Deferred TODOs
-- TODO(LICENSE): Project license is TBD (README says "recommend MIT or Apache-2.0"). Governance references this for IP compliance.
-- TODO(RATIFICATION_DATE): Using first-commit / README creation date (2026-06-18) as ratification date; adjust if the project predates this session.
+- TODO(LICENSE): Still unresolved — project license TBD before public release.
+- TODO(RATIFICATION_DATE): Carried from v1.0.0 — ratification date kept as 2026-06-18.
 -->
 
 # StoryWeaver Constitution
@@ -37,11 +31,17 @@ Every feature MUST begin with a written spec in `/specs` before any code is writ
 Specs define problem statement, behaviour, interfaces, and acceptance criteria.
 When code and spec disagree, **the spec wins**; code is updated to match.
 Implementation and review MUST trace back to a spec.
-The `README.md` is the top-level source of truth for architecture and intent; it MUST be updated deliberately and kept consistent with `/specs`.
+The `README.md` is the top-level source of truth for architecture and intent; it MUST be
+updated deliberately and kept consistent with `/specs`.
+After every implementation milestone, `README.md` MUST be updated to reflect the **current
+implemented state** of the project — including completed features, active limitations, and
+changed setup or usage instructions. A README that describes planned or superseded
+functionality is a defect.
 
 **Rationale**: Non-deterministic AI components make "just try it" development expensive to reverse.
 Specs provide a stable contract that lets the team iterate on prompts and agents with
-confidence, not guesswork.
+confidence, not guesswork. An accurate README prevents the team from building on stale
+assumptions about what the system actually does today.
 
 ### II. Provider Abstraction
 
@@ -130,8 +130,13 @@ as an Architecture Decision Record (ADR) under `docs/adr/` before implementation
    introduced or changed.
 4. **Implement**: Write code against the spec. Keep packages isolated.
 5. **Verify**: `pytest` passes; harness evals pass; `ruff` and `pyright` report no errors.
-6. **Milestone gate**: A milestone is complete only when all its acceptance criteria
-   are satisfied (verified by harness or automated assertion). Milestones are sequential
+6. **README currency**: Update `README.md` to reflect the current implemented state of
+   the project. This MUST cover: newly completed features, changed setup/usage
+   instructions, removed or renamed commands, and known limitations introduced by this
+   change. Do not describe functionality that is planned but not yet implemented.
+7. **Milestone gate**: A milestone is complete only when all its acceptance criteria
+   are satisfied (verified by harness or automated assertion) **and** `README.md`
+   accurately reflects the milestone's delivered scope. Milestones are sequential
    unless the roadmap explicitly permits parallelism.
 
 ## Governance
@@ -155,4 +160,4 @@ amendment — not a quiet exception.
 
 Runtime development guidance lives in `README.md` and the `/specs` directory.
 
-**Version**: 1.0.0 | **Ratified**: 2026-06-18 | **Last Amended**: 2026-06-18
+**Version**: 1.1.0 | **Ratified**: 2026-06-18 | **Last Amended**: 2026-06-19
