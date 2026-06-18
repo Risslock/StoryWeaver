@@ -36,7 +36,7 @@ def create_app() -> gr.Blocks:
             gm_join_code = gr.Textbox(
                 label="Campaign Join Code — share this with your players",
                 interactive=False,
-                show_copy_button=True,
+                buttons=["copy"],
             )
             with gr.Tabs():
                 with gr.Tab("Characters"):
