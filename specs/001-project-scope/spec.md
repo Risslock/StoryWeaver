@@ -1,4 +1,4 @@
-# Feature Specification: StoryWeaver — Project Scope & Vision
+﻿# Feature Specification: StoryWeaver — Project Scope & Vision
 
 **Feature Branch**: `001-project-scope`
 
@@ -13,6 +13,18 @@
 This document is the **master scope spec**. Every feature spec under `/specs` should trace back to a goal or capability defined here.
 
 **Primary purpose**: Learning and portfolio project — demonstrating spec-driven, harness-evaluated, multi-agent AI system design on a meaningful real-world domain.
+
+---
+
+## Clarifications
+
+### Session 2026-06-18
+
+- Q: What is the simplest viable authentication mechanism for FR-012 (campaign code + display name, lightweight email/password, or managed auth provider)? → A: Campaign join code + display name — no persistent accounts; users pick a display name and enter a campaign join code to join as Player or GM.
+- Q: What is the granularity of NPC visibility control for Players (FR-007)? → A: Hidden by default; GM reveals per NPC — each NPC has a visibility toggle (default hidden); the GM flips it to make an NPC visible to Players.
+- Q: When the local AI provider is unavailable at startup, does the system start in degraded mode or refuse to launch? → A: Degraded mode — the app starts, surfaces a clear banner indicating AI is unavailable, and blocks only AI-dependent actions.
+- Q: Can a Player own multiple Characters in the same Campaign? → A: Yes — a Player may own multiple characters in the same campaign and interact with each via its own digital twin.
+- Q: What is the measurable load-time target for SC-008 (story history with 5+ sessions and 20+ events)? → A: Under 5 seconds from request to fully navigable history.
 
 ---
 
@@ -145,7 +157,7 @@ A GM uses a dedicated planning tool to prepare for the next session, drawing on 
 
 - What happens when a player asks the twin something entirely outside the character's experience or knowledge?
 - How does the system behave when image generation produces content that is inappropriate or clearly low quality?
-- What happens when the local AI provider is unavailable at startup — does the system start in a degraded mode or refuse to launch?
+- **[Resolved]** When the local AI provider is unavailable at startup, the system starts in degraded mode: a persistent banner informs all users that AI features are unavailable, and actions that require the AI provider (twin dialogue, image generation, session planning) are disabled until the provider becomes reachable. Non-AI features (story history browsing, character sheet viewing, campaign navigation) remain fully functional.
 - How does the story history behave when a session has no logged events?
 - What happens if a GM removes a player from a campaign mid-session?
 - How does a twin respond when the story history contains contradictory information about the same event?
@@ -157,18 +169,18 @@ A GM uses a dedicated planning tool to prepare for the next session, drawing on 
 
 ### Functional Requirements
 
-- **FR-001**: System MUST provide a narrative-first character creation flow that captures identity, discipline, key attributes, talents, background, personality, goals, and relationships for an Earthdawn 4E character, with sanity-check validation (required fields, basic consistency) but without enforcing every legal build rule.
+- **FR-001**: System MUST provide a narrative-first character creation flow that captures identity, discipline, key attributes, talents, background, personality, goals, and relationships for an Earthdawn 4E character, with sanity-check validation (required fields, basic consistency) but without enforcing every legal build rule. A Player may create multiple Characters within the same Campaign.
 - **FR-002**: System MUST create a persistent digital twin agent for each Character and NPC that generates in-character dialogue, behaviour, and suggested actions grounded in the entity's profile and story context.
 - **FR-003**: System MUST feed relevant story history into digital twin context so that responses reflect campaign events.
 - **FR-004**: System MUST generate portrait images for characters based on their physical description and traits.
 - **FR-005**: System MUST generate scene illustrations for locations and key moments as described by the GM.
 - **FR-006**: System MUST maintain a persistent, queryable campaign story history recording sessions, events, decisions, NPC and world-state changes, and open plot threads.
-- **FR-007**: System MUST enforce role-scoped access: Players access only their own character and shared campaign content; GMs access all campaign content including private world and lore notes.
+- **FR-007**: System MUST enforce role-scoped access: Players access only their own character and shared campaign content; GMs access all campaign content including private world and lore notes. NPC profiles are hidden from Players by default; the GM may reveal individual NPCs to Players via a per-NPC visibility toggle.
 - **FR-008**: System MUST support a shared campaign where a GM and multiple players participate, with shared content visible to appropriate roles after a refresh cycle. Real-time conflict resolution is not required in v1.
 - **FR-009**: System MUST provide a GM-only session planning tool that uses story history as context and supports interaction with a planning agent.
 - **FR-010**: System MUST be deployable in two modes — local-only (no cloud services required) and cloud-hosted — using the same codebase and the same demo scenario.
 - **FR-011**: System MUST allow AI providers (LLM and image generation) to be swapped via configuration only, with no code changes required.
-- **FR-012**: System MUST authenticate users and associate each with a role (Player or GM) within a campaign. [NEEDS CLARIFICATION: What is the simplest viable authentication mechanism — campaign code + display name, lightweight email/password, or a managed auth provider?]
+- **FR-012**: System MUST associate users with a role (Player or GM) within a campaign via a campaign join code and a user-chosen display name. No persistent accounts or credentials are required. A user joins a campaign by entering its join code and selecting their display name; the GM role is assigned to the campaign creator.
 - **FR-013**: System MUST NOT store, redistribute, or bundle copyrighted rulebook text, official art, or proprietary game content. Users supply their own reference material.
 
 ### Explicit Non-Goals
@@ -185,8 +197,8 @@ The following are out of scope. Any graduation into scope requires a deliberate 
 ### Key Entities
 
 - **Campaign**: The shared container for a group's game. Holds one GM, zero or more Players, all sessions, NPCs, and world notes.
-- **Character**: A Player-owned entity with structured profile data powering a digital twin. Scoped to a Campaign.
-- **NPC**: A GM-owned entity with a profile powering a GM-accessible digital twin. Visibility to Players is GM-controlled.
+- **Character**: A Player-owned entity with structured profile data powering a digital twin. Scoped to a Campaign. A Player may own multiple Characters within the same Campaign, each with its own independent digital twin.
+- **NPC**: A GM-owned entity with a profile powering a GM-accessible digital twin. Hidden from Players by default; the GM controls a per-NPC visibility toggle to reveal an NPC to all Players in the campaign.
 - **Digital Twin**: A persistent, scoped agent tied to a Character or NPC. Generates in-character responses using the entity's profile and story context.
 - **Story History**: An ordered log of sessions, events, decisions, and world-state changes for a Campaign. Queryable by digital twins and the session planning tool.
 - **Session**: A discrete play session within a Campaign containing logged events and outcomes.
@@ -205,7 +217,7 @@ The following are out of scope. Any graduation into scope requires a deliberate 
 - **SC-005**: Any feature in the system can be traced from its written specification through its harness evaluation to its implementation code.
 - **SC-006**: Character digital twin responses are judged in-character and contextually appropriate by a human reviewer for at least 8 out of 10 distinct test interactions.
 - **SC-007**: Scene and portrait images are judged to meaningfully reflect the requested subject by a human reviewer for at least 7 out of 10 generation requests.
-- **SC-008**: The story history for a campaign with at least 5 sessions and 20 logged events loads and is navigable in a time that does not interrupt the flow of play.
+- **SC-008**: The story history for a campaign with at least 5 sessions and 20 logged events loads and is fully navigable within 5 seconds of the request — verified by an automated timing assertion in the harness.
 
 ---
 
@@ -217,7 +229,7 @@ The following are out of scope. Any graduation into scope requires a deliberate 
 - **Refresh-based sync is sufficient for v1**: Polling/refresh delivers an acceptable "at the table together" experience at a fraction of the cost of true real-time collaboration, which is deferred.
 - **Character creation is narrative-first, not rules-enforced**: Sanity checks (required fields, basic consistency) replace full rules validation, which is explicitly out of scope.
 - **Local AI is available for development**: Development and regression testing use a local LLM; cloud providers are integration-tested separately behind the provider abstraction.
-- **Authentication approach is an open decision**: The simplest viable mechanism has not been chosen and must be resolved in a dedicated spec before milestone 2. (See FR-012.)
+- **Authentication approach resolved**: Campaign join code + display name. Users join by entering the campaign join code and choosing a display name; the campaign creator holds the GM role. No persistent accounts or credentials required. (Resolved 2026-06-18, see Clarifications.)
 - **Agent framework is an open decision**: The orchestration framework must be selected via Architecture Decision Record (ADR) before milestone 2 begins.
 - **Sheet import format is deferred**: Whether and which external character sheet formats can be imported is an open question, deferred to a dedicated spec.
 - **Project license is pending**: A code license (MIT or Apache-2.0 recommended) must be added before any public release.
