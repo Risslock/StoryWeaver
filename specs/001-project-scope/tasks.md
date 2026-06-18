@@ -101,14 +101,16 @@
 
 **Independent Test**: Log five events across two sessions; verify all events appear in correct order in story history and are accessible to both GM and relevant players after a refresh.
 
-- [ ] T040 [US3] Create `packages/story/session.py` — `Session` CRUD: `create_session(campaign_id, title, date_played)`, `list_sessions(campaign_id)`, `get_session(session_id)`; enforce `(campaign_id, session_number)` unique constraint
-- [ ] T041 [US3] Create `packages/story/history.py` — `StoryEvent` CRUD and query: `create_event(...)`, `list_events(campaign_id, role, session_id=None)` with role-scoped filter (`is_public=True` for Player role), chronological ordering by `(session_number, event_order)`, leveraging composite index on `(campaign_id, session_id, event_order)` from data-model.md
-- [ ] T042 [P] [US3] Create `apps/web/pages/player/history.py` — Player history tab: `gr.Dropdown` session selector, `gr.CheckboxGroup` event-type filter, `gr.Dataframe` or `gr.Markdown` event list (public events only); performance target < 5s for ≥5 sessions / ≥20 events (SC-008)
-- [ ] T043 [P] [US3] Create `apps/web/pages/gm/history.py` — GM history tab: all events including GM-only, log event form (`gr.Group`: type, content, participants, public flag), log event button, generate session summary button (`interactive=False` in degraded mode); scene illustration wiring added in T052
-- [ ] T044 [P] [US3] Create `harness/scenarios/history_recall/` — YAML scenario fixtures: semantic-query retrieval of specific events, chronological-order verification, role-scoped filtering (player context returns only `is_public=True` events), edge cases (empty session, query with no matching events)
-- [ ] T045 [US3] Create `tests/integration/test_story_history.py` — US3 acceptance scenarios 1 (GM logs event → Player refresh sees it) and 2 (events in chronological order with session context); SC-008 timing assertion: `test_history_load_time` asserts load < 5 seconds for ≥5 sessions / ≥20 events
+- [X] T040 [US3] Create `packages/story/session.py` — `Session` CRUD: `create_session(campaign_id, title, date_played)`, `list_sessions(campaign_id)`, `get_session(session_id)`; enforce `(campaign_id, session_number)` unique constraint
+- [X] T041 [US3] Create `packages/story/history.py` — `StoryEvent` CRUD and query: `create_event(...)`, `list_events(campaign_id, role, session_id=None)` with role-scoped filter (`is_public=True` for Player role), chronological ordering by `(session_number, event_order)`, leveraging composite index on `(campaign_id, session_id, event_order)` from data-model.md
+- [X] T042 [P] [US3] Create `apps/web/pages/player/history.py` — Player history tab: `gr.Dropdown` session selector, `gr.CheckboxGroup` event-type filter, `gr.Dataframe` or `gr.Markdown` event list (public events only); performance target < 5s for ≥5 sessions / ≥20 events (SC-008)
+- [X] T043 [P] [US3] Create `apps/web/pages/gm/history.py` — GM history tab: all events including GM-only, log event form (`gr.Group`: type, content, participants, public flag), log event button, generate session summary button (`interactive=False` in degraded mode); scene illustration wiring added in T052
+- [X] T044 [P] [US3] Create `harness/scenarios/history_recall/` — YAML scenario fixtures: semantic-query retrieval of specific events, chronological-order verification, role-scoped filtering (player context returns only `is_public=True` events), edge cases (empty session, query with no matching events)
+- [X] T045 [US3] Create `tests/integration/test_story_history.py` — US3 acceptance scenarios 1 (GM logs event → Player refresh sees it) and 2 (events in chronological order with session context); SC-008 timing assertion: `test_history_load_time` asserts load < 5 seconds for ≥5 sessions / ≥20 events
 
-**Checkpoint**: US3 is fully functional. Story history is persistent, role-scoped, and loads within the SC-008 time budget. `uv run pytest tests/integration/test_story_history.py -v` passes.
+**Checkpoint**: US3 story history is persistent, role-scoped, and loads within the SC-008 time budget. `uv run pytest tests/integration/test_story_history.py -v` passes.
+
+> **Note (H1)**: US3 Acceptance Scenario 3 ("twin reflects awareness of story history") requires RAG wiring (T064, Phase 9). The SQL-backed `recall_story_events` tool (T025) provides functional coverage; full semantic fidelity is a Phase 9 gate, not Phase 5.
 
 ---
 
@@ -171,8 +173,10 @@
 - [ ] T065 [P] Finalize `deploy/compose/docker-compose.local.yml` (web + ollama + chromadb + SQLite volume) and `deploy/compose/docker-compose.cloud.yml` (web + postgres + pgvector + cloud LLM env vars)
 - [ ] T066 [P] Run full M1–M4 quickstart.md validation sequence in local Docker mode (`docker compose -f deploy/compose/docker-compose.local.yml up`) to confirm SC-001, SC-002, SC-003 pass
 - [ ] T067 [P] Final `uv run ruff check .` and `uv run pyright` pass; update `README.md` with current architecture, milestone map, and developer setup instructions
+- [ ] T068 Complete `harness/runner.py` dispatch for all scenario types — extend runner to execute `gm_agent`, `player_agent`, `twin_dialogue`, `imagegen`, and `session_planning` fixture files (history_recall already implemented); validate all existing scenario files produce deterministic pass/fail via `uv run python harness/runner.py --all`
+- [ ] T069 README currency catch-up (constitution Principle I) — update `README.md` to reflect milestones M0–M4 as **completed**: monorepo scaffold, character creation, digital twins, NPC management, story history. List known limitations (no RAG semantic search, no image generation yet, no cloud providers). Update developer setup instructions to match current `uv sync` + `alembic upgrade head` + `app.py` flow. (Prerequisite for claiming Phases 3–5 milestones complete under the constitution.)
 
-**Checkpoint**: Full end-to-end demo runs in both local and cloud Docker modes. Provider swap via `.env` requires no code changes (SC-003). All harness scenarios pass.
+**Checkpoint**: Full end-to-end demo runs in both local and cloud Docker modes. Provider swap via `.env` requires no code changes (SC-003). All harness scenarios pass. `README.md` accurately reflects current implemented state (Constitution Principle I).
 
 ---
 

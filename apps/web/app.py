@@ -6,10 +6,12 @@ import gradio as gr
 from components.banner import build_banner
 from core.schemas import CampaignSession
 from pages.gm.characters import build_characters_page
+from pages.gm.history import build_gm_history_page
 from pages.gm.npcs import build_npc_page
 from pages.gm.world_notes import build_world_notes_page
 from pages.landing import build_landing
 from pages.player.character import build_character_page
+from pages.player.history import build_player_history_page
 from pages.player.twin_chat import build_twin_chat_page
 
 
@@ -29,8 +31,7 @@ def create_app() -> gr.Blocks:
             with gr.Tabs():
                 build_character_page(session_state)
                 build_twin_chat_page(session_state)
-                with gr.Tab("Story History"):
-                    gr.Markdown("*Story history coming in Phase 5.*")
+                build_player_history_page(session_state)
 
         # ── GM dashboard ──────────────────────────────────────────────────
         with gr.Column(visible=False) as gm_col:
@@ -43,8 +44,7 @@ def create_app() -> gr.Blocks:
             with gr.Tabs():
                 build_characters_page(session_state)
                 build_npc_page(session_state)
-                with gr.Tab("Story History"):
-                    gr.Markdown("*Story history coming in Phase 5.*")
+                build_gm_history_page(session_state)
                 build_world_notes_page(session_state)
                 with gr.Tab("Session Plan"):
                     gr.Markdown("*Session planning coming in Phase 8.*")

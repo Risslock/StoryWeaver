@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "PowerShell(.specify/scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly)",
-      "Bash(uv run *)"
+      "Bash(uv run *)",
+      "PowerShell(& \"c:\\\\Users\\\\juane\\\\Documents\\\\personal\\\\projects\\\\StoryWeaver\\\\.specify\\\\scripts\\\\powershell\\\\check-prerequisites.ps1\" -Json -RequireTasks -IncludeTasks)"
     ]
   }
 }

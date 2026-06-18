@@ -1,0 +1,134 @@
+# History recall scenarios: semantic/keyword-query retrieval of specific events
+# Covers: retrieving events by content keywords before RAG is available (SQL fallback),
+# and provides placeholder structure for Phase 9 semantic search wiring (T064).
+#
+# NOTE: Until T064 wires RAG into recall_story_events, these scenarios validate the
+# SQL-based keyword match path. Post-T064, update assertions to use embedding similarity.
+
+scenarios:
+
+  - id: keyword_retrieval_by_content_term
+    description: "Events can be retrieved and identified by a keyword present in their content"
+    setup:
+      campaign:
+        name: "Semantic Query Test"
+        join_code: "SEMQ0001"
+        gm_display_name: "TheGM"
+      sessions:
+        - session_number: 1
+          title: "Session 1: The Market District"
+          date_played: "2026-03-01"
+      events:
+        - event_type: "dialogue"
+          content: "The party interrogated the merchant about the stolen kaer artifact."
+          is_public: true
+          session_index: 0
+        - event_type: "decision"
+          content: "The party decided to investigate the ork warband camp at dawn."
+          is_public: true
+          session_index: 0
+        - event_type: "discovery"
+          content: "A hidden passage was found beneath the Throal archive."
+          is_public: true
+          session_index: 0
+    query:
+      role: "gm"
+      session_id: null
+    expected:
+      must_contain_content:
+        - "stolen kaer artifact"
+        - "ork warband camp"
+        - "hidden passage"
+      ordered_by: "session_number, event_order"
+
+  - id: event_retrieval_filtered_by_session_and_role
+    description: "Retrieval respects both session scope and player role filter simultaneously"
+    setup:
+      campaign:
+        name: "Scoped Semantic Query"
+        join_code: "SEMQ0002"
+        gm_display_name: "TheGM"
+      sessions:
+        - session_number: 1
+          title: "Session 1: Arrival"
+          date_played: "2026-04-01"
+        - session_number: 2
+          title: "Session 2: The Dungeon"
+          date_played: "2026-04-08"
+      events:
+        - event_type: "dialogue"
+          content: "Public event in session 1: the gate guard recognized Kira."
+          is_public: true
+          session_index: 0
+        - event_type: "world_change"
+          content: "Private event in session 1: the guard is a Brotherhood spy."
+          is_public: false
+          session_index: 0
+        - event_type: "combat_outcome"
+          content: "Public event in session 2: party defeated the bone horror."
+          is_public: true
+          session_index: 1
+    query:
+      role: "player"
+      session_id: 0
+    expected:
+      must_contain_content:
+        - "gate guard recognized Kira"
+      must_not_contain_content:
+        - "Brotherhood spy"
+        - "bone horror"
+
+  - id: full_campaign_retrieval_gm_sees_all_sessions
+    description: "GM query with no session filter returns events from all sessions in order"
+    setup:
+      campaign:
+        name: "Multi-Session Semantic"
+        join_code: "SEMQ0003"
+        gm_display_name: "TheGM"
+      sessions:
+        - session_number: 1
+          title: "Session 1: Forest"
+          date_played: "2026-05-01"
+        - session_number: 2
+          title: "Session 2: Caves"
+          date_played: "2026-05-08"
+        - session_number: 3
+          title: "Session 3: Tower"
+          date_played: "2026-05-15"
+      events:
+        - event_type: "discovery"
+          content: "S1: The obsidian compass pointed north."
+          is_public: true
+          session_index: 0
+        - event_type: "dialogue"
+          content: "S2: The cave troll offered a bargain."
+          is_public: true
+          session_index: 1
+        - event_type: "plot_thread_opened"
+          content: "S3: A Blood Elf sigil was found carved in the tower stones."
+          is_public: true
+          session_index: 2
+    query:
+      role: "gm"
+      session_id: null
+    expected:
+      event_count: 3
+      must_contain_content:
+        - "obsidian compass"
+        - "cave troll"
+        - "Blood Elf sigil"
+      ordered_content:
+        - "S1: The obsidian compass pointed north."
+        - "S2: The cave troll offered a bargain."
+        - "S3: A Blood Elf sigil was found carved in the tower stones."
+
+  # Placeholder: post-T064 semantic similarity scenario
+  # Once RAG is wired (Phase 9), add a scenario that retrieves events by
+  # semantic intent (e.g. query="someone betrayed the party" matches
+  # "the innkeeper revealed himself to be a Brotherhood agent") without
+  # relying on exact keyword overlap.
+  #
+  # - id: rag_semantic_similarity_retrieval (TODO: Phase 9 / T064)
+  #   description: "Embedding-based retrieval finds thematically related events"
+  #   requires_rag: true
+  #   ...

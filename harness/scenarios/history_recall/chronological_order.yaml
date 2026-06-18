@@ -1,0 +1,117 @@
+# History recall scenarios: chronological order verification
+# Covers: events returned in (session_number asc, event_order asc) order.
+
+scenarios:
+
+  - id: events_ordered_by_session_then_event_order
+    description: "Events from multiple sessions appear in session_number then event_order order"
+    setup:
+      campaign:
+        name: "Chrono Order Test"
+        join_code: "CHRO0001"
+        gm_display_name: "TheGM"
+      sessions:
+        - session_number: 1
+          title: "Session 1: Arrival"
+          date_played: "2026-01-05"
+        - session_number: 2
+          title: "Session 2: The Dungeon"
+          date_played: "2026-01-12"
+      events:
+        - event_type: "dialogue"
+          content: "S2-E0: Party entered the dungeon entrance."
+          is_public: true
+          session_index: 1
+          event_order: 0
+        - event_type: "decision"
+          content: "S1-E0: Party arrived in Throal."
+          is_public: true
+          session_index: 0
+          event_order: 0
+        - event_type: "dialogue"
+          content: "S1-E1: Party met the innkeeper."
+          is_public: true
+          session_index: 0
+          event_order: 1
+        - event_type: "combat_outcome"
+          content: "S2-E1: Scouts defeated at the gate."
+          is_public: true
+          session_index: 1
+          event_order: 1
+    query:
+      role: "gm"
+      session_id: null
+    expected:
+      ordered_content:
+        - "S1-E0: Party arrived in Throal."
+        - "S1-E1: Party met the innkeeper."
+        - "S2-E0: Party entered the dungeon entrance."
+        - "S2-E1: Scouts defeated at the gate."
+
+  - id: events_within_session_ordered_by_event_order
+    description: "Within a single session, events appear in ascending event_order"
+    setup:
+      campaign:
+        name: "Within Session Order Test"
+        join_code: "CHRO0002"
+        gm_display_name: "TheGM"
+      sessions:
+        - session_number: 1
+          title: "Session 1: Forest Road"
+          date_played: "2026-02-01"
+      events:
+        - event_type: "discovery"
+          content: "Third: discovered a hidden cave."
+          is_public: true
+          session_index: 0
+          event_order: 2
+        - event_type: "dialogue"
+          content: "First: party left the city gates."
+          is_public: true
+          session_index: 0
+          event_order: 0
+        - event_type: "decision"
+          content: "Second: decided to take the forest road."
+          is_public: true
+          session_index: 0
+          event_order: 1
+    query:
+      role: "gm"
+      session_id: 0
+    expected:
+      ordered_content:
+        - "First: party left the city gates."
+        - "Second: decided to take the forest road."
+        - "Third: discovered a hidden cave."
+
+  - id: session_filter_returns_only_that_session
+    description: "Filtering by session_id returns only events from that session"
+    setup:
+      campaign:
+        name: "Session Filter Test"
+        join_code: "CHRO0003"
+        gm_display_name: "TheGM"
+      sessions:
+        - session_number: 1
+          title: "Session 1: Origin"
+          date_played: "2026-03-01"
+        - session_number: 2
+          title: "Session 2: Deeper"
+          date_played: "2026-03-08"
+      events:
+        - event_type: "dialogue"
+          content: "Session 1 event only."
+          is_public: true
+          session_index: 0
+        - event_type: "combat_outcome"
+          content: "Session 2 event only."
+          is_public: true
+          session_index: 1
+    query:
+      role: "gm"
+      session_id: 0
+    expected:
+      must_contain_content:
+        - "Session 1 event only."
+      must_not_contain_content:
+        - "Session 2 event only."

@@ -128,7 +128,7 @@ tempCodeRunnerFile.py
 .pypirc
 
 # --- Claude agent instructions --------------------------------
-.claude
+.claude/
 
 # --- pyenv (uncomment to commit the Python version pin) ----------------------
 # .python-version
