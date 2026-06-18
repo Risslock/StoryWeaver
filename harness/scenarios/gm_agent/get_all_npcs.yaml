@@ -1,0 +1,99 @@
+# GM Agent tool scenarios: get_all_npcs
+# Covers: all NPCs returned including hidden, gm_notes present, include_hidden=False filter
+
+scenarios:
+
+  - id: gm_get_all_npcs_includes_hidden
+    tool: get_all_npcs
+    description: "GM fetches all NPCs — result includes hidden NPCs and their gm_notes"
+    setup:
+      campaign:
+        name: "NPC Fetch Campaign"
+        join_code: "GMNPC001"
+        gm_display_name: "TheGM"
+      npcs:
+        - name: "Visible Merchant"
+          role: "merchant"
+          race: "Dwarf"
+          personality: "Friendly."
+          background: "Runs a shop."
+          gm_notes: "Owes guild debt."
+          is_visible_to_players: true
+        - name: "Hidden Spy"
+          role: "villain"
+          race: "Elf"
+          personality: "Calculating."
+          background: "Horror cultist."
+          gm_notes: "True allegiance: Blood Elf faction."
+          is_visible_to_players: false
+    tool_input:
+      campaign_id: "$campaign.id"
+      include_hidden: true
+    session_context:
+      display_name: "TheGM"
+      role: "gm"
+    expected:
+      outcome: success
+      result_count: 2
+      result_npc_names:
+        - "Visible Merchant"
+        - "Hidden Spy"
+      gm_notes_present: true
+      sample_gm_notes_check:
+        npc_name: "Hidden Spy"
+        expected_gm_notes_contains: "Blood Elf faction"
+
+  - id: gm_get_all_npcs_include_hidden_false
+    tool: get_all_npcs
+    description: "When include_hidden=False, only visible NPCs are returned"
+    setup:
+      campaign:
+        name: "NPC Fetch Campaign"
+        join_code: "GMNPC002"
+        gm_display_name: "TheGM"
+      npcs:
+        - name: "Visible NPC"
+          role: "ally"
+          race: "Human"
+          personality: "Helpful."
+          background: "Town guard."
+          gm_notes: "Has a gambling problem."
+          is_visible_to_players: true
+        - name: "Hidden NPC"
+          role: "villain"
+          race: "Troll"
+          personality: "Menacing."
+          background: "Bandit leader."
+          gm_notes: "Planning ambush on road."
+          is_visible_to_players: false
+    tool_input:
+      campaign_id: "$campaign.id"
+      include_hidden: false
+    session_context:
+      display_name: "TheGM"
+      role: "gm"
+    expected:
+      outcome: success
+      result_count: 1
+      result_npc_names:
+        - "Visible NPC"
+      must_not_contain_names:
+        - "Hidden NPC"
+
+  - id: gm_get_all_npcs_empty_campaign
+    tool: get_all_npcs
+    description: "Campaign with no NPCs returns empty list"
+    setup:
+      campaign:
+        name: "Empty Campaign"
+        join_code: "GMNPC003"
+        gm_display_name: "TheGM"
+    tool_input:
+      campaign_id: "$campaign.id"
+      include_hidden: true
+    session_context:
+      display_name: "TheGM"
+      role: "gm"
+    expected:
+      outcome: success
+      result_count: 0

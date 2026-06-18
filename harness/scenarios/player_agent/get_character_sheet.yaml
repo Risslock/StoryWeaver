@@ -1,0 +1,74 @@
+# Player Agent tool scenarios: get_character_sheet
+# Covers: own character access, cross-player access denial
+
+scenarios:
+
+  - id: pa_get_own_character
+    tool: get_character_sheet
+    description: "Player retrieves their own character sheet — should succeed"
+    setup:
+      campaign:
+        name: "Test Campaign"
+        join_code: "PATEST01"
+        gm_display_name: "TheGM"
+      character:
+        player_display_name: "Alice"
+        name: "Sera Dawntide"
+        race: "Elf"
+        discipline: "Elementalist"
+        circle: 3
+        background: "Studied at Throal academy."
+        personality: "Methodical and precise."
+    tool_input:
+      character_id: "$character.id"
+    session_context:
+      display_name: "Alice"
+      role: "player"
+    expected:
+      outcome: success
+      result_field: name
+      result_value: "Sera Dawntide"
+      result_field_2: player_display_name
+      result_value_2: "Alice"
+
+  - id: pa_get_other_player_character_denied
+    tool: get_character_sheet
+    description: "Player attempts to access another player's character — must raise AccessDeniedError"
+    setup:
+      campaign:
+        name: "Test Campaign"
+        join_code: "PATEST02"
+        gm_display_name: "TheGM"
+      character:
+        player_display_name: "Alice"
+        name: "Sera Dawntide"
+        race: "Elf"
+        discipline: "Elementalist"
+        circle: 3
+        background: "Studied at Throal academy."
+        personality: "Methodical and precise."
+    tool_input:
+      character_id: "$character.id"
+    session_context:
+      display_name: "Bob"
+      role: "player"
+    expected:
+      outcome: error
+      error_type: AccessDeniedError
+
+  - id: pa_get_nonexistent_character
+    tool: get_character_sheet
+    description: "Player requests a character that does not exist — must raise EntityNotFoundError"
+    setup:
+      campaign:
+        name: "Test Campaign"
+        join_code: "PATEST03"
+        gm_display_name: "TheGM"
+    tool_input:
+      character_id: "00000000-0000-0000-0000-000000000000"
+    session_context:
+      display_name: "Alice"
+      role: "player"
+    expected:
+      outcome: error
+      error_type: EntityNotFoundError

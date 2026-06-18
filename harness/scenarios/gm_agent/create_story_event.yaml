@@ -1,0 +1,90 @@
+# GM Agent tool scenarios: create_story_event
+# Covers: public event appears in player query, private event filtered from player but present in GM query
+
+scenarios:
+
+  - id: gm_create_public_event_visible_to_player
+    tool: create_story_event
+    description: "GM creates a public event — player role query includes it"
+    setup:
+      campaign:
+        name: "Story Test Campaign"
+        join_code: "GMEVT001"
+        gm_display_name: "TheGM"
+    tool_input:
+      session_id: null
+      event_type: "dialogue"
+      content: "The party negotiated with the merchant for passage through the gates."
+      participants: []
+      is_public: true
+    session_context:
+      display_name: "TheGM"
+      role: "gm"
+    expected:
+      outcome: success
+      result_field: event_id
+      result_not_null: true
+    post_check:
+      query_as_role: "player"
+      filter: is_public=True
+      must_contain_content: "The party negotiated with the merchant"
+
+  - id: gm_create_private_event_hidden_from_player
+    tool: create_story_event
+    description: "GM creates a private event — player role query must NOT include it"
+    setup:
+      campaign:
+        name: "Story Test Campaign"
+        join_code: "GMEVT002"
+        gm_display_name: "TheGM"
+    tool_input:
+      session_id: null
+      event_type: "world_change"
+      content: "The mayor is secretly a horror puppet controlled by the Blood Elf faction."
+      participants: []
+      is_public: false
+    session_context:
+      display_name: "TheGM"
+      role: "gm"
+    expected:
+      outcome: success
+    post_check:
+      query_as_role: "player"
+      filter: is_public=True
+      must_not_contain_content: "mayor is secretly a horror puppet"
+      query_as_role_gm: "gm"
+      gm_filter: all
+      gm_must_contain_content: "mayor is secretly a horror puppet"
+
+  - id: gm_create_event_with_participants
+    tool: create_story_event
+    description: "GM creates an event with participant references — participants persisted correctly"
+    setup:
+      campaign:
+        name: "Story Test Campaign"
+        join_code: "GMEVT003"
+        gm_display_name: "TheGM"
+      character:
+        player_display_name: "Alice"
+        name: "Sera Dawntide"
+        race: "Elf"
+        discipline: "Elementalist"
+        circle: 3
+        background: "Scholar."
+        personality: "Methodical."
+    tool_input:
+      session_id: null
+      event_type: "combat_outcome"
+      content: "Sera defeated the shadow creature with a burst of wind elemental magic."
+      participants:
+        - entity_type: "character"
+          entity_id: "$character.id"
+          name: "Sera Dawntide"
+      is_public: true
+    session_context:
+      display_name: "TheGM"
+      role: "gm"
+    expected:
+      outcome: success
+      result_field: event_id
+      result_not_null: true

@@ -1,0 +1,102 @@
+# Player Agent tool scenarios: list_own_characters
+# Covers: returns only player's own characters, excludes other players' characters
+
+scenarios:
+
+  - id: pa_list_own_characters_returns_only_own
+    tool: list_own_characters
+    description: "Player lists their characters — returns only characters with matching player_display_name"
+    setup:
+      campaign:
+        name: "Test Campaign"
+        join_code: "PALIST01"
+        gm_display_name: "TheGM"
+      characters:
+        - player_display_name: "Alice"
+          name: "Sera Dawntide"
+          race: "Elf"
+          discipline: "Elementalist"
+          circle: 3
+          background: "Scholar."
+          personality: "Methodical."
+        - player_display_name: "Alice"
+          name: "Alt Character"
+          race: "Human"
+          discipline: "Warrior"
+          circle: 1
+          background: "Farmer turned adventurer."
+          personality: "Brave and impulsive."
+        - player_display_name: "Bob"
+          name: "Bob's Character"
+          race: "Ork"
+          discipline: "Scout"
+          circle: 2
+          background: "Wanderer."
+          personality: "Quiet and observant."
+    tool_input:
+      campaign_id: "$campaign.id"
+    session_context:
+      display_name: "Alice"
+      role: "player"
+    expected:
+      outcome: success
+      result_count: 2
+      result_names:
+        - "Sera Dawntide"
+        - "Alt Character"
+      must_not_contain_names:
+        - "Bob's Character"
+
+  - id: pa_list_own_characters_empty
+    tool: list_own_characters
+    description: "Player with no characters gets empty list"
+    setup:
+      campaign:
+        name: "Test Campaign"
+        join_code: "PALIST02"
+        gm_display_name: "TheGM"
+    tool_input:
+      campaign_id: "$campaign.id"
+    session_context:
+      display_name: "NewPlayer"
+      role: "player"
+    expected:
+      outcome: success
+      result_count: 0
+
+  - id: pa_list_own_characters_has_portrait_flag
+    tool: list_own_characters
+    description: "has_portrait is True when portrait_url is set, False otherwise"
+    setup:
+      campaign:
+        name: "Test Campaign"
+        join_code: "PALIST03"
+        gm_display_name: "TheGM"
+      characters:
+        - player_display_name: "Alice"
+          name: "Portrait Hero"
+          race: "Elf"
+          discipline: "Elementalist"
+          circle: 1
+          background: "Scholar."
+          personality: "Precise."
+          portrait_url: "images/portrait_hero.png"
+        - player_display_name: "Alice"
+          name: "No Portrait Hero"
+          race: "Human"
+          discipline: "Warrior"
+          circle: 1
+          background: "Farmer."
+          personality: "Brave."
+          portrait_url: null
+    tool_input:
+      campaign_id: "$campaign.id"
+    session_context:
+      display_name: "Alice"
+      role: "player"
+    expected:
+      outcome: success
+      result_count: 2
+      has_portrait_map:
+        "Portrait Hero": true
+        "No Portrait Hero": false

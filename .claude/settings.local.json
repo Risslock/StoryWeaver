@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(.specify/scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly)"
+      "PowerShell(.specify/scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly)",
+      "Bash(uv run *)"
     ]
   }
 }
