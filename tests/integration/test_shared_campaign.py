@@ -15,8 +15,9 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from core.models import NPC, Campaign
+from core.models import NPC, Campaign, User
 from core.schemas import PlayerNPCSchema
+from services.auth import hash_password
 from sqlalchemy import select
 from storage.sqlite.adapter import SQLiteBackend
 from story.history import create_event, list_events
@@ -31,13 +32,14 @@ async def backend() -> SQLiteBackend:
 
 
 @pytest_asyncio.fixture
-async def campaign(backend: SQLiteBackend) -> Campaign:
+async def campaign(backend: SQLiteBackend, test_owner_id: uuid.UUID) -> Campaign:
     async with await backend.get_session() as db:
         c = Campaign(
             id=uuid.uuid4(),
             name="Shared Campaign Test",
             join_code="SHARE001",
             gm_display_name="SharedGM",
+            owner_id=test_owner_id,
         )
         db.add(c)
         await db.commit()
@@ -173,11 +175,20 @@ async def test_concurrent_gm_player_no_data_corruption(tmp_path: Path) -> None:
 
     # Seed: campaign and session via the GM backend
     async with await gm_backend.get_session() as db:
+        gm_user_id = uuid.uuid4()
+        gm_user = User(
+            id=gm_user_id,
+            username="concurrentgm",
+            email="concurrentgm@example.com",
+            hashed_password=hash_password("testpassword"),
+        )
+        db.add(gm_user)
         camp = Campaign(
             id=uuid.uuid4(),
             name="Concurrent Campaign",
             join_code="CONC0001",
             gm_display_name="ConcurrentGM",
+            owner_id=gm_user_id,
         )
         db.add(camp)
         await db.commit()

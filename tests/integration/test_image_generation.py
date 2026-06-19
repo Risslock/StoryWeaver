@@ -10,12 +10,10 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
-from core.models import Campaign, Character, NPC
+from core.models import NPC, Campaign, Character
 from imagegen.interface import ImageGenRequest, ImageGenResponse, ImageProvider
 from storage.sqlite.adapter import SQLiteBackend
 
@@ -45,13 +43,14 @@ async def backend() -> SQLiteBackend:
 
 
 @pytest_asyncio.fixture
-async def campaign(backend: SQLiteBackend) -> Campaign:
+async def campaign(backend: SQLiteBackend, test_owner_id: uuid.UUID) -> Campaign:
     async with await backend.get_session() as db:
         c = Campaign(
             id=uuid.uuid4(),
             name="Image Gen Test Campaign",
             join_code="IMG00001",
             gm_display_name="ImgGM",
+            owner_id=test_owner_id,
         )
         db.add(c)
         await db.commit()

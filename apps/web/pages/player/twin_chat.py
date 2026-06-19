@@ -6,12 +6,11 @@ import uuid
 from typing import Any
 
 import gradio as gr
-from sqlalchemy import select
-
 from core.config import settings
 from core.errors import ProviderUnavailableError
 from core.models import Character
 from core.schemas import CampaignSession
+from sqlalchemy import select
 from storage.sqlite.adapter import SQLiteBackend
 
 _backend = SQLiteBackend(settings.database_url)
@@ -117,7 +116,8 @@ def build_twin_chat_page(session_state: gr.State) -> None:
             if char is None:
                 return "*Character not found.*", None
             info = (
-                f"**{char.name}** — {char.race} {char.discipline} (Circle {char.circle})\n\n"
+                f"**{char.name}** — "
+                f"{char.race} {char.discipline} (Circle {char.circle})\n\n"
                 f"*{char.personality}*"
             )
             return info, char_id
@@ -161,7 +161,11 @@ def build_twin_chat_page(session_state: gr.State) -> None:
                         db_session=session,
                     )
             except ProviderUnavailableError:
-                return history, user_msg, "AI is currently unreachable. Try again later."
+                return (
+                    history,
+                    user_msg,
+                    "AI is currently unreachable. Try again later.",
+                )
 
             updated = list(history) + [
                 {"role": "user", "content": user_msg.strip()},
@@ -181,11 +185,23 @@ def build_twin_chat_page(session_state: gr.State) -> None:
             if state is None or not char_id_val or not situation.strip():
                 return empty_radio, empty_explain, empty_explain_out, gr.update(), ""
             if not state.ai_available:
-                return empty_radio, empty_explain, empty_explain_out, gr.update(), "AI unavailable."
+                return (
+                    empty_radio,
+                    empty_explain,
+                    empty_explain_out,
+                    gr.update(),
+                    "AI unavailable.",
+                )
 
             char = await _get_character(uuid.UUID(char_id_val))
             if char is None:
-                return empty_radio, empty_explain, empty_explain_out, gr.update(), "Character not found."
+                return (
+                    empty_radio,
+                    empty_explain,
+                    empty_explain_out,
+                    gr.update(),
+                    "Character not found.",
+                )
 
             from agents.twin.agent import DigitalTwinAgent
             from llm.providers.ollama import OllamaProvider
@@ -198,14 +214,24 @@ def build_twin_chat_page(session_state: gr.State) -> None:
             try:
                 result = await agent.suggest(situation.strip(), history)
             except ProviderUnavailableError:
-                return empty_radio, empty_explain, empty_explain_out, gr.update(), "AI unreachable."
+                return (
+                    empty_radio,
+                    empty_explain,
+                    empty_explain_out,
+                    gr.update(),
+                    "AI unreachable.",
+                )
 
             choices = [
                 f"[{s.tone}] {s.text}" for s in result.suggestions
             ]
             first = result.suggestions[0].text if result.suggestions else ""
             return (
-                gr.update(choices=choices, value=choices[0] if choices else None, visible=True),
+                gr.update(
+                    choices=choices,
+                    value=choices[0] if choices else None,
+                    visible=True,
+                ),
                 gr.update(visible=True),
                 gr.update(value="", visible=False),
                 gr.update(value=first),
@@ -250,15 +276,20 @@ def build_twin_chat_page(session_state: gr.State) -> None:
             except ProviderUnavailableError:
                 return gr.update(value="AI unreachable.", visible=True)
 
-            return gr.update(value=f"**Why this response?**\n\n{explanation}", visible=True)
+            explanation_md = f"**Why this response?**\n\n{explanation}"
+            return gr.update(value=explanation_md, visible=True)
 
         def on_clear() -> tuple[list[Any], str, str]:
             return [], "", ""
 
         # ── Wire events ───────────────────────────────────────────────────
 
-        session_state.change(_load_char_choices, inputs=[session_state], outputs=[twin_char_selector])
-        twin_refresh_btn.click(_load_char_choices, inputs=[session_state], outputs=[twin_char_selector])
+        session_state.change(
+            _load_char_choices, inputs=[session_state], outputs=[twin_char_selector]
+        )
+        twin_refresh_btn.click(
+            _load_char_choices, inputs=[session_state], outputs=[twin_char_selector]
+        )
 
         twin_char_selector.change(
             on_char_selected,

@@ -6,13 +6,12 @@ import uuid
 from typing import Any
 
 import gradio as gr
-from sqlalchemy import select
-
 from core.config import settings
 from core.models import SessionPlan
 from core.schemas import CampaignSession
-from story.session import list_sessions
+from sqlalchemy import select
 from storage.sqlite.adapter import SQLiteBackend
+from story.session import list_sessions
 
 _backend = SQLiteBackend(settings.database_url)
 
@@ -41,7 +40,10 @@ def build_session_plan_page(session_state: gr.State) -> None:
         # ── Focus Hints ───────────────────────────────────────────────────
         focus_hints_input = gr.Textbox(
             label="Focus Areas (optional, one per line)",
-            placeholder="e.g.\nResolve the plot thread about the missing merchant\nIntroduce the Brotherhood faction",
+            placeholder=(
+                "e.g.\nResolve the plot thread about the missing merchant"
+                "\nIntroduce the Brotherhood faction"
+            ),
             lines=3,
         )
 
@@ -87,8 +89,7 @@ def build_session_plan_page(session_state: gr.State) -> None:
             async with await _backend.get_session() as db:
                 sessions = await list_sessions(db, state.campaign_id)
             session_map = {
-                f"Session {s.session_number}: {s.title}": str(s.id)
-                for s in sessions
+                f"Session {s.session_number}: {s.title}": str(s.id) for s in sessions
             }
             choices = ["Next Session"] + list(session_map.keys())
             return session_map, choices
@@ -141,7 +142,12 @@ def build_session_plan_page(session_state: gr.State) -> None:
                 existing = result.scalar_one_or_none()
 
             if existing is not None:
-                return existing.content, existing.content, str(existing.id), "✓ Existing plan loaded."
+                return (
+                    existing.content,
+                    existing.content,
+                    str(existing.id),
+                    "✓ Existing plan loaded.",
+                )
             return "", "", None, ""
 
         async def on_generate(
@@ -155,17 +161,24 @@ def build_session_plan_page(session_state: gr.State) -> None:
             if not state.ai_available:
                 return "", "*AI features unavailable in degraded mode.*", ""
 
-            focus_hints = [line.strip() for line in focus_raw.splitlines() if line.strip()]
+            focus_hints = [
+                line.strip() for line in focus_raw.splitlines() if line.strip()
+            ]
 
             if selected == "Next Session":
                 session_number = await _next_session_number(state)
             else:
                 try:
-                    session_number = int(selected.split(":")[0].replace("Session", "").strip())
+                    session_number = int(
+                        selected.split(":")[0].replace("Session", "").strip()
+                    )
                 except (ValueError, IndexError):
                     session_number = await _next_session_number(state)
 
-            from agents.gm_agent.gm_agent import GenerateSessionPlanInput, build_gm_agent_tools
+            from agents.gm_agent.gm_agent import (
+                GenerateSessionPlanInput,
+                build_gm_agent_tools,
+            )
 
             try:
                 async with await _backend.get_session() as db:
@@ -179,7 +192,8 @@ def build_session_plan_page(session_state: gr.State) -> None:
             except Exception as exc:
                 return "", f"*Plan generation failed: {exc}*", ""
 
-            return result.plan_markdown, "✓ Plan generated — review and save below.", result.plan_markdown
+            gen_msg = "✓ Plan generated — review and save below."
+            return result.plan_markdown, gen_msg, result.plan_markdown
 
         async def on_save(
             state: CampaignSession | None,
@@ -245,12 +259,23 @@ def build_session_plan_page(session_state: gr.State) -> None:
 
         generate_btn.click(
             on_generate,
-            inputs=[session_state, session_selector, session_map_state, focus_hints_input],
+            inputs=[
+                session_state,
+                session_selector,
+                session_map_state,
+                focus_hints_input,
+            ],
             outputs=[plan_editor, plan_status, plan_preview],
         )
 
         save_btn.click(
             on_save,
-            inputs=[session_state, session_selector, session_map_state, plan_editor, plan_id_state],
+            inputs=[
+                session_state,
+                session_selector,
+                session_map_state,
+                plan_editor,
+                plan_id_state,
+            ],
             outputs=[plan_id_state, save_status, plan_preview],
         )

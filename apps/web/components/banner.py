@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import gradio as gr
 
-
 _BANNER_HTML = (
     '<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;'
     'padding:12px 16px;margin-bottom:12px;color:#856404;font-weight:500;">'

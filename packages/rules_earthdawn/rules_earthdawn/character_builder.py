@@ -47,9 +47,16 @@ class CreationState:
     race: str = ""
     discipline: str = ""
     circle: int = 1
-    attributes: dict[str, int] = field(default_factory=lambda: {
-        "dex": 10, "str": 10, "tou": 10, "per": 10, "wil": 10, "cha": 10
-    })
+    attributes: dict[str, int] = field(
+        default_factory=lambda: {
+            "dex": 10,
+            "str": 10,
+            "tou": 10,
+            "per": 10,
+            "wil": 10,
+            "cha": 10,
+        }
+    )
     derived_stats: dict[str, Any] = field(default_factory=dict)
     talents: list[dict[str, Any]] = field(default_factory=list)
     skills: list[dict[str, Any]] = field(default_factory=list)
@@ -75,7 +82,7 @@ CREATION_STEPS = [
 ]
 
 
-def apply_step(state: CreationState, step: str, value: Any) -> CreationState:
+def apply_step(state: CreationState, step: str, value: object) -> CreationState:
     """Apply a single creation step value to the state. Returns the (mutated) state."""
     if step == "race":
         state.race = str(value)

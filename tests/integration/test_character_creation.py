@@ -10,11 +10,10 @@ import uuid
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select
-
 from core.models import Campaign, Character
 from core.schemas import CharacterSchema
 from rules_earthdawn.validator import validate_character
+from sqlalchemy import select
 from storage.sqlite.adapter import SQLiteBackend
 
 
@@ -26,13 +25,14 @@ async def backend() -> SQLiteBackend:
 
 
 @pytest_asyncio.fixture
-async def campaign(backend: SQLiteBackend) -> Campaign:
+async def campaign(backend: SQLiteBackend, test_owner_id: uuid.UUID) -> Campaign:
     async with await backend.get_session() as session:
         c = Campaign(
             id=uuid.uuid4(),
             name="Test Campaign",
             join_code="TESTC001",
             gm_display_name="TestGM",
+            owner_id=test_owner_id,
         )
         session.add(c)
         await session.commit()

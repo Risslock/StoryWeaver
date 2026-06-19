@@ -6,20 +6,16 @@ import uuid
 from typing import Any
 
 import gradio as gr
-from sqlalchemy import func, select
-
+from components.image_display import build_portrait_display
 from core.config import settings
 from core.models import Character
 from core.schemas import CampaignSession, CharacterSchema
 from rules_earthdawn.character_builder import (
-    CREATION_STEPS,
-    default_creation_state,
     discipline_names,
     race_names,
 )
-from rules_earthdawn.validator import validate_character
+from sqlalchemy import func, select
 from storage.sqlite.adapter import SQLiteBackend
-from components.image_display import build_portrait_display
 
 _backend = SQLiteBackend(settings.database_url)
 
@@ -38,7 +34,9 @@ async def _load_characters(campaign_id: uuid.UUID, player_name: str) -> list[Cha
         return list(result.scalars().all())
 
 
-async def _save_character(campaign_id: uuid.UUID, player_name: str, data: dict[str, Any]) -> Character:
+async def _save_character(
+    campaign_id: uuid.UUID, player_name: str, data: dict[str, Any]
+) -> Character:
     async with await _backend.get_session() as session:
         result = await session.execute(
             select(Character).where(
@@ -67,7 +65,9 @@ async def _save_character(campaign_id: uuid.UUID, player_name: str, data: dict[s
         return char
 
 
-async def _update_character(char_id: uuid.UUID, updates: dict[str, Any]) -> Character | None:
+async def _update_character(
+    char_id: uuid.UUID, updates: dict[str, Any]
+) -> Character | None:
     async with await _backend.get_session() as session:
         result = await session.execute(select(Character).where(Character.id == char_id))
         char = result.scalar_one_or_none()
@@ -85,34 +85,46 @@ def _render_character_sheet(char: Character) -> str:
     tier = ""
     try:
         from rules_earthdawn.character_builder import tier_for_circle
+
         tier = f" ({tier_for_circle(schema.circle)})"
     except Exception:
         pass
 
     attrs = schema.attributes
-    attr_line = " | ".join(
-        f"**{k.upper()}** {v}" for k, v in attrs.items()
-    ) if attrs else "—"
+    attr_line = (
+        " | ".join(f"**{k.upper()}** {v}" for k, v in attrs.items()) if attrs else "—"
+    )
 
-    talents_md = "\n".join(
-        f"- {t.get('name', '?')} (Circle {t.get('circle', '?')}, Rank {t.get('rank', '?')})"
-        for t in schema.talents
-    ) or "None"
+    talents_md = (
+        "\n".join(
+            f"- {t.get('name', '?')}"
+            f" (Circle {t.get('circle', '?')}, Rank {t.get('rank', '?')})"
+            for t in schema.talents
+        )
+        or "None"
+    )
 
-    skills_md = "\n".join(
-        f"- {s.get('name', '?')} (Rank {s.get('rank', '?')})"
-        for s in schema.skills
-    ) or "None"
+    skills_md = (
+        "\n".join(
+            f"- {s.get('name', '?')} (Rank {s.get('rank', '?')})" for s in schema.skills
+        )
+        or "None"
+    )
 
-    equipment_md = "\n".join(
-        f"- {e.get('name', '?')} [{e.get('type', '?')}]"
-        for e in schema.equipment
-    ) or "None"
+    equipment_md = (
+        "\n".join(
+            f"- {e.get('name', '?')} [{e.get('type', '?')}]" for e in schema.equipment
+        )
+        or "None"
+    )
 
-    relationships_md = "\n".join(
-        f"- **{r.get('name', '?')}** — {r.get('nature', '?')}"
-        for r in schema.relationships
-    ) or "None"
+    relationships_md = (
+        "\n".join(
+            f"- **{r.get('name', '?')}** — {r.get('nature', '?')}"
+            for r in schema.relationships
+        )
+        or "None"
+    )
 
     return f"""## {schema.name}
 *{schema.race} {schema.discipline} — Circle {schema.circle}{tier}*
@@ -176,7 +188,9 @@ def build_character_page(session_state: gr.State) -> None:
 
         with gr.Group():
             with gr.Row():
-                char_name = gr.Textbox(label="Character Name", placeholder="Brekk Stonefist")
+                char_name = gr.Textbox(
+                    label="Character Name", placeholder="Brekk Stonefist"
+                )
                 char_race = gr.Dropdown(
                     label="Race",
                     choices=_EARTHDAWN_RACES,
@@ -186,9 +200,15 @@ def build_character_page(session_state: gr.State) -> None:
                 char_discipline = gr.Dropdown(
                     label="Discipline",
                     choices=_EARTHDAWN_DISCIPLINES,
-                    value=_EARTHDAWN_DISCIPLINES[12] if len(_EARTHDAWN_DISCIPLINES) > 12 else None,
+                    value=(
+                        _EARTHDAWN_DISCIPLINES[12]
+                        if len(_EARTHDAWN_DISCIPLINES) > 12
+                        else None
+                    ),
                 )
-                char_circle = gr.Slider(label="Circle", minimum=1, maximum=15, step=1, value=1)
+                char_circle = gr.Slider(
+                    label="Circle", minimum=1, maximum=15, step=1, value=1
+                )
 
         gr.Markdown("#### Attributes (step values)")
         with gr.Row():
@@ -217,14 +237,18 @@ def build_character_page(session_state: gr.State) -> None:
             )
             char_physical = gr.Textbox(
                 label="Physical Description",
-                placeholder="Describe their appearance — this grounds the digital twin and portrait generation.",
+                placeholder=(
+                    "Describe their appearance"
+                    " — this grounds the digital twin and portrait generation."
+                ),
                 lines=2,
             )
 
         with gr.Accordion("Talents, Skills & Equipment", open=False):
             gr.Markdown(
                 "Add talents, skills, and equipment as JSON lists. "
-                "Example talent: `{\"name\": \"Melee Weapons\", \"circle\": 1, \"rank\": 4}`"
+                "Example talent: "
+                '`{"name": "Melee Weapons", "circle": 1, "rank": 4}`'
             )
             talents_json = gr.Code(
                 label="Talents (JSON array)",
@@ -247,7 +271,9 @@ def build_character_page(session_state: gr.State) -> None:
             save_status = gr.Markdown("")
 
         with gr.Row():
-            portrait_btn = gr.Button("Generate Portrait", variant="secondary", interactive=False)
+            portrait_btn = gr.Button(
+                "Generate Portrait", variant="secondary", interactive=False
+            )
             portrait_status = gr.Markdown("")
 
         selected_char_id: gr.State = gr.State(value=None)
@@ -295,9 +321,9 @@ def build_character_page(session_state: gr.State) -> None:
 
             from imagegen.factory import get_image_provider
             from imagegen.interface import (
-                ImageGenRequest,
-                PORTRAIT_PROMPT_PREFIX,
                 PORTRAIT_NEGATIVE_PROMPT,
+                PORTRAIT_PROMPT_PREFIX,
+                ImageGenRequest,
             )
 
             prompt = (
@@ -326,7 +352,12 @@ def build_character_page(session_state: gr.State) -> None:
             race: str,
             discipline: str,
             circle: int,
-            dex: float, str_: float, tou: float, per: float, wil: float, cha: float,
+            dex: float,
+            str_: float,
+            tou: float,
+            per: float,
+            wil: float,
+            cha: float,
             background: str,
             personality: str,
             goals: str,
@@ -346,8 +377,12 @@ def build_character_page(session_state: gr.State) -> None:
                 "discipline": discipline,
                 "circle": int(circle),
                 "attributes": {
-                    "dex": int(dex), "str": int(str_), "tou": int(tou),
-                    "per": int(per), "wil": int(wil), "cha": int(cha),
+                    "dex": int(dex),
+                    "str": int(str_),
+                    "tou": int(tou),
+                    "per": int(per),
+                    "wil": int(wil),
+                    "cha": int(cha),
                 },
                 "derived_stats": {},
                 "talents": [],
@@ -367,22 +402,43 @@ def build_character_page(session_state: gr.State) -> None:
             except _json.JSONDecodeError as exc:
                 return f"JSON parse error: {exc}", gr.update()
 
-            from rules_earthdawn.character_builder import _compute_derived, CreationState
-            cs = CreationState(**{
-                k: data[k] for k in (
-                    "name", "race", "discipline", "circle", "attributes",
-                    "derived_stats", "talents", "skills", "equipment",
-                    "background", "personality", "goals", "relationships",
-                    "physical_description",
-                )
-            })
+            from rules_earthdawn.character_builder import (
+                CreationState,
+                _compute_derived,
+            )
+
+            cs = CreationState(
+                **{
+                    k: data[k]
+                    for k in (
+                        "name",
+                        "race",
+                        "discipline",
+                        "circle",
+                        "attributes",
+                        "derived_stats",
+                        "talents",
+                        "skills",
+                        "equipment",
+                        "background",
+                        "personality",
+                        "goals",
+                        "relationships",
+                        "physical_description",
+                    )
+                }
+            )
             _compute_derived(cs)
             data["derived_stats"] = cs.derived_stats
 
             from rules_earthdawn.validator import validate_character
+
             result = validate_character(data)
             if not result.valid:
-                return "Validation errors:\n" + "\n".join(f"- {e}" for e in result.errors), gr.update()
+                msg = "Validation errors:\n" + "\n".join(
+                    f"- {e}" for e in result.errors
+                )
+                return msg, gr.update()
 
             await _save_character(state.campaign_id, state.display_name, data)
 
@@ -397,9 +453,15 @@ def build_character_page(session_state: gr.State) -> None:
             ai_ok = state.ai_available if state is not None else False
             return gr.update(interactive=ai_ok)
 
-        session_state.change(load_char_list, inputs=[session_state], outputs=[char_selector])
-        session_state.change(_update_portrait_btn, inputs=[session_state], outputs=[portrait_btn])
-        refresh_btn.click(load_char_list, inputs=[session_state], outputs=[char_selector])
+        session_state.change(
+            load_char_list, inputs=[session_state], outputs=[char_selector]
+        )
+        session_state.change(
+            _update_portrait_btn, inputs=[session_state], outputs=[portrait_btn]
+        )
+        refresh_btn.click(
+            load_char_list, inputs=[session_state], outputs=[char_selector]
+        )
         char_selector.change(
             on_select_char,
             inputs=[char_selector],
@@ -409,10 +471,23 @@ def build_character_page(session_state: gr.State) -> None:
             on_save,
             inputs=[
                 session_state,
-                char_name, char_race, char_discipline, char_circle,
-                attr_dex, attr_str, attr_tou, attr_per, attr_wil, attr_cha,
-                char_background, char_personality, char_goals, char_physical,
-                talents_json, skills_json, equipment_json,
+                char_name,
+                char_race,
+                char_discipline,
+                char_circle,
+                attr_dex,
+                attr_str,
+                attr_tou,
+                attr_per,
+                attr_wil,
+                attr_cha,
+                char_background,
+                char_personality,
+                char_goals,
+                char_physical,
+                talents_json,
+                skills_json,
+                equipment_json,
             ],
             outputs=[save_status, char_selector],
         )

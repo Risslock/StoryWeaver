@@ -53,8 +53,9 @@ def build_recall_tool(
     is used and results are re-ordered by semantic relevance. Falls back to SQL
     chronological query when RAG is unavailable.
     """
+    from core.models import Session as GameSession
+    from core.models import StoryEvent
     from sqlalchemy import select
-    from core.models import StoryEvent, Session as GameSession
 
     is_public_only = entity_type == "character"
 

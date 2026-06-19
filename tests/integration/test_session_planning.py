@@ -10,19 +10,18 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
-from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
-from core.models import Campaign, SessionPlan
 from agents.gm_agent.gm_agent import (
     GenerateSessionPlanInput,
     build_gm_agent_tools,
 )
+from core.models import Campaign, SessionPlan
+from sqlalchemy import select
+from storage.sqlite.adapter import SQLiteBackend
 from story.history import create_event
 from story.session import create_session
-from storage.sqlite.adapter import SQLiteBackend
-from sqlalchemy import select
 
 
 @pytest_asyncio.fixture
@@ -33,13 +32,14 @@ async def backend() -> SQLiteBackend:
 
 
 @pytest_asyncio.fixture
-async def campaign(backend: SQLiteBackend) -> Campaign:
+async def campaign(backend: SQLiteBackend, test_owner_id: uuid.UUID) -> Campaign:
     async with await backend.get_session() as db:
         c = Campaign(
             id=uuid.uuid4(),
             name="Session Plan Test Campaign",
             join_code="PLAN0001",
             gm_display_name="PlanGM",
+            owner_id=test_owner_id,
         )
         db.add(c)
         await db.commit()

@@ -102,12 +102,12 @@ def create_app() -> gr.Blocks:
             """Return visibility/value updates for all panels."""
             if user is None:
                 return (
-                    gr.update(visible=True),   # auth_col
+                    gr.update(visible=True),  # auth_col
                     gr.update(visible=False),  # banner
                     gr.update(visible=False),  # admin_col
                     gr.update(visible=False),  # player_col
                     gr.update(visible=False),  # gm_col
-                    gr.update(value=""),       # gm_join_code
+                    gr.update(value=""),  # gm_join_code
                 )
             if session is None:
                 return (

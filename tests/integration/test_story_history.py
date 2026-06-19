@@ -8,7 +8,6 @@ Acceptance scenarios:
 
 from __future__ import annotations
 
-import asyncio
 import time
 import uuid
 from datetime import date
@@ -16,9 +15,9 @@ from datetime import date
 import pytest
 import pytest_asyncio
 from core.models import Campaign
-from story.history import create_event, list_events
-from story.session import create_session, list_sessions, get_session
 from storage.sqlite.adapter import SQLiteBackend
+from story.history import create_event, list_events
+from story.session import create_session, get_session, list_sessions
 
 
 @pytest_asyncio.fixture
@@ -29,13 +28,14 @@ async def backend() -> SQLiteBackend:
 
 
 @pytest_asyncio.fixture
-async def campaign(backend: SQLiteBackend) -> Campaign:
+async def campaign(backend: SQLiteBackend, test_owner_id: uuid.UUID) -> Campaign:
     async with await backend.get_session() as db:
         c = Campaign(
             id=uuid.uuid4(),
             name="Story History Test Campaign",
             join_code="HIST0001",
             gm_display_name="HistoryGM",
+            owner_id=test_owner_id,
         )
         db.add(c)
         await db.commit()
@@ -233,7 +233,7 @@ async def test_session_crud_list_and_get(
     """create_session auto-increments session_number; list_sessions and get_session work."""
     async with await backend.get_session() as db:
         s1 = await create_session(db, campaign.id, "Session One", date(2026, 2, 1))
-        s2 = await create_session(db, campaign.id, "Session Two", date(2026, 2, 8))
+        await create_session(db, campaign.id, "Session Two", date(2026, 2, 8))
 
     async with await backend.get_session() as db:
         all_sessions = await list_sessions(db, campaign.id)

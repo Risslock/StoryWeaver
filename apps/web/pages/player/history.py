@@ -6,12 +6,11 @@ import uuid
 from typing import Any
 
 import gradio as gr
-
 from core.config import settings
 from core.schemas import CampaignSession
+from storage.sqlite.adapter import SQLiteBackend
 from story.history import list_events
 from story.session import list_sessions
-from storage.sqlite.adapter import SQLiteBackend
 
 _backend = SQLiteBackend(settings.database_url)
 
@@ -32,7 +31,9 @@ def build_player_history_page(session_state: gr.State) -> None:
 
     with gr.Tab("Story History"):
         gr.Markdown("## Campaign Story History")
-        gr.Markdown("Browse the shared campaign timeline. Only public events are shown.")
+        gr.Markdown(
+            "Browse the shared campaign timeline. Only public events are shown."
+        )
 
         with gr.Row():
             session_selector = gr.Dropdown(
@@ -115,7 +116,11 @@ def build_player_history_page(session_state: gr.State) -> None:
                     else "—"
                 )
                 preview = (e.content[:100] + "…") if len(e.content) > 100 else e.content
-                rows.append([session_label, e.event_type.replace("_", " ").title(), preview])
+                rows.append([
+                    session_label,
+                    e.event_type.replace("_", " ").title(),
+                    preview,
+                ])
                 ids.append(str(e.id))
 
             return rows, ids
@@ -127,7 +132,9 @@ def build_player_history_page(session_state: gr.State) -> None:
             session_map: dict[str, str],
         ) -> tuple[dict[str, Any], dict[str, str], list[list[Any]], list[str]]:
             session_dropdown_update, new_session_map = await load_sessions(state)
-            rows, ids = await load_events(state, selected_session, type_filter, new_session_map)
+            rows, ids = await load_events(
+                state, selected_session, type_filter, new_session_map
+            )
             return session_dropdown_update, new_session_map, rows, ids
 
         async def on_session_or_filter_change(
@@ -151,30 +158,51 @@ def build_player_history_page(session_state: gr.State) -> None:
                 event = result.scalar_one_or_none()
             if event is None:
                 return "*Event not found.*"
-            participants = ", ".join(p.get("name", "") for p in (event.participants or []))
-            lines = [f"**{event.event_type.replace('_', ' ').title()}**", "", event.content]
+            participants = ", ".join(
+                p.get("name", "") for p in (event.participants or [])
+            )
+            event_type_label = event.event_type.replace("_", " ").title()
+            lines = [f"**{event_type_label}**", "", event.content]
             if participants:
                 lines += ["", f"*Participants: {participants}*"]
             return "\n".join(lines)
 
         session_state.change(
             on_refresh,
-            inputs=[session_state, session_selector, event_type_filter, session_map_state],
-            outputs=[session_selector, session_map_state, history_display, event_ids_state],
+            inputs=[
+                session_state, session_selector,
+                event_type_filter, session_map_state,
+            ],
+            outputs=[
+                session_selector, session_map_state,
+                history_display, event_ids_state,
+            ],
         )
         refresh_btn.click(
             on_refresh,
-            inputs=[session_state, session_selector, event_type_filter, session_map_state],
-            outputs=[session_selector, session_map_state, history_display, event_ids_state],
+            inputs=[
+                session_state, session_selector,
+                event_type_filter, session_map_state,
+            ],
+            outputs=[
+                session_selector, session_map_state,
+                history_display, event_ids_state,
+            ],
         )
         session_selector.change(
             on_session_or_filter_change,
-            inputs=[session_state, session_selector, event_type_filter, session_map_state],
+            inputs=[
+                session_state, session_selector,
+                event_type_filter, session_map_state,
+            ],
             outputs=[history_display, event_ids_state],
         )
         event_type_filter.change(
             on_session_or_filter_change,
-            inputs=[session_state, session_selector, event_type_filter, session_map_state],
+            inputs=[
+                session_state, session_selector,
+                event_type_filter, session_map_state,
+            ],
             outputs=[history_display, event_ids_state],
         )
         history_display.select(

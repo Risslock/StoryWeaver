@@ -30,7 +30,9 @@ def _render_character_detail(char: Character) -> str:
         else "*No portrait generated yet.*"
     )
     attrs = schema.attributes
-    attr_line = " | ".join(f"**{k.upper()}** {v}" for k, v in attrs.items()) if attrs else "—"
+    attr_line = (
+        " | ".join(f"**{k.upper()}** {v}" for k, v in attrs.items()) if attrs else "—"
+    )
     return f"""## {schema.name}
 *{schema.race} {schema.discipline} — Circle {schema.circle}*
 **Player**: {schema.player_display_name}
@@ -54,7 +56,7 @@ def _render_character_detail(char: Character) -> str:
 
 
 def build_characters_page(session_state: gr.State) -> None:
-    """Build the GM characters overview tab. Must be called inside a gr.Blocks context."""
+    """Build the GM characters overview tab. Must be called inside a gr.Blocks context."""  # noqa: E501
 
     with gr.Tab("Characters"):
         gr.Markdown("## Campaign Characters")
@@ -76,7 +78,9 @@ def build_characters_page(session_state: gr.State) -> None:
         # Internal state: list of character IDs matching table rows
         char_ids_state: gr.State = gr.State(value=[])
 
-        async def load_characters(state: CampaignSession | None) -> tuple[list[list[Any]], list[str]]:
+        async def load_characters(
+            state: CampaignSession | None,
+        ) -> tuple[list[list[Any]], list[str]]:
             if state is None:
                 return [], []
             chars = await _load_all_characters(state.campaign_id)
@@ -103,7 +107,9 @@ def build_characters_page(session_state: gr.State) -> None:
                 return "*Character not found.*"
             return _render_character_detail(char)
 
-        async def on_refresh(state: CampaignSession | None) -> tuple[dict[str, Any], list[str]]:
+        async def on_refresh(
+            state: CampaignSession | None,
+        ) -> tuple[dict[str, Any], list[str]]:
             rows, ids = await load_characters(state)
             return gr.update(value=rows), ids
 

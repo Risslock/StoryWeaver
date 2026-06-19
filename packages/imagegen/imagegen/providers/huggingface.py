@@ -10,8 +10,8 @@ from pathlib import Path
 
 import aiofiles
 import httpx
-
 from core.config import settings
+
 from imagegen.interface import ImageGenRequest, ImageGenResponse, ImageProvider
 
 _HF_API_BASE = "https://router.huggingface.co/hf-inference/models"

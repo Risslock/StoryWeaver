@@ -60,8 +60,8 @@ async def _bootstrap_db(setup: dict[str, Any]) -> tuple[Any, Any, dict[str, Any]
     Returns (backend, campaign, entities) where entities may contain keys:
     'character', 'characters', 'npc', 'npcs', 'sessions'.
     """
+    from core.models import NPC, Campaign, Character
     from storage.sqlite.adapter import SQLiteBackend
-    from core.models import Campaign, Character, NPC, Session as GameSession
     from story.session import create_session as _create_session
 
     backend = SQLiteBackend("sqlite+aiosqlite:///:memory:")
@@ -284,10 +284,10 @@ async def _run_history_recall_scenario(scenario: dict[str, Any]) -> ScenarioResu
 
 async def _run_gm_agent_scenario(scenario: dict[str, Any]) -> ScenarioResult:
     from agents.gm_agent.gm_agent import (
-        build_gm_agent_tools,
         CreateEventInput,
-        ToggleNPCVisibilityInput,
         GetNPCsInput,
+        ToggleNPCVisibilityInput,
+        build_gm_agent_tools,
     )
     from core.errors import AccessDeniedError, EntityNotFoundError, ValidationError
     from story.history import list_events
@@ -398,8 +398,8 @@ async def _run_gm_agent_scenario(scenario: dict[str, Any]) -> ScenarioResult:
                         if not any(needle in c for c in contents):
                             failures.append(f"post_check gm_must_contain_content: '{needle}' not found in GM view")
                     if tool_name == "toggle_npc_visibility":
-                        from sqlalchemy import select
                         from core.models import NPC
+                        from sqlalchemy import select
                         stmt = select(NPC).where(
                             NPC.campaign_id == campaign.id,
                             NPC.is_visible_to_players.is_(True),
@@ -441,10 +441,10 @@ async def _run_gm_agent_scenario(scenario: dict[str, Any]) -> ScenarioResult:
 
 async def _run_player_agent_scenario(scenario: dict[str, Any]) -> ScenarioResult:
     from agents.player_agent.player_agent import (
-        build_player_agent_tools,
         GetCharacterInput,
-        UpdateCharacterInput,
         ListCharactersInput,
+        UpdateCharacterInput,
+        build_player_agent_tools,
     )
     from core.errors import AccessDeniedError, EntityNotFoundError, ValidationError
 
@@ -668,8 +668,8 @@ async def _run_imagegen_scenario(scenario: dict[str, Any], yaml_path: Path) -> S
                 return ScenarioResult(sid, True, "provider error handled correctly")
 
             if provider_name == "comfyui":
-                from imagegen.providers.comfyui import ComfyUIProvider
                 from core.errors import ProviderUnavailableError
+                from imagegen.providers.comfyui import ComfyUIProvider
                 provider_obj = ComfyUIProvider(base_url=provider_cfg.get("base_url"))
 
                 expected_raises = scenario.get("expected", {}).get("raises", "")
@@ -681,7 +681,7 @@ async def _run_imagegen_scenario(scenario: dict[str, Any], yaml_path: Path) -> S
                 except ProviderUnavailableError:
                     if expected_raises == "ProviderUnavailableError":
                         return ScenarioResult(sid, True, "correctly raised ProviderUnavailableError")
-                    return ScenarioResult(sid, False, f"unexpected ProviderUnavailableError")
+                    return ScenarioResult(sid, False, "unexpected ProviderUnavailableError")
                 except Exception as exc:
                     return ScenarioResult(sid, False, f"unexpected exception: {exc}")
 
@@ -697,7 +697,11 @@ async def _run_imagegen_scenario(scenario: dict[str, Any], yaml_path: Path) -> S
                 entity_type: entity_fields,
             })
 
-            from imagegen.interface import ImageGenRequest, ImageGenResponse, ImageProvider
+            from imagegen.interface import (
+                ImageGenRequest,
+                ImageGenResponse,
+                ImageProvider,
+            )
 
             class _MockProvider(ImageProvider):
                 async def generate(self, req: ImageGenRequest) -> ImageGenResponse:
@@ -716,8 +720,8 @@ async def _run_imagegen_scenario(scenario: dict[str, Any], yaml_path: Path) -> S
             response = await mock_provider.generate(request)
 
             # Simulate the portrait_url persistence logic
+            from core.models import NPC, Character
             from sqlalchemy import select
-            from core.models import Character, NPC
 
             async with await backend.get_session() as db:
                 if response.image_url and not response.error:
@@ -770,7 +774,7 @@ async def _run_imagegen_scenario(scenario: dict[str, Any], yaml_path: Path) -> S
                     action = step.get("action", "")
                     if action == "generate_portrait":
                         if response.image_url != step.get("expected_image_url"):
-                            fails.append(f"step generate_portrait: image_url mismatch")
+                            fails.append("step generate_portrait: image_url mismatch")
                     elif action == "reload_character":
                         async with await backend.get_session() as db2:
                             if entity_type == "character":
@@ -778,7 +782,7 @@ async def _run_imagegen_scenario(scenario: dict[str, Any], yaml_path: Path) -> S
                                 ent3 = result3.scalar_one_or_none()
                                 actual3 = getattr(ent3, "portrait_url", None)
                                 if actual3 != step.get("expected_portrait_url"):
-                                    fails.append(f"step reload_character: portrait_url mismatch")
+                                    fails.append("step reload_character: portrait_url mismatch")
 
             if fails:
                 return ScenarioResult(sid, False, "; ".join(fails))
@@ -806,7 +810,7 @@ class _MockLLMProvider:
 
 
 async def _run_session_planning_scenario(scenario: dict[str, Any]) -> ScenarioResult:
-    from agents.gm_agent.gm_agent import build_gm_agent_tools, GenerateSessionPlanInput
+    from agents.gm_agent.gm_agent import GenerateSessionPlanInput, build_gm_agent_tools
 
     sid = scenario.get("id", "unknown")
     expected = scenario.get("expected", {})
@@ -832,7 +836,7 @@ async def _run_session_planning_scenario(scenario: dict[str, Any]) -> ScenarioRe
                 return ScenarioResult(sid, False, f"unexpected exception: {exc}")
 
         if expected.get("outcome") == "error":
-            return ScenarioResult(sid, False, f"expected error but tool succeeded")
+            return ScenarioResult(sid, False, "expected error but tool succeeded")
 
         failures: list[str] = []
 

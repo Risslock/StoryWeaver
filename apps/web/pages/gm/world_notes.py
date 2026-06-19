@@ -94,7 +94,9 @@ def build_world_notes_page(session_state: gr.State) -> None:
         # Internal state: IDs matching table rows
         note_ids_state: gr.State = gr.State(value=[])
 
-        async def load_notes(state: CampaignSession | None) -> tuple[list[list[Any]], list[str]]:
+        async def load_notes(
+            state: CampaignSession | None,
+        ) -> tuple[list[list[Any]], list[str]]:
             if state is None:
                 return [], []
             notes = await _load_world_notes(state.campaign_id)
@@ -120,7 +122,9 @@ def build_world_notes_page(session_state: gr.State) -> None:
             rows, ids = await load_notes(state)
             return "✓ Note saved.", gr.update(value=""), rows, ids
 
-        async def on_refresh(state: CampaignSession | None) -> tuple[dict[str, Any], list[str]]:
+        async def on_refresh(
+            state: CampaignSession | None,
+        ) -> tuple[dict[str, Any], list[str]]:
             rows, ids = await load_notes(state)
             return gr.update(value=rows), ids
 
