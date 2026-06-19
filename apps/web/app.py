@@ -34,6 +34,7 @@ from pages.auth import build_auth_page
 from pages.gm.characters import build_characters_page
 from pages.gm.history import build_gm_history_page
 from pages.gm.npcs import build_npc_page
+from pages.gm.players import build_players_page
 from pages.gm.session_plan import build_session_plan_page
 from pages.gm.world_notes import build_world_notes_page
 from pages.landing import build_landing, get_backend
@@ -66,6 +67,9 @@ def create_app() -> gr.Blocks:
 
         # ── Campaigns admin dashboard + player join ───────────────────────────
         with gr.Column(visible=False) as admin_col:
+            with gr.Row():
+                gr.Markdown("## My Campaigns", scale=4)
+                admin_sign_out_btn = gr.Button("Sign Out", scale=1, size="sm")
             campaign_refs: CampaignPageRefs = build_campaigns_page(
                 session_state, user_state
             )
@@ -74,7 +78,9 @@ def create_app() -> gr.Blocks:
 
         # ── Player dashboard ──────────────────────────────────────────────────
         with gr.Column(visible=False) as player_col:
-            gr.Markdown("# StoryWeaver — Player Dashboard")
+            with gr.Row():
+                gr.Markdown("# StoryWeaver — Player Dashboard", scale=4)
+                player_sign_out_btn = gr.Button("Sign Out", scale=1, size="sm")
             with gr.Tabs():
                 build_character_page(session_state)
                 build_twin_chat_page(session_state)
@@ -82,7 +88,9 @@ def create_app() -> gr.Blocks:
 
         # ── GM dashboard ──────────────────────────────────────────────────────
         with gr.Column(visible=False) as gm_col:
-            gr.Markdown("# StoryWeaver — GM Dashboard")
+            with gr.Row():
+                gr.Markdown("# StoryWeaver — GM Dashboard", scale=4)
+                gm_sign_out_btn = gr.Button("Sign Out", scale=1, size="sm")
             gm_join_code = gr.Textbox(
                 label="Campaign Join Code — share this with your players",
                 interactive=False,
@@ -94,6 +102,7 @@ def create_app() -> gr.Blocks:
                 build_gm_history_page(session_state)
                 build_world_notes_page(session_state)
                 build_session_plan_page(session_state)
+                build_players_page(session_state)
 
         # ── Navigation ────────────────────────────────────────────────────────
         def _navigate(
@@ -149,6 +158,17 @@ def create_app() -> gr.Blocks:
             inputs=[user_state, session_state],
             outputs=_nav_outputs,
         )
+
+        # ── Sign-out ──────────────────────────────────────────────────────────
+        def _sign_out() -> tuple[None, None]:
+            return None, None
+
+        for _btn in (admin_sign_out_btn, gm_sign_out_btn, player_sign_out_btn):
+            _btn.click(
+                _sign_out,
+                inputs=[],
+                outputs=[user_state, session_state],
+            )
 
         # Load campaigns whenever the user signs in.
         user_state.change(

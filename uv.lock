@@ -4505,7 +4505,6 @@ name = "storyweaver-web"
 version = "0.1.0"
 source = { editable = "apps/web" }
 dependencies = [
-    { name = "bcrypt" },
     { name = "fastapi" },
     { name = "gradio" },
     { name = "storyweaver-agents" },
@@ -4520,7 +4519,6 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "bcrypt", specifier = ">=4.0" },
     { name = "fastapi", specifier = ">=0.110" },
     { name = "gradio", specifier = ">=4.0" },
     { name = "storyweaver-agents", editable = "packages/agents" },

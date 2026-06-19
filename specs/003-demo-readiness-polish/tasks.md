@@ -69,7 +69,7 @@
 **Purpose**: Confirm both M1 and M2 deliverables are satisfied before beginning enhancement work.
 
 - [X] T018 [US7] Run `uv run pytest -v` (full suite) — confirm 70/70 PASS, exit code 0 (39 integration + 31 unit)
-- [ ] T019 [US7] Run `uv run python apps/web/main.py` — confirm app starts on localhost:7860 with no import errors or startup exceptions
+- [SUPERSEDED] T019 [US7] Run `uv run python apps/web/main.py` — confirm app starts on localhost:7860 with no import errors or startup exceptions — superseded by 004-auth-admin-reboot: app entry point changed to `uv run python apps/web/app.py` (pure Gradio, no FastAPI/uvicorn)
 
 ---
 

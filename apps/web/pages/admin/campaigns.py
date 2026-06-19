@@ -13,6 +13,7 @@ from core.schemas import CampaignSession, UserInfo
 from llm.providers.ollama import OllamaProvider
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from storage.users import archive_campaign as _archive_campaign
 
 from pages.landing import get_backend
 
@@ -38,7 +39,7 @@ async def _fetch_campaigns(
     async with await backend.get_session() as session:
         result = await session.execute(
             select(Campaign)
-            .where(Campaign.owner_id == owner_id)
+            .where(Campaign.owner_id == owner_id, Campaign.archived.is_(False))
             .order_by(Campaign.created_at.desc())
         )
         campaigns = list(result.scalars().all())
@@ -110,7 +111,9 @@ def build_campaigns_page(
         )
         detail_system = gr.Markdown("")
         detail_created = gr.Markdown("")
-        resume_btn = gr.Button("Resume Campaign →", variant="primary")
+        with gr.Row():
+            resume_btn = gr.Button("Resume Campaign →", variant="primary")
+            archive_btn = gr.Button("Archive Campaign", variant="stop")
 
     # ── Event handlers ────────────────────────────────────────────────────────
 
@@ -211,6 +214,23 @@ def build_campaigns_page(
     async def on_back() -> tuple[Any, Any]:
         return gr.update(visible=True), gr.update(visible=False)
 
+    async def on_archive(
+        campaign_id_str: str | None,
+        user: UserInfo | None,
+    ) -> tuple[Any, list[str], Any, Any]:
+        if not campaign_id_str or user is None:
+            return gr.update(), [], gr.update(), gr.update()
+        backend = get_backend()
+        async with await backend.get_session() as session:
+            await _archive_campaign(session, uuid.UUID(campaign_id_str))
+        rows, new_ids = await _fetch_campaigns(user.user_id)
+        return (
+            gr.update(value=rows),
+            new_ids,
+            gr.update(visible=True),   # dashboard_col
+            gr.update(visible=False),  # detail_col
+        )
+
     async def on_resume(
         campaign_id_str: str | None,
         user: UserInfo | None,
@@ -276,6 +296,12 @@ def build_campaigns_page(
         on_resume,
         inputs=[selected_campaign_id, user_state],
         outputs=[session_state],
+    )
+
+    archive_btn.click(
+        on_archive,
+        inputs=[selected_campaign_id, user_state],
+        outputs=[campaign_table, campaign_ids, dashboard_col, detail_col],
     )
 
     return CampaignPageRefs(

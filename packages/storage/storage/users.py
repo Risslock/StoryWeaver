@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from core.models import Player, User
+from core.models import Campaign, Player, User
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -70,6 +70,46 @@ async def get_or_create_player(
     await session.commit()
     await session.refresh(player)
     return player
+
+
+async def get_campaign_by_join_code(
+    session: AsyncSession,
+    join_code: str,
+) -> Campaign | None:
+    """Look up a campaign by its join code (case-insensitive)."""
+    result = await session.execute(
+        select(Campaign).where(
+            func.upper(Campaign.join_code) == join_code.strip().upper()
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_campaigns_for_user(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+) -> list[Campaign]:
+    """Return non-archived campaigns owned by the user, newest first."""
+    result = await session.execute(
+        select(Campaign)
+        .where(Campaign.owner_id == user_id, Campaign.archived.is_(False))
+        .order_by(Campaign.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def archive_campaign(
+    session: AsyncSession,
+    campaign_id: uuid.UUID,
+) -> None:
+    """Soft-delete a campaign by setting archived=True. Data is never deleted."""
+    result = await session.execute(
+        select(Campaign).where(Campaign.id == campaign_id)
+    )
+    campaign = result.scalar_one_or_none()
+    if campaign is not None:
+        campaign.archived = True
+        await session.commit()
 
 
 async def link_player_character(

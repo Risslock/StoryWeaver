@@ -57,6 +57,8 @@ class Campaign(Base):
     gm_display_name: Mapped[str] = mapped_column(String(100), nullable=False)
     game_system: Mapped[str] = mapped_column(String(50), nullable=False, default="earthdawn_4e")
     settings: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    world_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     owner_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
 
