@@ -19,6 +19,7 @@ from rules_earthdawn.character_builder import (
 )
 from rules_earthdawn.validator import validate_character
 from storage.sqlite.adapter import SQLiteBackend
+from components.image_display import build_portrait_display
 
 _backend = SQLiteBackend(settings.database_url)
 
@@ -98,15 +99,8 @@ def _render_character_sheet(char: Character) -> str:
         for r in schema.relationships
     ) or "None"
 
-    portrait_line = (
-        f"![Portrait]({schema.portrait_url})" if schema.portrait_url
-        else "*No portrait generated yet.*"
-    )
-
     return f"""## {schema.name}
 *{schema.race} {schema.discipline} — Circle {schema.circle}{tier}*
-
-{portrait_line}
 
 ---
 
@@ -159,6 +153,7 @@ def build_character_page(session_state: gr.State) -> None:
             )
             refresh_btn = gr.Button("↻ Refresh", scale=1)
 
+        portrait_image = build_portrait_display("Character Portrait")
         character_sheet = gr.Markdown("*Select a character or create a new one below.*")
 
         gr.Markdown("---")
@@ -236,7 +231,11 @@ def build_character_page(session_state: gr.State) -> None:
             save_btn = gr.Button("Save Character", variant="primary")
             save_status = gr.Markdown("")
 
-        portrait_btn = gr.Button("Generate Portrait (coming in Phase 6)", interactive=False)
+        with gr.Row():
+            portrait_btn = gr.Button("Generate Portrait", variant="secondary", interactive=False)
+            portrait_status = gr.Markdown("")
+
+        selected_char_id: gr.State = gr.State(value=None)
 
         # ── Event handlers ────────────────────────────────────────────────
 
@@ -247,17 +246,64 @@ def build_character_page(session_state: gr.State) -> None:
             choices = [(c.name, str(c.id)) for c in chars]
             return gr.update(choices=choices, value=choices[0][1] if choices else None)
 
-        async def on_select_char(char_id: str | None) -> str:
+        async def on_select_char(char_id: str | None) -> tuple[str | None, str, Any]:
             if not char_id:
-                return "*No character selected.*"
+                return None, "*No character selected.*", char_id
             async with await _backend.get_session() as session:
                 result = await session.execute(
                     select(Character).where(Character.id == uuid.UUID(char_id))
                 )
                 char = result.scalar_one_or_none()
             if char is None:
-                return "*Character not found.*"
-            return _render_character_sheet(char)
+                return None, "*Character not found.*", char_id
+            return char.portrait_url or None, _render_character_sheet(char), char_id
+
+        async def on_generate_portrait(
+            state: CampaignSession | None,
+            char_id_val: str | None,
+        ) -> tuple[str | None, str]:
+            if state is None or not char_id_val:
+                return None, "Select a character first."
+            if not state.ai_available:
+                return None, "AI features unavailable in degraded mode."
+
+            async with await _backend.get_session() as session:
+                result = await session.execute(
+                    select(Character).where(Character.id == uuid.UUID(char_id_val))
+                )
+                char = result.scalar_one_or_none()
+                if char is None:
+                    return None, "Character not found."
+
+            if not (char.physical_description or "").strip():
+                return None, "Add a physical description to your character first."
+
+            from imagegen.factory import get_image_provider
+            from imagegen.interface import (
+                ImageGenRequest,
+                PORTRAIT_PROMPT_PREFIX,
+                PORTRAIT_NEGATIVE_PROMPT,
+            )
+
+            prompt = (
+                f"{PORTRAIT_PROMPT_PREFIX}, "
+                f"{char.name}, {char.race} {char.discipline}, "
+                f"{char.physical_description}"
+            )
+            request = ImageGenRequest(
+                prompt=prompt,
+                negative_prompt=PORTRAIT_NEGATIVE_PROMPT,
+                entity_id=char.id,
+            )
+
+            provider = get_image_provider()
+            response = await provider.generate(request)
+
+            if response.error:
+                return None, f"Portrait generation failed: {response.error}"
+
+            await _update_character(char.id, {"portrait_url": response.image_url})
+            return response.image_url, "Portrait generated!"
 
         async def on_save(
             state: CampaignSession | None,
@@ -332,9 +378,18 @@ def build_character_page(session_state: gr.State) -> None:
                 gr.update(choices=choices, value=choices[-1][1] if choices else None),
             )
 
+        def _update_portrait_btn(state: CampaignSession | None) -> dict[str, Any]:
+            ai_ok = state.ai_available if state is not None else False
+            return gr.update(interactive=ai_ok)
+
         session_state.change(load_char_list, inputs=[session_state], outputs=[char_selector])
+        session_state.change(_update_portrait_btn, inputs=[session_state], outputs=[portrait_btn])
         refresh_btn.click(load_char_list, inputs=[session_state], outputs=[char_selector])
-        char_selector.change(on_select_char, inputs=[char_selector], outputs=[character_sheet])
+        char_selector.change(
+            on_select_char,
+            inputs=[char_selector],
+            outputs=[portrait_image, character_sheet, selected_char_id],
+        )
         save_btn.click(
             on_save,
             inputs=[
@@ -345,4 +400,9 @@ def build_character_page(session_state: gr.State) -> None:
                 talents_json, skills_json, equipment_json,
             ],
             outputs=[save_status, char_selector],
+        )
+        portrait_btn.click(
+            on_generate_portrait,
+            inputs=[session_state, selected_char_id],
+            outputs=[portrait_image, portrait_status],
         )

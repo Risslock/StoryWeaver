@@ -12,6 +12,7 @@ from core.schemas import CampaignSession
 from story.history import create_event, list_events
 from story.session import list_sessions
 from storage.sqlite.adapter import SQLiteBackend
+from components.image_display import build_portrait_display
 
 _backend = SQLiteBackend(settings.database_url)
 
@@ -126,6 +127,29 @@ def build_gm_history_page(session_state: gr.State) -> None:
         )
         summary_display = gr.Markdown("")
 
+        # ── Scene Illustration (T052) ─────────────────────────────────────────
+        gr.Markdown("---")
+        gr.Markdown("### Scene Illustration")
+        gr.Markdown(
+            "Generate an image from a scene description. "
+            "Requires `HF_API_KEY` and `IMAGE_PROVIDER=huggingface` (or ComfyUI)."
+        )
+
+        scene_description_input = gr.Textbox(
+            label="Scene Description",
+            placeholder="Describe the scene you want to illustrate…",
+            lines=3,
+        )
+        with gr.Row():
+            generate_scene_btn = gr.Button(
+                "Generate Scene Art",
+                variant="secondary",
+                interactive=False,  # enabled when ai_available=True
+            )
+            scene_status = gr.Markdown("")
+
+        scene_image = build_portrait_display("Scene Illustration")
+
         # ── Internal state ────────────────────────────────────────────────────
         event_ids_state: gr.State = gr.State(value=[])
         session_map_state: gr.State = gr.State(value={})
@@ -146,7 +170,7 @@ def build_gm_history_page(session_state: gr.State) -> None:
 
         async def load_page(
             state: CampaignSession | None,
-        ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, str], list[list[Any]], list[str], dict[str, Any]]:
+        ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, str], list[list[Any]], list[str], dict[str, Any], dict[str, Any]]:
             session_map, session_labels = await _load_session_data(state)
             log_choices = ["None (campaign-wide)"] + session_labels
             view_choices = ["All Sessions"] + session_labels
@@ -162,6 +186,7 @@ def build_gm_history_page(session_state: gr.State) -> None:
                 session_map,
                 rows,
                 ids,
+                gr.update(interactive=ai_ok),
                 gr.update(interactive=ai_ok),
             )
 
@@ -213,7 +238,7 @@ def build_gm_history_page(session_state: gr.State) -> None:
             state: CampaignSession | None,
             selected_session: str,
             session_map: dict[str, str],
-        ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, str], list[list[Any]], list[str], dict[str, Any]]:
+        ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, str], list[list[Any]], list[str], dict[str, Any], dict[str, Any]]:
             return await load_page(state)
 
         async def on_view_session_change(
@@ -231,11 +256,11 @@ def build_gm_history_page(session_state: gr.State) -> None:
             participants_raw: str,
             is_public: bool,
             session_map: dict[str, str],
-        ) -> tuple[str, str, dict[str, Any], dict[str, str], list[list[Any]], list[str], dict[str, Any]]:
+        ) -> tuple[str, str, dict[str, Any], dict[str, str], list[list[Any]], list[str], dict[str, Any], dict[str, Any]]:
             if state is None:
-                return "Error: not in a campaign session.", "", gr.update(), session_map, [], [], gr.update()
+                return "Error: not in a campaign session.", "", gr.update(), session_map, [], [], gr.update(), gr.update()
             if not content.strip():
-                return "Event description cannot be empty.", "", gr.update(), session_map, [], [], gr.update()
+                return "Event description cannot be empty.", "", gr.update(), session_map, [], [], gr.update(), gr.update()
 
             log_session_id: uuid.UUID | None = None
             if log_session and log_session != "None (campaign-wide)":
@@ -261,8 +286,9 @@ def build_gm_history_page(session_state: gr.State) -> None:
                     participants=participants,
                 )
 
-            _, new_session_map, view_update, updated_session_map, rows, ids, summary_btn_update = await load_page(state)
-            return "✓ Event logged.", "", view_update, updated_session_map, rows, ids, summary_btn_update
+            page = await load_page(state)
+            _, new_session_map, view_update, updated_session_map, rows, ids, summary_btn_update, scene_btn_update = page
+            return "✓ Event logged.", "", view_update, updated_session_map, rows, ids, summary_btn_update, scene_btn_update
 
         async def on_select_row(evt: gr.SelectData, ids: list[str]) -> str:
             if not ids or evt.index[0] >= len(ids):
@@ -287,6 +313,40 @@ def build_gm_history_page(session_state: gr.State) -> None:
             if participants:
                 lines += ["", f"*Participants: {participants}*"]
             return "\n".join(lines)
+
+        async def on_generate_scene(
+            state: CampaignSession | None,
+            description: str,
+        ) -> tuple[str | None, str]:
+            if state is None:
+                return None, "Not in a campaign session."
+            if not description.strip():
+                return None, "Enter a scene description first."
+            if not state.ai_available:
+                return None, "AI features unavailable in degraded mode."
+
+            from imagegen.factory import get_image_provider
+            from imagegen.interface import ImageGenRequest
+
+            scene_entity_id = uuid.uuid4()
+            request = ImageGenRequest(
+                prompt=description.strip(),
+                style_hints=[
+                    "fantasy scene",
+                    "detailed",
+                    "atmospheric illustration",
+                    "Earthdawn tabletop RPG",
+                ],
+                entity_id=scene_entity_id,
+            )
+
+            provider = get_image_provider()
+            response = await provider.generate(request)
+
+            if response.error:
+                return None, f"Scene generation failed: {response.error}"
+
+            return response.image_url, "Scene illustration generated!"
 
         async def on_generate_summary(
             state: CampaignSession | None,
@@ -320,31 +380,22 @@ def build_gm_history_page(session_state: gr.State) -> None:
             return "\n".join(lines)
 
         # ── Wire events ───────────────────────────────────────────────────────
-        session_state.change(
-            load_page,
-            inputs=[session_state],
-            outputs=[
-                log_session_selector,
-                view_session_selector,
-                summary_session_selector,
-                session_map_state,
-                history_display,
-                event_ids_state,
-                generate_summary_btn,
-            ],
-        )
+        _page_outputs = [
+            log_session_selector,
+            view_session_selector,
+            summary_session_selector,
+            session_map_state,
+            history_display,
+            event_ids_state,
+            generate_summary_btn,
+            generate_scene_btn,
+        ]
+
+        session_state.change(load_page, inputs=[session_state], outputs=_page_outputs)
         refresh_btn.click(
             on_refresh,
             inputs=[session_state, view_session_selector, session_map_state],
-            outputs=[
-                log_session_selector,
-                view_session_selector,
-                summary_session_selector,
-                session_map_state,
-                history_display,
-                event_ids_state,
-                generate_summary_btn,
-            ],
+            outputs=_page_outputs,
         )
         view_session_selector.change(
             on_view_session_change,
@@ -370,6 +421,7 @@ def build_gm_history_page(session_state: gr.State) -> None:
                 history_display,
                 event_ids_state,
                 generate_summary_btn,
+                generate_scene_btn,
             ],
         )
         history_display.select(
@@ -382,6 +434,8 @@ def build_gm_history_page(session_state: gr.State) -> None:
             inputs=[session_state, summary_session_selector, session_map_state],
             outputs=[summary_display],
         )
-
-        # Disable generate_summary when AI unavailable (wired at app.py level).
-        # T052 wires scene illustration into this page.
+        generate_scene_btn.click(
+            on_generate_scene,
+            inputs=[session_state, scene_description_input],
+            outputs=[scene_image, scene_status],
+        )

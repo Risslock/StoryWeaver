@@ -12,6 +12,7 @@ from core.models import NPC
 from core.schemas import CampaignSession, NPCSchema
 from sqlalchemy import select
 from storage.sqlite.adapter import SQLiteBackend
+from components.image_display import build_portrait_display
 
 _backend = SQLiteBackend(settings.database_url)
 
@@ -48,15 +49,9 @@ async def _update_npc(npc_id: uuid.UUID, updates: dict[str, Any]) -> NPC | None:
 
 def _render_npc_sheet(npc: NPC) -> str:
     schema = NPCSchema.model_validate(npc)
-    portrait_line = (
-        f"![Portrait]({schema.portrait_url})" if schema.portrait_url
-        else "*No portrait generated yet.*"
-    )
     visibility = "Visible to players" if schema.is_visible_to_players else "Hidden from players"
     return f"""## {schema.name}
 *{schema.role or "Unknown role"} · {schema.race or "Unknown race"} · Circle {schema.circle}*
-
-{portrait_line}
 
 **Visibility**: {visibility}
 
@@ -107,6 +102,7 @@ def build_npc_page(session_state: gr.State) -> None:
             )
             refresh_btn = gr.Button("↻ Refresh", scale=1)
 
+        npc_portrait = build_portrait_display("NPC Portrait")
         npc_sheet = gr.Markdown("*Select an NPC or create a new one below.*")
 
         with gr.Row():
@@ -171,7 +167,9 @@ def build_npc_page(session_state: gr.State) -> None:
             save_btn = gr.Button("Save NPC", variant="primary")
             save_status = gr.Markdown("")
 
-        gr.Button("Generate Portrait (coming in Phase 6)", interactive=False)
+        with gr.Row():
+            portrait_btn = gr.Button("Generate Portrait", variant="secondary", interactive=False)
+            portrait_status = gr.Markdown("")
 
         # ── Internal state ────────────────────────────────────────────────
         selected_npc_id: gr.State = gr.State(value=None)
@@ -185,17 +183,64 @@ def build_npc_page(session_state: gr.State) -> None:
             choices = [(n.name, str(n.id)) for n in npcs]
             return gr.update(choices=choices, value=choices[0][1] if choices else None)
 
-        async def on_select_npc(npc_id: str | None) -> tuple[str, bool, Any]:
+        async def on_select_npc(npc_id: str | None) -> tuple[str | None, str, bool, Any]:
             if not npc_id:
-                return "*No NPC selected.*", False, None
+                return None, "*No NPC selected.*", False, None
             async with await _backend.get_session() as session:
                 result = await session.execute(
                     select(NPC).where(NPC.id == uuid.UUID(npc_id))
                 )
                 npc = result.scalar_one_or_none()
             if npc is None:
-                return "*NPC not found.*", False, None
-            return _render_npc_sheet(npc), npc.is_visible_to_players, npc_id
+                return None, "*NPC not found.*", False, None
+            return npc.portrait_url or None, _render_npc_sheet(npc), npc.is_visible_to_players, npc_id
+
+        async def on_generate_portrait(
+            state: CampaignSession | None,
+            npc_id_val: str | None,
+        ) -> tuple[str | None, str]:
+            if state is None or not npc_id_val:
+                return None, "Select an NPC first."
+            if not state.ai_available:
+                return None, "AI features unavailable in degraded mode."
+
+            async with await _backend.get_session() as session:
+                result = await session.execute(
+                    select(NPC).where(NPC.id == uuid.UUID(npc_id_val))
+                )
+                npc = result.scalar_one_or_none()
+                if npc is None:
+                    return None, "NPC not found."
+
+            if not (npc.physical_description or "").strip():
+                return None, "Add a physical description to the NPC first."
+
+            from imagegen.factory import get_image_provider
+            from imagegen.interface import (
+                ImageGenRequest,
+                PORTRAIT_PROMPT_PREFIX,
+                PORTRAIT_NEGATIVE_PROMPT,
+            )
+
+            prompt = (
+                f"{PORTRAIT_PROMPT_PREFIX}, "
+                f"{npc.name}, {npc.race or 'character'}, {npc.role or ''}, "
+                f"{npc.physical_description}"
+            )
+            request = ImageGenRequest(
+                prompt=prompt,
+                negative_prompt=PORTRAIT_NEGATIVE_PROMPT,
+                entity_id=npc.id,
+            )
+
+            provider = get_image_provider()
+            response = await provider.generate(request)
+
+            if response.error:
+                return None, f"Portrait generation failed: {response.error}"
+
+            await _update_npc(npc.id, {"portrait_url": response.image_url})
+            return response.image_url, "Portrait generated!"
 
         async def on_toggle_visibility(
             state: CampaignSession | None,
@@ -308,13 +353,18 @@ def build_npc_page(session_state: gr.State) -> None:
 
         # ── Wire events ───────────────────────────────────────────────────
 
+        def _update_portrait_btn(state: CampaignSession | None) -> dict[str, Any]:
+            ai_ok = state.ai_available if state is not None else False
+            return gr.update(interactive=ai_ok)
+
         session_state.change(load_npc_list, inputs=[session_state], outputs=[npc_selector])
+        session_state.change(_update_portrait_btn, inputs=[session_state], outputs=[portrait_btn])
         refresh_btn.click(load_npc_list, inputs=[session_state], outputs=[npc_selector])
 
         npc_selector.change(
             on_select_npc,
             inputs=[npc_selector],
-            outputs=[npc_sheet, visibility_toggle, selected_npc_id],
+            outputs=[npc_portrait, npc_sheet, visibility_toggle, selected_npc_id],
         )
 
         toggle_btn.click(
@@ -342,4 +392,9 @@ def build_npc_page(session_state: gr.State) -> None:
                 npc_personality, npc_background, npc_physical, npc_gm_notes,
             ],
             outputs=[save_status, npc_selector],
+        )
+        portrait_btn.click(
+            on_generate_portrait,
+            inputs=[session_state, selected_npc_id],
+            outputs=[npc_portrait, portrait_status],
         )
