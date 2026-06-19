@@ -98,29 +98,37 @@ def build_twin_chat_page(session_state: gr.State) -> None:
         async def _load_char_choices(state: CampaignSession | None) -> dict[str, Any]:
             if state is None:
                 return gr.update(choices=[], value=None)
-            async with await _backend.get_session() as session:
-                rows = await session.execute(
-                    select(Character).where(
-                        Character.campaign_id == state.campaign_id,
-                        Character.player_display_name == state.display_name,
+            try:
+                async with await _backend.get_session() as session:
+                    rows = await session.execute(
+                        select(Character).where(
+                            Character.campaign_id == state.campaign_id,
+                            Character.player_display_name == state.display_name,
+                        )
                     )
+                    chars = list(rows.scalars().all())
+                choices = [(c.name, str(c.id)) for c in chars]
+                return gr.update(
+                    choices=choices, value=choices[0][1] if choices else None
                 )
-                chars = list(rows.scalars().all())
-            choices = [(c.name, str(c.id)) for c in chars]
-            return gr.update(choices=choices, value=choices[0][1] if choices else None)
+            except Exception:
+                return gr.update(choices=[], value=None)
 
         async def on_char_selected(char_id: str | None) -> tuple[str, Any]:
             if not char_id:
                 return "*No character selected.*", None
-            char = await _get_character(uuid.UUID(char_id))
-            if char is None:
-                return "*Character not found.*", None
-            info = (
-                f"**{char.name}** — "
-                f"{char.race} {char.discipline} (Circle {char.circle})\n\n"
-                f"*{char.personality}*"
-            )
-            return info, char_id
+            try:
+                char = await _get_character(uuid.UUID(char_id))
+                if char is None:
+                    return "*Character not found.*", None
+                info = (
+                    f"**{char.name}** — "
+                    f"{char.race} {char.discipline} (Circle {char.circle})\n\n"
+                    f"*{char.personality}*"
+                )
+                return info, char_id
+            except Exception:
+                return "*Error loading character.*", None
 
         async def on_send(
             state: CampaignSession | None,
@@ -222,9 +230,7 @@ def build_twin_chat_page(session_state: gr.State) -> None:
                     "AI unreachable.",
                 )
 
-            choices = [
-                f"[{s.tone}] {s.text}" for s in result.suggestions
-            ]
+            choices = [f"[{s.tone}] {s.text}" for s in result.suggestions]
             first = result.suggestions[0].text if result.suggestions else ""
             return (
                 gr.update(

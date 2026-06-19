@@ -1,4 +1,4 @@
-"""Admin campaign dashboard and campaign detail screens for authenticated GMs."""
+﻿"""Admin campaign dashboard and campaign detail screens for authenticated GMs."""
 
 from __future__ import annotations
 
@@ -14,7 +14,8 @@ from llm.providers.ollama import OllamaProvider
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from pages.landing import get_backend
+from core.errors import CampaignJoinError
+from pages.landing import get_backend, join_campaign
 
 
 class CampaignPageRefs(NamedTuple):
@@ -42,10 +43,7 @@ async def _fetch_campaigns(
             .order_by(Campaign.created_at.desc())
         )
         campaigns = list(result.scalars().all())
-    rows = [
-        [c.name, c.join_code, c.created_at.strftime("%Y-%m-%d")]
-        for c in campaigns
-    ]
+    rows = [[c.name, c.join_code, c.created_at.strftime("%Y-%m-%d")] for c in campaigns]
     ids = [str(c.id) for c in campaigns]
     return rows, ids
 
@@ -56,8 +54,12 @@ async def load_campaigns_for_user(
     """Load campaigns when the user signs in; called from user_state.change()."""
     if user is None:
         return gr.update(value=[]), [], gr.update(visible=False)
-    rows, ids = await _fetch_campaigns(user.user_id)
-    return gr.update(value=rows), ids, gr.update(visible=len(rows) == 0)
+    try:
+        rows, ids = await _fetch_campaigns(user.user_id)
+        return gr.update(value=rows), ids, gr.update(visible=len(rows) == 0)
+    except Exception:
+        # Return safe defaults if database access fails
+        return gr.update(value=[]), [], gr.update(visible=True)
 
 
 def build_campaigns_page(
@@ -111,6 +113,14 @@ def build_campaigns_page(
         detail_system = gr.Markdown("")
         detail_created = gr.Markdown("")
         resume_btn = gr.Button("Resume Campaign →", variant="primary")
+        resume_status = gr.Markdown("")
+        gr.Markdown("---")
+        player_join_name_in = gr.Textbox(
+            label="Join as Player — Your Name",
+            placeholder="Kira Stonefist",
+        )
+        join_as_player_btn = gr.Button("Join as Player →", variant="secondary")
+        join_as_player_status = gr.Markdown("")
 
     # ── Event handlers ────────────────────────────────────────────────────────
 
@@ -133,80 +143,94 @@ def build_campaigns_page(
                 ids,
             )
 
-        backend = get_backend()
-        for _ in range(5):
-            join_code = _generate_join_code()
-            async with await backend.get_session() as session:
-                try:
-                    campaign = Campaign(
-                        id=uuid.uuid4(),
-                        name=name.strip(),
-                        join_code=join_code,
-                        gm_display_name=user.username,
-                        game_system=game_system,
-                        owner_id=user.user_id,
-                    )
-                    session.add(campaign)
-                    await session.commit()
-                    break
-                except IntegrityError as exc:
-                    await session.rollback()
-                    err_str = str(exc).lower()
-                    if "ix_campaigns_owner_name_lower" in err_str:
-                        return (
-                            gr.update(),
-                            gr.update(),
-                            gr.update(
-                                value=(
-                                    f"A campaign named '{name.strip()}'"
-                                    " already exists."
-                                )
-                            ),
-                            ids,
+        try:
+            backend = get_backend()
+            for _ in range(5):
+                join_code = _generate_join_code()
+                async with await backend.get_session() as session:
+                    try:
+                        campaign = Campaign(
+                            id=uuid.uuid4(),
+                            name=name.strip(),
+                            join_code=join_code,
+                            gm_display_name=user.username,
+                            game_system=game_system,
+                            owner_id=user.user_id,
                         )
-                    continue  # join_code collision — retry
-        else:
+                        session.add(campaign)
+                        await session.commit()
+                        break
+                    except IntegrityError as exc:
+                        await session.rollback()
+                        err_str = str(exc).lower()
+                        if "ix_campaigns_owner_name_lower" in err_str:
+                            return (
+                                gr.update(),
+                                gr.update(),
+                                gr.update(
+                                    value=(
+                                        f"A campaign named '{name.strip()}' already exists."
+                                    )
+                                ),
+                                ids,
+                            )
+                        continue  # join_code collision — retry
+            else:
+                return (
+                    gr.update(),
+                    gr.update(),
+                    gr.update(
+                        value="Failed to generate a unique join code. Try again."
+                    ),
+                    ids,
+                )
+
+            rows, new_ids = await _fetch_campaigns(user.user_id)
+            return (
+                gr.update(value=rows),
+                gr.update(visible=False),
+                gr.update(value=""),
+                new_ids,
+            )
+        except Exception as exc:
             return (
                 gr.update(),
                 gr.update(),
-                gr.update(value="Failed to generate a unique join code. Try again."),
+                gr.update(value=f"Error creating campaign: {exc}"),
                 ids,
             )
-
-        rows, new_ids = await _fetch_campaigns(user.user_id)
-        return (
-            gr.update(value=rows),
-            gr.update(visible=False),
-            gr.update(value=""),
-            new_ids,
-        )
 
     async def on_row_select(
         ids: list[str],
         evt: gr.SelectData,
     ) -> tuple[Any, ...]:
-        row_idx = evt.index[0]
-        if row_idx >= len(ids):
-            return (None,) + (gr.update(),) * 7
-        campaign_id_str: str = ids[row_idx]
-        backend = get_backend()
-        async with await backend.get_session() as session:
-            result = await session.execute(
-                select(Campaign).where(Campaign.id == uuid.UUID(campaign_id_str))
+        try:
+            row_idx = evt.index[0]
+            if row_idx >= len(ids):
+                return (None,) + (gr.update(),) * 7
+            campaign_id_str: str = ids[row_idx]
+            backend = get_backend()
+            async with await backend.get_session() as session:
+                result = await session.execute(
+                    select(Campaign).where(Campaign.id == uuid.UUID(campaign_id_str))
+                )
+                campaign = result.scalar_one_or_none()
+            if campaign is None:
+                return (None,) + (gr.update(),) * 7
+            return (
+                campaign_id_str,
+                gr.update(visible=False),
+                gr.update(visible=True),
+                gr.update(value=f"## Campaign: {campaign.name}"),
+                gr.update(value=campaign.join_code),
+                gr.update(value=f"**Game System**: {campaign.game_system}"),
+                gr.update(
+                    value=f"**Created**: {campaign.created_at.strftime('%Y-%m-%d')}"
+                ),
+                gr.update(visible=False),
             )
-            campaign = result.scalar_one_or_none()
-        if campaign is None:
+        except Exception:
             return (None,) + (gr.update(),) * 7
-        return (
-            campaign_id_str,
-            gr.update(visible=False),
-            gr.update(visible=True),
-            gr.update(value=f"## Campaign: {campaign.name}"),
-            gr.update(value=campaign.join_code),
-            gr.update(value=f"**Game System**: {campaign.game_system}"),
-            gr.update(value=f"**Created**: {campaign.created_at.strftime('%Y-%m-%d')}"),
-            gr.update(visible=False),
-        )
 
     async def on_back() -> tuple[Any, Any]:
         return gr.update(visible=True), gr.update(visible=False)
@@ -214,28 +238,61 @@ def build_campaigns_page(
     async def on_resume(
         campaign_id_str: str | None,
         user: UserInfo | None,
-    ) -> CampaignSession | dict[str, Any]:
-        if not campaign_id_str or user is None:
-            return gr.update()
-        backend = get_backend()
-        async with await backend.get_session() as session:
-            result = await session.execute(
-                select(Campaign).where(
-                    Campaign.id == uuid.UUID(campaign_id_str),
-                    Campaign.owner_id == user.user_id,
+    ) -> tuple[Any, Any]:
+        try:
+            if not campaign_id_str or user is None:
+                return None, "Select a campaign to resume."
+            backend = get_backend()
+            async with await backend.get_session() as session:
+                result = await session.execute(
+                    select(Campaign).where(
+                        Campaign.id == uuid.UUID(campaign_id_str),
+                        Campaign.owner_id == user.user_id,
+                    )
                 )
+                campaign = result.scalar_one_or_none()
+            if campaign is None:
+                return None, "Campaign not found."
+            ai_available = await OllamaProvider().health_check()
+            return (
+                CampaignSession(
+                    campaign_id=campaign.id,
+                    display_name=user.username,
+                    role="gm",
+                    join_code=campaign.join_code,
+                    ai_available=ai_available,
+                ),
+                "",
             )
-            campaign = result.scalar_one_or_none()
-        if campaign is None:
-            return gr.update()
-        ai_available = await OllamaProvider().health_check()
-        return CampaignSession(
-            campaign_id=campaign.id,
-            display_name=user.username,
-            role="gm",
-            join_code=campaign.join_code,
-            ai_available=ai_available,
-        )
+        except Exception as exc:
+            return None, f"Unable to resume campaign: {exc}"
+
+    async def on_join_as_player(
+        campaign_id_str: str | None,
+        player_name: str,
+    ) -> tuple[str, Any]:
+        try:
+            if not campaign_id_str or not player_name.strip():
+                return "Enter your player name to join.", None
+            backend = get_backend()
+            async with await backend.get_session() as session:
+                result = await session.execute(
+                    select(Campaign).where(Campaign.id == uuid.UUID(campaign_id_str))
+                )
+                campaign = result.scalar_one_or_none()
+            if campaign is None:
+                return "Campaign not found.", None
+            try:
+                _, state = await join_campaign(
+                    campaign.name, campaign.join_code, player_name.strip()
+                )
+                return f"Joined! Welcome, **{player_name.strip()}**.", state
+            except CampaignJoinError as exc:
+                return f"Error: {exc}", None
+            except Exception as exc:
+                return f"Unexpected error: {exc}", None
+        except Exception as exc:
+            return f"Error joining campaign: {exc}", None
 
     # ── Wire events ───────────────────────────────────────────────────────────
 
@@ -275,7 +332,13 @@ def build_campaigns_page(
     resume_btn.click(
         on_resume,
         inputs=[selected_campaign_id, user_state],
-        outputs=[session_state],
+        outputs=[session_state, resume_status],
+    )
+
+    join_as_player_btn.click(
+        on_join_as_player,
+        inputs=[selected_campaign_id, player_join_name_in],
+        outputs=[join_as_player_status, session_state],
     )
 
     return CampaignPageRefs(

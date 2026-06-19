@@ -99,6 +99,8 @@ def build_landing(session_state: gr.State) -> None:
             return f"Joined! Welcome, **{name}**.", state
         except CampaignJoinError as exc:
             return f"Error: {exc}", None
+        except Exception as exc:
+            return f"Unexpected error joining campaign: {exc}", None
 
     join_btn.click(
         on_join,

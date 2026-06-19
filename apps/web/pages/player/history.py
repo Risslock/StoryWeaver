@@ -56,7 +56,7 @@ def build_player_history_page(session_state: gr.State) -> None:
             datatype=["str", "str", "str"],
             label="Story Events",
             interactive=False,
-            col_count=(3, "fixed"),
+            column_count=3,
             wrap=True,
         )
 
@@ -70,13 +70,18 @@ def build_player_history_page(session_state: gr.State) -> None:
         ) -> tuple[dict[str, Any], dict[str, str]]:
             if state is None:
                 return gr.update(choices=["All Sessions"], value="All Sessions"), {}
-            async with await _backend.get_session() as db:
-                sessions = await list_sessions(db, state.campaign_id)
-            session_map = {
-                f"Session {s.session_number}: {s.title}": str(s.id) for s in sessions
-            }
-            choices = ["All Sessions"] + list(session_map.keys())
-            return gr.update(choices=choices, value="All Sessions"), session_map
+            try:
+                async with await _backend.get_session() as db:
+                    sessions = await list_sessions(db, state.campaign_id)
+                session_map = {
+                    f"Session {s.session_number}: {s.title}": str(s.id)
+                    for s in sessions
+                }
+                choices = ["All Sessions"] + list(session_map.keys())
+                return gr.update(choices=choices, value="All Sessions"), session_map
+            except Exception:
+                # Return safe defaults if database access fails
+                return gr.update(choices=["All Sessions"], value="All Sessions"), {}
 
         async def load_events(
             state: CampaignSession | None,
@@ -87,43 +92,51 @@ def build_player_history_page(session_state: gr.State) -> None:
             if state is None:
                 return [], []
 
-            filter_session_id: uuid.UUID | None = None
-            if selected_session and selected_session != "All Sessions":
-                raw_id = session_map.get(selected_session)
-                if raw_id:
-                    filter_session_id = uuid.UUID(raw_id)
+            try:
+                filter_session_id: uuid.UUID | None = None
+                if selected_session and selected_session != "All Sessions":
+                    raw_id = session_map.get(selected_session)
+                    if raw_id:
+                        filter_session_id = uuid.UUID(raw_id)
 
-            async with await _backend.get_session() as db:
-                sessions = await list_sessions(db, state.campaign_id)
-                session_num_by_id = {str(s.id): s.session_number for s in sessions}
+                async with await _backend.get_session() as db:
+                    sessions = await list_sessions(db, state.campaign_id)
+                    session_num_by_id = {str(s.id): s.session_number for s in sessions}
 
-                events = await list_events(
-                    db,
-                    campaign_id=state.campaign_id,
-                    role="player",
-                    session_id=filter_session_id,
-                )
+                    events = await list_events(
+                        db,
+                        campaign_id=state.campaign_id,
+                        role="player",
+                        session_id=filter_session_id,
+                    )
 
-            if type_filter:
-                events = [e for e in events if e.event_type in type_filter]
+                if type_filter:
+                    events = [e for e in events if e.event_type in type_filter]
 
-            rows: list[list[Any]] = []
-            ids: list[str] = []
-            for e in events:
-                session_label = (
-                    f"Session {session_num_by_id[str(e.session_id)]}"
-                    if e.session_id and str(e.session_id) in session_num_by_id
-                    else "—"
-                )
-                preview = (e.content[:100] + "…") if len(e.content) > 100 else e.content
-                rows.append([
-                    session_label,
-                    e.event_type.replace("_", " ").title(),
-                    preview,
-                ])
-                ids.append(str(e.id))
+                rows: list[list[Any]] = []
+                ids: list[str] = []
+                for e in events:
+                    session_label = (
+                        f"Session {session_num_by_id[str(e.session_id)]}"
+                        if e.session_id and str(e.session_id) in session_num_by_id
+                        else "—"
+                    )
+                    preview = (
+                        (e.content[:100] + "…") if len(e.content) > 100 else e.content
+                    )
+                    rows.append(
+                        [
+                            session_label,
+                            e.event_type.replace("_", " ").title(),
+                            preview,
+                        ]
+                    )
+                    ids.append(str(e.id))
 
-            return rows, ids
+                return rows, ids
+            except Exception:
+                # Return empty data if there's an error
+                return [], []
 
         async def on_refresh(
             state: CampaignSession | None,
@@ -143,65 +156,86 @@ def build_player_history_page(session_state: gr.State) -> None:
             type_filter: list[str],
             session_map: dict[str, str],
         ) -> tuple[list[list[Any]], list[str]]:
-            return await load_events(state, selected_session, type_filter, session_map)
+            try:
+                return await load_events(
+                    state, selected_session, type_filter, session_map
+                )
+            except Exception:
+                return [], []
 
         async def on_select_row(evt: gr.SelectData, ids: list[str]) -> str:
-            if not ids or evt.index[0] >= len(ids):
-                return ""
-            from core.models import StoryEvent
-            from sqlalchemy import select as sa_select
-            event_id = uuid.UUID(ids[evt.index[0]])
-            async with await _backend.get_session() as db:
-                result = await db.execute(
-                    sa_select(StoryEvent).where(StoryEvent.id == event_id)
+            try:
+                if not ids or evt.index[0] >= len(ids):
+                    return ""
+                from core.models import StoryEvent
+                from sqlalchemy import select as sa_select
+
+                event_id = uuid.UUID(ids[evt.index[0]])
+                async with await _backend.get_session() as db:
+                    result = await db.execute(
+                        sa_select(StoryEvent).where(StoryEvent.id == event_id)
+                    )
+                    event = result.scalar_one_or_none()
+                if event is None:
+                    return "*Event not found.*"
+                participants = ", ".join(
+                    p.get("name", "") for p in (event.participants or [])
                 )
-                event = result.scalar_one_or_none()
-            if event is None:
-                return "*Event not found.*"
-            participants = ", ".join(
-                p.get("name", "") for p in (event.participants or [])
-            )
-            event_type_label = event.event_type.replace("_", " ").title()
-            lines = [f"**{event_type_label}**", "", event.content]
-            if participants:
-                lines += ["", f"*Participants: {participants}*"]
-            return "\n".join(lines)
+                event_type_label = event.event_type.replace("_", " ").title()
+                lines = [f"**{event_type_label}**", "", event.content]
+                if participants:
+                    lines += ["", f"*Participants: {participants}*"]
+                return "\n".join(lines)
+            except Exception:
+                return "*Error loading event details.*"
 
         session_state.change(
             on_refresh,
             inputs=[
-                session_state, session_selector,
-                event_type_filter, session_map_state,
+                session_state,
+                session_selector,
+                event_type_filter,
+                session_map_state,
             ],
             outputs=[
-                session_selector, session_map_state,
-                history_display, event_ids_state,
+                session_selector,
+                session_map_state,
+                history_display,
+                event_ids_state,
             ],
         )
         refresh_btn.click(
             on_refresh,
             inputs=[
-                session_state, session_selector,
-                event_type_filter, session_map_state,
+                session_state,
+                session_selector,
+                event_type_filter,
+                session_map_state,
             ],
             outputs=[
-                session_selector, session_map_state,
-                history_display, event_ids_state,
+                session_selector,
+                session_map_state,
+                history_display,
+                event_ids_state,
             ],
         )
         session_selector.change(
             on_session_or_filter_change,
             inputs=[
-                session_state, session_selector,
-                event_type_filter, session_map_state,
+                session_state,
+                session_selector,
+                event_type_filter,
+                session_map_state,
             ],
             outputs=[history_display, event_ids_state],
         )
         event_type_filter.change(
             on_session_or_filter_change,
             inputs=[
-                session_state, session_selector,
-                event_type_filter, session_map_state,
+                session_state,
+                session_selector,
+                event_type_filter,
+                session_map_state,
             ],
             outputs=[history_display, event_ids_state],
         )

@@ -100,7 +100,7 @@ def create_app() -> gr.Blocks:
             user: UserInfo | None, session: CampaignSession | None
         ) -> tuple[Any, ...]:
             """Return visibility/value updates for all panels."""
-            if user is None:
+            if user is None and session is None:
                 return (
                     gr.update(visible=True),  # auth_col
                     gr.update(visible=False),  # banner
@@ -108,6 +108,17 @@ def create_app() -> gr.Blocks:
                     gr.update(visible=False),  # player_col
                     gr.update(visible=False),  # gm_col
                     gr.update(value=""),  # gm_join_code
+                )
+            if user is None and session is not None:
+                # Player joined via join code — no User account, session only
+                show_banner = not session.ai_available
+                return (
+                    gr.update(visible=False),
+                    gr.update(visible=show_banner),
+                    gr.update(visible=False),
+                    gr.update(visible=True),
+                    gr.update(visible=False),
+                    gr.update(value=""),
                 )
             if session is None:
                 return (

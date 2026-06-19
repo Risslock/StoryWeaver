@@ -10,7 +10,11 @@
       "Bash(git -C \"c:\\\\Users\\\\juane\\\\Documents\\\\personal\\\\projects\\\\StoryWeaver\" branch -a)",
       "Bash(git -C \"c:\\\\Users\\\\juane\\\\Documents\\\\personal\\\\projects\\\\StoryWeaver\" log --oneline -5)",
       "PowerShell(cd \"C:\\\\Users\\\\juane\\\\Documents\\\\personal\\\\projects\\\\StoryWeaver\\\\apps\\\\web\"; uv run pyright . 2>&1 | Select-String -Pattern \"error:\" | Where-Object { $_ -notmatch \"reportMissingTypeStubs|reportUnknownMemberType|reportUnknownVariableType|reportUnknownParameterType|reportUnknownArgumentType\" } | Select-Object -First 20)",
-      "PowerShell(.specify/scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks)"
+      "PowerShell(.specify/scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks)",
+      "PowerShell(uv run pytest -v 2>&1)",
+      "PowerShell(tail -20)",
+      "PowerShell(uv run python -c \"import uvicorn; print\\(uvicorn.__version__\\)\")",
+      "Bash(python)"
     ],
     "additionalDirectories": [
       "c:\\Users\\juane\\Documents\\personal\\projects\\StoryWeaver\\packages\\imagegen\\imagegen"
