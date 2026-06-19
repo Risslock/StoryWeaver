@@ -102,6 +102,7 @@ docs/_build/
 # --- Model Context Protocol (MCP) servers & configuration ----
 mcps/
 playwright-mcp/
+.playwright-mcp/
 .mcp.json
 
 # --- IDE — VS Code ------------------------------------------------------------
