@@ -2,7 +2,9 @@
 
 **Feature**: 002-auth-admin-ui | **Date**: 2026-06-19
 
-This contract defines the unauthenticated registration Gradio app served at `/register`.
+> **Implementation Decision (2026-06-19)**: The registration form is **not** served at `/register` in the current implementation. Instead it is embedded as a **Create Account** tab inside `pages/auth.py`, which renders within the main app's `auth_col` when `user_state` is `None`. The standalone `create_registration_app()` factory in `pages/registration.py` was implemented per this contract but is not mounted in `main.py`. It is kept as a future opt-in standalone endpoint. The behaviour (validation, error messages, `register_user` call) is identical. See plan.md "Implementation Decision — Auth Mechanism Change".
+
+This contract defines the unauthenticated registration Gradio app served at `/register` (original design intent).
 
 ---
 

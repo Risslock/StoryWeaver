@@ -3,32 +3,49 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, date
+from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy import (
+    JSON,
     Boolean,
-    DateTime,
     Date,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
-    JSON,
     String,
     Text,
     UniqueConstraint,
     Uuid,
+    func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def _now() -> datetime:
-    from datetime import timezone
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Base(DeclarativeBase):
     pass
+
+
+class User(Base):
+    __tablename__ = "users"
+    __table_args__ = (
+        Index("ix_users_username", "username", unique=True),
+        Index("ix_users_email", "email", unique=True),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    username: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+    campaigns: Mapped[list[Campaign]] = relationship("Campaign", back_populates="owner", cascade="all, delete-orphan")
 
 
 class Campaign(Base):
@@ -36,16 +53,19 @@ class Campaign(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    join_code: Mapped[str] = mapped_column(String(8), nullable=False, unique=True, index=True)
+    join_code: Mapped[str] = mapped_column(String(6), nullable=False, unique=True, index=True)
     gm_display_name: Mapped[str] = mapped_column(String(100), nullable=False)
     game_system: Mapped[str] = mapped_column(String(50), nullable=False, default="earthdawn_4e")
     settings: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    owner_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
 
+    owner: Mapped[User] = relationship("User", back_populates="campaigns")
     characters: Mapped[list[Character]] = relationship("Character", back_populates="campaign", cascade="all, delete-orphan")
     npcs: Mapped[list[NPC]] = relationship("NPC", back_populates="campaign", cascade="all, delete-orphan")
     sessions: Mapped[list[Session]] = relationship("Session", back_populates="campaign", cascade="all, delete-orphan")
     session_plans: Mapped[list[SessionPlan]] = relationship("SessionPlan", back_populates="campaign", cascade="all, delete-orphan")
+    players: Mapped[list[Player]] = relationship("Player", back_populates="campaign", cascade="all, delete-orphan")
 
 
 class Character(Base):
@@ -174,3 +194,43 @@ class SessionPlan(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
 
     campaign: Mapped[Campaign] = relationship("Campaign", back_populates="session_plans")
+
+
+class Player(Base):
+    __tablename__ = "players"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    campaign_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False)
+    player_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    character_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("characters.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+    campaign: Mapped[Campaign] = relationship("Campaign", back_populates="players")
+
+
+# Functional unique indexes — defined after all classes so column references resolve.
+# Mirror Alembic migration 0002; also used by Base.metadata.create_all() in tests.
+Index(
+    "ix_campaigns_owner_name_lower",
+    func.lower(Campaign.name),
+    Campaign.owner_id,
+    unique=True,
+)
+Index(
+    "ix_characters_campaign_name_lower",
+    func.lower(Character.name),
+    Character.campaign_id,
+    unique=True,
+)
+Index(
+    "ix_npcs_campaign_name_lower",
+    func.lower(NPC.name),
+    NPC.campaign_id,
+    unique=True,
+)
+Index(
+    "ix_players_campaign_player_name_lower",
+    func.lower(Player.player_name),
+    Player.campaign_id,
+    unique=True,
+)

@@ -8,7 +8,8 @@
       "PowerShell(& \".specify/scripts/powershell/check-prerequisites.ps1\" -Json -RequireTasks -IncludeTasks 2>&1)",
       "Bash(mkdir -p \"c:/Users/juane/Documents/personal/projects/StoryWeaver/packages/imagegen/imagegen/providers\")",
       "Bash(git -C \"c:\\\\Users\\\\juane\\\\Documents\\\\personal\\\\projects\\\\StoryWeaver\" branch -a)",
-      "Bash(git -C \"c:\\\\Users\\\\juane\\\\Documents\\\\personal\\\\projects\\\\StoryWeaver\" log --oneline -5)"
+      "Bash(git -C \"c:\\\\Users\\\\juane\\\\Documents\\\\personal\\\\projects\\\\StoryWeaver\" log --oneline -5)",
+      "PowerShell(cd \"C:\\\\Users\\\\juane\\\\Documents\\\\personal\\\\projects\\\\StoryWeaver\\\\apps\\\\web\"; uv run pyright . 2>&1 | Select-String -Pattern \"error:\" | Where-Object { $_ -notmatch \"reportMissingTypeStubs|reportUnknownMemberType|reportUnknownVariableType|reportUnknownParameterType|reportUnknownArgumentType\" } | Select-Object -First 20)"
     ],
     "additionalDirectories": [
       "c:\\Users\\juane\\Documents\\personal\\projects\\StoryWeaver\\packages\\imagegen\\imagegen"

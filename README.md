@@ -19,9 +19,9 @@ StoryWeaver is an **unofficial, fan-made companion tool**. *Earthdawn* is a trad
 
 ---
 
-## Current Status (as of Phase 9 completion)
+## Current Status (as of Phase 10 completion)
 
-All milestones M0–M4 are **implemented and passing integration tests**.
+All milestones M0–M5 are **implemented and passing integration tests**.
 
 | Milestone | Status | What it delivers |
 |-----------|--------|-----------------|
@@ -32,6 +32,7 @@ All milestones M0–M4 are **implemented and passing integration tests**.
 | M4 — Story history + GM planning | ✅ Complete | Persistent timeline, role-scoped events, session planning agent |
 | M4.5 — RAG layer | ✅ Implemented | ChromaDB history/character/rules indexes; twin falls back to SQL when unavailable |
 | M5 — Cloud providers | ✅ Implemented | Anthropic, OpenAI, HuggingFace LLM providers; Postgres adapter; harness runner complete |
+| M6 — Auth & Admin UI | ✅ Implemented | GM account registration/login, campaign admin dashboard, join code sharing, player rejoin, character/NPC upsert semantics |
 
 ### Known limitations
 
@@ -39,8 +40,11 @@ All milestones M0–M4 are **implemented and passing integration tests**.
 - **RAG indexes are not auto-populated**: story events must be indexed by calling `HistoryRetriever.index_event()` at write time; the twin falls back to SQL if the index is empty.
 - **No cloud vector store**: pgvector integration is stubbed but not wired into the RAG layer (Postgres storage adapter is ready; pgvector queries require a future migration).
 - **Twin dialogue eval**: `harness/scenarios/twin_dialogue/` scenarios are SKIP in the automated runner — they require a live LLM and are scored via `harness/scoring/rubrics.py` instead.
-- **Docker end-to-end validation** (T066) requires a Docker host; the compose files are ready but automated CI validation against a live stack has not been run.
-- **M6 — Beyond Earthdawn**: system-agnostic core and second rule system are not yet implemented.
+- **Docker end-to-end validation** requires a Docker host; the compose files are ready but automated CI validation against a live stack has not been run.
+- **No password reset**: GM account password reset is out of scope for this phase.
+- **No join code rotation**: once a join code is set at campaign creation, it cannot be changed.
+- **Player passwords**: players join via campaign name + join code + player name; they still need a StoryWeaver account to access the authenticated main app. Per-player passwords (separate from the account password) are out of scope.
+- **M7 — Beyond Earthdawn**: system-agnostic core and second rule system are not yet implemented.
 
 ---
 
@@ -57,6 +61,10 @@ All milestones M0–M4 are **implemented and passing integration tests**.
 - **RAG layer** — ChromaDB-backed history, character, and rules indexes; twin recall falls back to SQL when RAG is unavailable.
 - **Cloud LLM providers** — Anthropic, OpenAI, and HuggingFace providers behind the same `LLMProvider` interface; switch via `LLM_PROVIDER` env var.
 - **Postgres storage** — async Postgres adapter behind the same `StorageBackend` interface; switch via `DATABASE_URL`.
+- **GM authentication** — bcrypt account system; register at `/register`, log in at `/` via Gradio built-in auth.
+- **Campaign admin dashboard** — GMs see all their campaigns, create new ones, and navigate to campaign detail with copyable join code.
+- **Player rejoin** — players enter campaign name + join code + player name; character state is automatically restored across sessions.
+- **Character/NPC upsert** — creating a character or NPC with a name that matches an existing one (case-insensitive, per campaign) updates the record instead of creating a duplicate.
 
 ### Planned
 
@@ -143,9 +151,15 @@ flowchart TD
 StoryWeaver/
 ├── apps/
 │   └── web/                        # Gradio UI entry point
-│       ├── app.py                  # App factory, session routing
+│       ├── main.py                 # FastAPI ASGI entry point (uvicorn main:app)
+│       ├── app.py                  # Gradio app factory, session routing
+│       ├── services/
+│       │   └── auth.py             # Password hashing, auth callable factory, register_user
 │       ├── pages/
-│       │   ├── landing.py          # Campaign create/join (join code + display name)
+│       │   ├── landing.py          # Player campaign join (campaign name + join code)
+│       │   ├── registration.py     # Unauthenticated registration companion at /register
+│       │   ├── admin/
+│       │   │   └── campaigns.py    # GM campaign dashboard + campaign detail (join code)
 │       │   ├── player/             # Player views (character, twin chat, history)
 │       │   └── gm/                 # GM views (NPCs, characters, history, world notes, session plan)
 │       └── components/             # Shared Gradio components (banner, image display)
@@ -207,9 +221,10 @@ cp .env.example .env
 # 5. Run database migrations
 uv run alembic upgrade head
 
-# 6. Start the app
-uv run python apps/web/app.py
-# App available at http://localhost:7860
+# 6. Start the app (FastAPI + uvicorn entry point)
+cd apps/web && uv run uvicorn main:app --port 7860 --reload
+# Main app:        http://localhost:7860   (sign-in required)
+# Registration:    http://localhost:7860/register  (create a GM account first)
 ```
 
 ### Containerized (local Docker stack)

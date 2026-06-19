@@ -38,6 +38,10 @@ ignore = [
     "ANN102",  # missing type annotation for cls
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["ANN", "E501"]
+"**/models.py" = ["E501"]
+
 [tool.ruff.format]
 quote-style = "double"
 
