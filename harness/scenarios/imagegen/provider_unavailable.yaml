@@ -1,0 +1,77 @@
+# Imagegen harness scenarios: provider-unavailable path
+# Covers: T053 — mock provider raises ProviderUnavailableError or returns error response,
+# verifying that ImageGenResponse.error is non-None and image_url is None.
+
+scenarios:
+
+  - id: hf_no_api_key_returns_error
+    description: "HuggingFace provider with empty api_key returns error, not None image_url"
+    provider: huggingface
+    provider_config:
+      api_key: ""
+      model: "black-forest-labs/FLUX.1-schnell"
+    request:
+      prompt: "A troll warrior in plate armour"
+      entity_id: "00000000-0000-0000-0000-000000000001"
+    expected:
+      image_url: null
+      error_contains: "HF_API_KEY"
+
+  - id: hf_invalid_api_key_returns_error
+    description: "HuggingFace provider with invalid key returns 401 error in ImageGenResponse"
+    provider: huggingface
+    provider_config:
+      api_key: "hf_invalid_key_for_test"
+      model: "black-forest-labs/FLUX.1-schnell"
+    mock_http:
+      status_code: 401
+      body: '{"error": "Authorization error"}'
+    request:
+      prompt: "A windling scout in the forest"
+      entity_id: "00000000-0000-0000-0000-000000000002"
+    expected:
+      image_url: null
+      error_contains: "Invalid HuggingFace API key"
+
+  - id: hf_rate_limit_returns_error
+    description: "HuggingFace 429 rate limit is surfaced in ImageGenResponse.error"
+    provider: huggingface
+    provider_config:
+      api_key: "hf_test_key"
+      model: "black-forest-labs/FLUX.1-schnell"
+    mock_http:
+      status_code: 429
+      body: '{"error": "Rate limit exceeded"}'
+    request:
+      prompt: "An ork shaman with a staff"
+      entity_id: "00000000-0000-0000-0000-000000000003"
+    expected:
+      image_url: null
+      error_contains: "Rate limit exceeded"
+
+  - id: hf_model_loading_returns_error
+    description: "HuggingFace 503 (model loading) is surfaced as a user-friendly message"
+    provider: huggingface
+    provider_config:
+      api_key: "hf_test_key"
+      model: "black-forest-labs/FLUX.1-schnell"
+    mock_http:
+      status_code: 503
+      body: '{"error": "Model is currently loading"}'
+    request:
+      prompt: "A dwarf elementalist casting fire"
+      entity_id: "00000000-0000-0000-0000-000000000004"
+    expected:
+      image_url: null
+      error_contains: "loading"
+
+  - id: comfyui_connection_refused_raises_provider_unavailable
+    description: "ComfyUI provider raises ProviderUnavailableError when server is unreachable"
+    provider: comfyui
+    provider_config:
+      base_url: "http://127.0.0.1:19999"  # port with nothing listening
+    request:
+      prompt: "An elven archer in the moonlight"
+      entity_id: "00000000-0000-0000-0000-000000000005"
+    expected:
+      raises: "ProviderUnavailableError"

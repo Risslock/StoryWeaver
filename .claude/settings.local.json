@@ -3,7 +3,13 @@
     "allow": [
       "PowerShell(.specify/scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly)",
       "Bash(uv run *)",
-      "PowerShell(& \"c:\\\\Users\\\\juane\\\\Documents\\\\personal\\\\projects\\\\StoryWeaver\\\\.specify\\\\scripts\\\\powershell\\\\check-prerequisites.ps1\" -Json -RequireTasks -IncludeTasks)"
+      "PowerShell(& \"c:\\\\Users\\\\juane\\\\Documents\\\\personal\\\\projects\\\\StoryWeaver\\\\.specify\\\\scripts\\\\powershell\\\\check-prerequisites.ps1\" -Json -RequireTasks -IncludeTasks)",
+      "Bash(git checkout *)",
+      "PowerShell(& \".specify/scripts/powershell/check-prerequisites.ps1\" -Json -RequireTasks -IncludeTasks 2>&1)",
+      "Bash(mkdir -p \"c:/Users/juane/Documents/personal/projects/StoryWeaver/packages/imagegen/imagegen/providers\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\juane\\Documents\\personal\\projects\\StoryWeaver\\packages\\imagegen\\imagegen"
     ]
   }
 }

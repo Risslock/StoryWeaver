@@ -1,0 +1,69 @@
+# Imagegen harness scenarios: prompt construction
+# Covers: T053 — verifying that Character/NPC physical_description fields
+# produce the expected keyword set in the constructed prompt.
+
+scenarios:
+
+  - id: character_portrait_prompt_includes_description
+    description: "Character physical_description text appears verbatim in the constructed portrait prompt"
+    entity_type: character
+    entity_fields:
+      name: "Brekk Stonefist"
+      race: "Dwarf"
+      discipline: "Warrior"
+      physical_description: "stocky with braided red hair, battle-scarred knuckles, iron-grey eyes"
+    expected_prompt_contains:
+      - "Brekk Stonefist"
+      - "Dwarf"
+      - "Warrior"
+      - "stocky with braided red hair"
+      - "battle-scarred knuckles"
+      - "iron-grey eyes"
+    expected_style_hints:
+      - "fantasy portrait"
+      - "detailed"
+      - "professional illustration"
+
+  - id: npc_portrait_prompt_includes_description
+    description: "NPC physical_description and role appear in the constructed portrait prompt"
+    entity_type: npc
+    entity_fields:
+      name: "Vorgath"
+      race: "Ork"
+      role: "merchant"
+      physical_description: "heavyset, tusks filed to points, wearing rich merchant robes"
+    expected_prompt_contains:
+      - "Vorgath"
+      - "Ork"
+      - "merchant"
+      - "heavyset"
+      - "tusks filed to points"
+    expected_style_hints:
+      - "fantasy portrait"
+      - "detailed"
+      - "professional illustration"
+
+  - id: scene_illustration_prompt_is_gm_description
+    description: "Scene illustration prompt is exactly the GM-provided description plus style hints"
+    entity_type: scene
+    gm_description: "A torchlit kaer entrance flanked by ancient Theran wards, storm clouds overhead"
+    expected_prompt_contains:
+      - "torchlit kaer entrance"
+      - "Theran wards"
+      - "storm clouds overhead"
+    expected_style_hints:
+      - "fantasy scene"
+      - "detailed"
+      - "atmospheric illustration"
+      - "Earthdawn tabletop RPG"
+
+  - id: character_without_physical_description_blocked
+    description: "Portrait generation is blocked when physical_description is empty"
+    entity_type: character
+    entity_fields:
+      name: "Unnamed Hero"
+      race: "Human"
+      discipline: "Scout"
+      physical_description: ""
+    expected_blocked: true
+    expected_error_contains: "physical description"

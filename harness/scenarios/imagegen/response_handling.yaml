@@ -1,0 +1,71 @@
+# Imagegen harness scenarios: response handling
+# Covers: T053 — valid image_url from response is persisted to Character/NPC.portrait_url in DB.
+
+scenarios:
+
+  - id: successful_generation_persists_portrait_url
+    description: "Valid ImageGenResponse.image_url is written to Character.portrait_url in the database"
+    provider: mock
+    mock_response:
+      image_url: "/tmp/test_images/00000000-0000-0000-0000-aaaaaaaaaaaa.png"
+      error: null
+    entity_type: character
+    entity_fields:
+      name: "Kira Shadowstep"
+      race: "Elf"
+      discipline: "Scout"
+      physical_description: "lithe, silver hair, moves like smoke"
+    expected:
+      portrait_url_matches: "/tmp/test_images/00000000-0000-0000-0000-aaaaaaaaaaaa.png"
+      error: null
+
+  - id: successful_npc_generation_persists_portrait_url
+    description: "Valid ImageGenResponse.image_url is written to NPC.portrait_url in the database"
+    provider: mock
+    mock_response:
+      image_url: "/tmp/test_images/00000000-0000-0000-0000-bbbbbbbbbbbb.png"
+      error: null
+    entity_type: npc
+    entity_fields:
+      name: "Lord Vane"
+      race: "Human"
+      role: "villain"
+      physical_description: "tall, silver-streaked black hair, calculating pale eyes"
+    expected:
+      portrait_url_matches: "/tmp/test_images/00000000-0000-0000-0000-bbbbbbbbbbbb.png"
+      error: null
+
+  - id: failed_generation_does_not_update_portrait_url
+    description: "ImageGenResponse with error does not overwrite an existing portrait_url"
+    provider: mock
+    mock_response:
+      image_url: null
+      error: "Rate limit exceeded. Try again later."
+    entity_type: character
+    entity_fields:
+      name: "Thrak"
+      race: "Troll"
+      discipline: "Elementalist"
+      physical_description: "towering, grey-blue skin, crackling with elemental energy"
+      portrait_url: "/data/images/existing-portrait.png"
+    expected:
+      portrait_url_unchanged: "/data/images/existing-portrait.png"
+      error_contains: "Rate limit exceeded"
+
+  - id: portrait_persists_across_reload
+    description: "portrait_url stored in DB is returned correctly on subsequent character load"
+    provider: mock
+    mock_response:
+      image_url: "/tmp/test_images/persist-test.png"
+      error: null
+    entity_type: character
+    entity_fields:
+      name: "Persisted Hero"
+      race: "Human"
+      discipline: "Warrior"
+      physical_description: "tall, scarred, amber eyes"
+    steps:
+      - action: generate_portrait
+        expected_image_url: "/tmp/test_images/persist-test.png"
+      - action: reload_character
+        expected_portrait_url: "/tmp/test_images/persist-test.png"
