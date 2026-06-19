@@ -20,6 +20,11 @@ from storage.sqlite.adapter import SQLiteBackend
 _backend = SQLiteBackend(settings.database_url)
 
 
+def get_backend() -> SQLiteBackend:
+    """Return the module-level storage backend singleton."""
+    return _backend
+
+
 def _generate_join_code() -> str:
     return "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
 

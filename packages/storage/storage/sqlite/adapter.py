@@ -43,6 +43,13 @@ class SQLiteBackend(StorageBackend):
     async def get_session(self) -> AsyncSession:
         return self._session_factory()
 
+    async def verify_wal_mode(self) -> bool:
+        """Return True if the SQLite WAL journal mode is active on this database."""
+        async with self._engine.connect() as conn:
+            result = await conn.execute(text("PRAGMA journal_mode"))
+            mode = result.scalar_one()
+            return str(mode).lower() == "wal"
+
     async def execute(self, statement: Any, params: dict[str, Any] | None = None) -> Any:
         async with self._engine.connect() as conn:
             result = await conn.execute(text(statement) if isinstance(statement, str) else statement, params or {})

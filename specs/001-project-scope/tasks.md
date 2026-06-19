@@ -140,8 +140,8 @@
 
 **Independent Test**: GM and one player join same campaign; GM logs a public event and creates a private NPC note; player refreshes and sees the shared event but not the private note.
 
-- [ ] T055 [US5] Integrate multi-user session isolation in `apps/web/app.py` — verify `gr.State()` is per-browser-tab (Gradio 4.x isolation), `CampaignSession` does not leak across concurrent user sessions, `PRAGMA journal_mode=WAL` is active for concurrent SQLite writers (from packages/storage/sqlite/)
-- [ ] T056 [P] [US5] Create `tests/integration/test_shared_campaign.py` — GM logs public event → Player refresh sees it in story history (US5 scenario 2); GM creates private NPC note → Player cannot see it (US5 scenario 1); concurrent GM + Player actions produce no data corruption (US5 scenario 3)
+- [X] T055 [US5] Integrate multi-user session isolation in `apps/web/app.py` — verify `gr.State()` is per-browser-tab (Gradio 4.x isolation), `CampaignSession` does not leak across concurrent user sessions, `PRAGMA journal_mode=WAL` is active for concurrent SQLite writers (from packages/storage/sqlite/)
+- [X] T056 [P] [US5] Create `tests/integration/test_shared_campaign.py` — GM logs public event → Player refresh sees it in story history (US5 scenario 2); GM creates private NPC note → Player cannot see it (US5 scenario 1); concurrent GM + Player actions produce no data corruption (US5 scenario 3)
 
 **Checkpoint**: US5 is fully functional. Multi-user shared campaign works correctly with role-scoped visibility and refresh-based sync.
 
