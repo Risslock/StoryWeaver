@@ -1,0 +1,54 @@
+# Session planning scenarios: empty history
+# Covers US6 acceptance scenario 3 — empty history returns a starter plan with minimal-history note
+
+scenarios:
+
+  - id: session_plan_empty_history_returns_starter
+    description: "No sessions or events — tool returns a starter plan containing minimal-history note"
+    tool: generate_session_plan
+    setup:
+      campaign:
+        name: "Empty History Plan Test"
+        join_code: "PLAN0030"
+        gm_display_name: "PlanGM"
+      sessions: []
+      events: []
+    plan_input:
+      session_number: 1
+      focus_hints: []
+    expected:
+      outcome: success
+      events_referenced_count: 0
+      plan_not_empty: true
+      plan_must_contain_one_of:
+        - "minimal"
+        - "starter"
+        - "history"
+      plan_must_have_sections: true
+
+  - id: session_plan_empty_history_with_focus_hints
+    description: "Empty history with focus hints — starter plan incorporates GM hints"
+    tool: generate_session_plan
+    setup:
+      campaign:
+        name: "Empty Focus Plan Test"
+        join_code: "PLAN0031"
+        gm_display_name: "PlanGM"
+      sessions: []
+      events: []
+    plan_input:
+      session_number: 1
+      focus_hints:
+        - "Establish the conflict with the Theran Empire"
+        - "Introduce the main villain"
+    expected:
+      outcome: success
+      events_referenced_count: 0
+      plan_not_empty: true
+      plan_must_contain_one_of:
+        - "minimal"
+        - "starter"
+        - "history"
+      focus_hints_in_plan:
+        - "Theran Empire"
+        - "villain"

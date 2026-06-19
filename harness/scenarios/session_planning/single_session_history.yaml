@@ -1,0 +1,70 @@
+# Session planning scenarios: single-session history
+# Covers US6 acceptance scenario 1 — plan cites that session's events by content
+
+scenarios:
+
+  - id: session_plan_cites_single_session_events
+    description: "Single session of history — generated plan prompt includes those event contents"
+    tool: generate_session_plan
+    setup:
+      campaign:
+        name: "Single Session Plan Test"
+        join_code: "PLAN0010"
+        gm_display_name: "PlanGM"
+      sessions:
+        - title: "Session 1: The Curse Awakens"
+          date_played: "2026-01-10"
+      events:
+        - session_index: 0
+          event_type: "plot_thread_opened"
+          content: "The party found the Obsidian Amulet buried in the cursed tomb."
+          is_public: true
+        - session_index: 0
+          event_type: "decision"
+          content: "The party decided to seek out the Elven sage in the eastern marshes."
+          is_public: true
+        - session_index: 0
+          event_type: "npc_state_change"
+          content: "Elder Thoran revealed he was a former Blood Warder, now in hiding."
+          is_public: false
+    plan_input:
+      session_number: 2
+      focus_hints: []
+    expected:
+      outcome: success
+      events_referenced_count: 3
+      plan_not_empty: true
+      prompt_must_contain:
+        - "Obsidian Amulet"
+        - "Elven sage"
+        - "Blood Warder"
+
+  - id: session_plan_with_focus_hints
+    description: "Focus hints appear in the planning prompt"
+    tool: generate_session_plan
+    setup:
+      campaign:
+        name: "Focus Hint Test"
+        join_code: "PLAN0011"
+        gm_display_name: "PlanGM"
+      sessions:
+        - title: "Session 1: First Steps"
+          date_played: "2026-02-01"
+      events:
+        - session_index: 0
+          event_type: "dialogue"
+          content: "The party negotiated passage through the Theran garrison."
+          is_public: true
+    plan_input:
+      session_number: 2
+      focus_hints:
+        - "Introduce the Passions' temple subplot"
+        - "Bring back Captain Valdris as a recurring antagonist"
+    expected:
+      outcome: success
+      events_referenced_count: 1
+      plan_not_empty: true
+      prompt_must_contain:
+        - "Theran garrison"
+        - "Passions' temple subplot"
+        - "Captain Valdris"
