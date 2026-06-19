@@ -1,29 +1,26 @@
 <!--
 ## Sync Impact Report
 
-**Version Change**: 1.1.0 → 1.2.0
-**Type of Bump**: MINOR — added Principle VI (Product-First Development), restricted UI to
-Gradio-only (FastAPI removed as an option), and mandated mock authentication via the
-existing SQLite database and User/Player/GameStar models.
+**Version Change**: 1.2.0 → 1.3.0
+**Type of Bump**: MINOR — added Principle VII (Placeholder-First & Explicit Failures) and
+updated Development Workflow step 4 to mandate placeholder stubs before real implementation.
 
 ### Principles Modified
-- None renamed. Principles I–V content unchanged.
+- None renamed. Principles I–VI content unchanged.
 
 ### Principles Added
-- **VI. Product-First Development** (new) — prioritises user-facing features over
-  infrastructure complexity and security hardening until product-market fit is established.
+- **VII. Placeholder-First & Explicit Failures** (new) — every feature starts as a visible
+  stub; all failures MUST be surfaced to the user, never swallowed silently.
 
-### Technology Stack Constraints Modified
-- **UI**: FastAPI removed as optional backend API option. Gradio is now the exclusive
-  UI framework for all milestones, eliminating session and state management complexity.
-- **Authentication**: Explicit mock-auth mandate added — use the existing SQLite database
-  and the User, Player, GameStar SQLAlchemy models; no production auth stack until
-  product-market fit is confirmed.
+### Workflow Modified
+- Step 4 (Implement): expanded to require placeholder stubs before wiring real logic, and
+  to mandate visible error surfaces over silent failures.
 
 ### Templates Reviewed
 - `.specify/templates/plan-template.md` ✅ — Constitution Check gate is generic; no change required.
-- `.specify/templates/spec-template.md` ✅ — No FastAPI or auth-specific scope conflicts; no change required.
-- `.specify/templates/tasks-template.md` ✅ — Foundational tasks remain valid; no structural change required.
+- `.specify/templates/spec-template.md` ✅ — No conflicts; no change required.
+- `.specify/templates/tasks-template.md` ✅ — Foundational phase already supports stub tasks;
+  no structural change required.
 
 ### Deferred TODOs
 - TODO(LICENSE): Still unresolved — project license TBD before public release.
@@ -125,6 +122,28 @@ infrastructure before validating that users want the product wastes the most sca
 resource: focus. Mock auth and a Gradio-only UI eliminate entire categories of complexity
 (session tokens, CORS, state synchronisation) so the team ships features instead.
 
+### VII. Placeholder-First & Explicit Failures
+
+Every feature MUST be implemented in two passes: a visible placeholder stub first, then
+real logic wired in on top.
+A placeholder MUST render a clear, user-visible message such as
+`"[Feature name] — not yet implemented"` so the app can be launched, navigated, and
+demoed at any point in development regardless of backend completeness.
+Placeholders MUST NOT be invisible (blank output, missing tab, hidden component) — the
+user MUST always be able to see that a feature exists and is coming.
+All exceptions and error conditions MUST be caught and surfaced to the user with a
+descriptive message in the Gradio UI. Silent failure — where an exception is swallowed,
+logged only to the console, or produces a blank/unchanged UI — is a defect.
+Error messages displayed to the user MUST identify what failed and, where possible,
+what the user can try next (e.g., "LLM unavailable — check that Ollama is running").
+`except: pass`, bare `except Exception`, and any catch-and-discard pattern MUST NOT
+appear in UI-facing code paths.
+
+**Rationale**: The team demos and tests constantly. A stub that says "coming soon" lets
+a demo proceed; a crash or blank panel kills it. Explicit, visible errors also shorten
+the debugging loop — a console-only traceback is invisible during a live session and
+silently misleads stakeholders into thinking something works when it does not.
+
 ## Technology Stack Constraints
 
 The following technology choices are project-wide defaults. Deviations MUST be recorded
@@ -161,7 +180,11 @@ as an Architecture Decision Record (ADR) under `docs/adr/` before implementation
    (e.g., the agent framework choice — see ADR-005 — MUST be resolved before M2 begins.)
 3. **Harness coverage**: Add or extend harness evals for any agent or tool behaviour
    introduced or changed.
-4. **Implement**: Write code against the spec. Keep packages isolated.
+4. **Implement — placeholder first**: Wire up a visible placeholder stub for every new UI
+   surface before implementing real logic. The app MUST remain launchable and demo-able
+   after every commit. All error paths MUST display a user-visible message in the Gradio
+   UI — never log-only. Replace the placeholder with real logic incrementally; keep
+   packages isolated throughout.
 5. **Verify**: `pytest` passes; harness evals pass; `ruff` and `pyright` report no errors.
 6. **README currency**: Update `README.md` to reflect the current implemented state of
    the project. This MUST cover: newly completed features, changed setup/usage
@@ -193,4 +216,4 @@ amendment — not a quiet exception.
 
 Runtime development guidance lives in `README.md` and the `/specs` directory.
 
-**Version**: 1.2.0 | **Ratified**: 2026-06-18 | **Last Amended**: 2026-06-19
+**Version**: 1.3.0 | **Ratified**: 2026-06-18 | **Last Amended**: 2026-06-19
