@@ -42,11 +42,16 @@ def build_recall_tool(
     campaign_id: uuid.UUID,
     entity_type: str,
     db_session: Any,
+    rag_retriever: Any | None = None,
 ) -> Any:
     """Return an async callable suitable for registration as a Pydantic-AI tool.
 
     Access control: character twins (player context) receive only is_public=True
     events; NPC twins (GM context) receive all events.
+
+    When rag_retriever is provided (a HistoryRetriever instance), semantic search
+    is used and results are re-ordered by semantic relevance. Falls back to SQL
+    chronological query when RAG is unavailable.
     """
     from sqlalchemy import select
     from core.models import StoryEvent, Session as GameSession
@@ -54,6 +59,30 @@ def build_recall_tool(
     is_public_only = entity_type == "character"
 
     async def recall_story_events(inp: RecallEventsInput) -> RecallEventsOutput:
+        # Attempt semantic RAG retrieval first.
+        if rag_retriever is not None:
+            try:
+                chunks = await rag_retriever.search(inp.query, top_k=inp.limit)
+                if chunks:
+                    events: list[StoryEventSummary] = []
+                    for chunk in chunks:
+                        meta = chunk.metadata
+                        if is_public_only and not meta.get("is_public", True):
+                            continue
+                        sn = meta.get("session_number")
+                        events.append(
+                            StoryEventSummary(
+                                session_number=int(sn) if isinstance(sn, int) and sn >= 0 else None,
+                                event_type=str(meta.get("event_type", "unknown")),
+                                content=chunk.content,
+                                created_at=datetime.utcnow(),
+                            )
+                        )
+                    return RecallEventsOutput(events=events[: inp.limit])
+            except Exception:
+                pass  # RAG unavailable — fall through to SQL
+
+        # SQL chronological fallback.
         stmt = (
             select(StoryEvent, GameSession)
             .outerjoin(GameSession, StoryEvent.session_id == GameSession.id)
@@ -68,7 +97,7 @@ def build_recall_tool(
         result = await db_session.execute(stmt)
         rows = result.all()
 
-        events = [
+        sql_events = [
             StoryEventSummary(
                 session_number=row[1].session_number if row[1] else None,
                 event_type=row[0].event_type,
@@ -77,8 +106,8 @@ def build_recall_tool(
             )
             for row in rows
         ]
-        events.reverse()
-        return RecallEventsOutput(events=events)
+        sql_events.reverse()
+        return RecallEventsOutput(events=sql_events)
 
     return recall_story_events
 

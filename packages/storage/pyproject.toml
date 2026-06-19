@@ -6,6 +6,7 @@ dependencies = [
     "storyweaver-core",
     "sqlalchemy>=2.0",
     "aiosqlite>=0.20",
+    "asyncpg>=0.29",
 ]
 
 [build-system]

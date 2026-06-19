@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     llm_provider: str = "ollama"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3"
+    llm_api_key: str = ""
+    hf_llm_model: str = "mistralai/Mistral-7B-Instruct-v0.3"
     image_provider: str = "huggingface"
     hf_api_key: str = ""
     hf_image_model: str = "black-forest-labs/FLUX.1-schnell"
