@@ -47,7 +47,7 @@ scenarios:
       entity_id: "00000000-0000-0000-0000-000000000003"
     expected:
       image_url: null
-      error_contains: "Rate limit exceeded"
+      error_contains: "rate limit exceeded"
 
   - id: hf_model_loading_returns_error
     description: "HuggingFace 503 (model loading) is surfaced as a user-friendly message"

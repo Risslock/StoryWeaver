@@ -29,6 +29,7 @@ from pages.admin.campaigns import (
     CampaignPageRefs,
     build_campaigns_page,
     load_campaigns_for_user,
+    resume_campaign,
 )
 from pages.auth import build_auth_page
 from pages.gm.characters import build_characters_page
@@ -157,6 +158,19 @@ def create_app() -> gr.Blocks:
             _navigate,
             inputs=[user_state, session_state],
             outputs=_nav_outputs,
+        )
+
+        # ── Resume campaign — set session AND navigate in one event ──────────
+        async def _on_resume(
+            campaign_id_str: str | None, user: UserInfo | None
+        ) -> tuple[Any, ...]:
+            session = await resume_campaign(campaign_id_str, user)
+            return (session,) + _navigate(user, session)
+
+        campaign_refs.resume_btn.click(
+            _on_resume,
+            inputs=[campaign_refs.selected_campaign_id, user_state],
+            outputs=[session_state] + _nav_outputs,
         )
 
         # ── Sign-out ──────────────────────────────────────────────────────────

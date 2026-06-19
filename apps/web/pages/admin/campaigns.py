@@ -24,6 +24,8 @@ class CampaignPageRefs(NamedTuple):
     table: gr.Dataframe
     campaign_ids: gr.State
     no_campaigns_msg: gr.Markdown
+    resume_btn: gr.Button
+    selected_campaign_id: gr.State
 
 
 def _generate_join_code() -> str:
@@ -49,6 +51,34 @@ async def _fetch_campaigns(
     ]
     ids = [str(c.id) for c in campaigns]
     return rows, ids
+
+
+async def resume_campaign(
+    campaign_id_str: str | None,
+    user: UserInfo | None,
+) -> CampaignSession | None:
+    """Fetch campaign and build a GM session. Returns None if not found/authorised."""
+    if not campaign_id_str or user is None:
+        return None
+    backend = get_backend()
+    async with await backend.get_session() as session:
+        result = await session.execute(
+            select(Campaign).where(
+                Campaign.id == uuid.UUID(campaign_id_str),
+                Campaign.owner_id == user.user_id,
+            )
+        )
+        campaign = result.scalar_one_or_none()
+    if campaign is None:
+        return None
+    ai_available = await OllamaProvider().health_check()
+    return CampaignSession(
+        campaign_id=campaign.id,
+        display_name=user.username,
+        role="gm",
+        join_code=campaign.join_code,
+        ai_available=ai_available,
+    )
 
 
 async def load_campaigns_for_user(
@@ -125,15 +155,16 @@ def build_campaigns_page(
         game_system: str,
         ids: list[str],
         user: UserInfo | None,
-    ) -> tuple[Any, Any, Any, list[str]]:
+    ) -> tuple[Any, Any, Any, list[str], Any]:
         if user is None:
-            return gr.update(), gr.update(), gr.update(value="Not signed in."), ids
+            return gr.update(), gr.update(), gr.update(value="Not signed in."), ids, gr.update()
         if not name.strip():
             return (
                 gr.update(),
                 gr.update(),
                 gr.update(value="Campaign name cannot be empty."),
                 ids,
+                gr.update(),
             )
 
         backend = get_backend()
@@ -166,6 +197,7 @@ def build_campaigns_page(
                                 )
                             ),
                             ids,
+                            gr.update(),
                         )
                     continue  # join_code collision — retry
         else:
@@ -174,6 +206,7 @@ def build_campaigns_page(
                 gr.update(),
                 gr.update(value="Failed to generate a unique join code. Try again."),
                 ids,
+                gr.update(),
             )
 
         rows, new_ids = await _fetch_campaigns(user.user_id)
@@ -182,6 +215,7 @@ def build_campaigns_page(
             gr.update(visible=False),
             gr.update(value=""),
             new_ids,
+            gr.update(visible=False),
         )
 
     async def on_row_select(
@@ -231,32 +265,6 @@ def build_campaigns_page(
             gr.update(visible=False),  # detail_col
         )
 
-    async def on_resume(
-        campaign_id_str: str | None,
-        user: UserInfo | None,
-    ) -> CampaignSession | dict[str, Any]:
-        if not campaign_id_str or user is None:
-            return gr.update()
-        backend = get_backend()
-        async with await backend.get_session() as session:
-            result = await session.execute(
-                select(Campaign).where(
-                    Campaign.id == uuid.UUID(campaign_id_str),
-                    Campaign.owner_id == user.user_id,
-                )
-            )
-            campaign = result.scalar_one_or_none()
-        if campaign is None:
-            return gr.update()
-        ai_available = await OllamaProvider().health_check()
-        return CampaignSession(
-            campaign_id=campaign.id,
-            display_name=user.username,
-            role="gm",
-            join_code=campaign.join_code,
-            ai_available=ai_available,
-        )
-
     # ── Wire events ───────────────────────────────────────────────────────────
 
     new_campaign_btn.click(
@@ -268,7 +276,7 @@ def build_campaigns_page(
     create_btn.click(
         on_create_campaign,
         inputs=[campaign_name_in, game_system_in, campaign_ids, user_state],
-        outputs=[campaign_table, create_form, create_msg, campaign_ids],
+        outputs=[campaign_table, create_form, create_msg, campaign_ids, no_campaigns_msg],
     )
 
     campaign_table.select(
@@ -292,12 +300,6 @@ def build_campaigns_page(
         outputs=[dashboard_col, detail_col],
     )
 
-    resume_btn.click(
-        on_resume,
-        inputs=[selected_campaign_id, user_state],
-        outputs=[session_state],
-    )
-
     archive_btn.click(
         on_archive,
         inputs=[selected_campaign_id, user_state],
@@ -308,4 +310,6 @@ def build_campaigns_page(
         table=campaign_table,
         campaign_ids=campaign_ids,
         no_campaigns_msg=no_campaigns_msg,
+        resume_btn=resume_btn,
+        selected_campaign_id=selected_campaign_id,
     )

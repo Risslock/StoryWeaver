@@ -104,7 +104,7 @@ def build_gm_history_page(session_state: gr.State) -> None:
             datatype=["str", "str", "str", "str"],
             label="Story Events",
             interactive=False,
-            col_count=(4, "fixed"),
+            column_count=(4, "fixed"),
             wrap=True,
         )
 

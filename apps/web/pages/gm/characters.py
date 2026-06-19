@@ -70,7 +70,7 @@ def build_characters_page(session_state: gr.State) -> None:
             datatype=["str", "str", "str", "number", "str"],
             label="All Characters",
             interactive=False,
-            col_count=(5, "fixed"),
+            column_count=(5, "fixed"),
         )
 
         char_detail = gr.Markdown("*Select a row to view character details.*")
