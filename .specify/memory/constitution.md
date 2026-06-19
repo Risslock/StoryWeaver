@@ -1,20 +1,29 @@
 <!--
 ## Sync Impact Report
 
-**Version Change**: 1.0.0 → 1.1.0
-**Type of Bump**: MINOR — expanded README obligation in Principle I and added an explicit README Currency step to the Development Workflow.
+**Version Change**: 1.1.0 → 1.2.0
+**Type of Bump**: MINOR — added Principle VI (Product-First Development), restricted UI to
+Gradio-only (FastAPI removed as an option), and mandated mock authentication via the
+existing SQLite database and User/Player/GameStar models.
 
 ### Principles Modified
-- I. Spec-Driven Development: expanded README obligation to cover *current implemented state*, not just architecture/intent.
+- None renamed. Principles I–V content unchanged.
 
-### Sections Modified
-- Development Workflow: added step 6 (README Currency) as a mandatory post-implementation gate before Milestone gate.
+### Principles Added
+- **VI. Product-First Development** (new) — prioritises user-facing features over
+  infrastructure complexity and security hardening until product-market fit is established.
+
+### Technology Stack Constraints Modified
+- **UI**: FastAPI removed as optional backend API option. Gradio is now the exclusive
+  UI framework for all milestones, eliminating session and state management complexity.
+- **Authentication**: Explicit mock-auth mandate added — use the existing SQLite database
+  and the User, Player, GameStar SQLAlchemy models; no production auth stack until
+  product-market fit is confirmed.
 
 ### Templates Reviewed
 - `.specify/templates/plan-template.md` ✅ — Constitution Check gate is generic; no change required.
-- `.specify/templates/spec-template.md` ✅ — No README-related scope conflicts; no change required.
-- `.specify/templates/tasks-template.md` ✅ — Polish phase already includes `Documentation updates in docs/`;
-  README currency is now a named principle step — no structural change to template required.
+- `.specify/templates/spec-template.md` ✅ — No FastAPI or auth-specific scope conflicts; no change required.
+- `.specify/templates/tasks-template.md` ✅ — Foundational tasks remain valid; no structural change required.
 
 ### Deferred TODOs
 - TODO(LICENSE): Still unresolved — project license TBD before public release.
@@ -38,9 +47,9 @@ implemented state** of the project — including completed features, active limi
 changed setup or usage instructions. A README that describes planned or superseded
 functionality is a defect.
 
-**Rationale**: Non-deterministic AI components make "just try it" development expensive to reverse.
-Specs provide a stable contract that lets the team iterate on prompts and agents with
-confidence, not guesswork. An accurate README prevents the team from building on stale
+**Rationale**: Non-deterministic AI components make "just try it" development expensive to
+reverse. Specs provide a stable contract that lets the team iterate on prompts and agents
+with confidence, not guesswork. An accurate README prevents the team from building on stale
 assumptions about what the system actually does today.
 
 ### II. Provider Abstraction
@@ -98,6 +107,24 @@ assertions, not manual spot-checks alone.
 **Rationale**: Without measurable evals, prompt changes and model upgrades silently
 degrade behaviour. Harnesses make quality visible and regressions detectable.
 
+### VI. Product-First Development
+
+User-facing features that drive engagement and usage MUST take priority over infrastructure
+complexity, security hardening, and technical polish.
+Authentication MUST remain mocked using the existing SQLite database and the `User`,
+`Player`, and `GameStar` SQLAlchemy models until product-market fit is established; no
+production auth stack shall be introduced before that milestone.
+Features MUST be evaluated primarily by whether they deliver observable value to users, not
+by whether they satisfy non-functional requirements (performance benchmarks, audit logging,
+security hardening) — those are explicitly deferred.
+New scope MUST be rejected if it does not directly improve user experience or feature
+breadth; technical debt that does not impede feature delivery SHOULD be tolerated.
+
+**Rationale**: StoryWeaver is in a pre-product-market-fit phase. Over-engineering
+infrastructure before validating that users want the product wastes the most scarce
+resource: focus. Mock auth and a Gradio-only UI eliminate entire categories of complexity
+(session tokens, CORS, state synchronisation) so the team ships features instead.
+
 ## Technology Stack Constraints
 
 The following technology choices are project-wide defaults. Deviations MUST be recorded
@@ -106,8 +133,14 @@ as an Architecture Decision Record (ADR) under `docs/adr/` before implementation
 - **Language**: Python 3.11+ is the primary language. Rust or C++ extensions are
   permitted only for performance-critical paths (e.g., heavy rules math, image pipelines)
   and MUST be optional to build (Python fallback or stub required).
-- **UI**: Gradio. FastAPI is optional and introduced only when a separate backend API
-  is needed (M5+).
+- **UI**: Gradio is the exclusive UI framework. No separate backend API layer (FastAPI
+  or otherwise) MUST be introduced; doing so reintroduces session and state management
+  complexity that Principle VI explicitly defers. All UI state MUST be managed within
+  Gradio's native session and state model.
+- **Authentication**: Mock authentication backed by the existing SQLite database is
+  mandatory. The `User`, `Player`, and `GameStar` SQLAlchemy models MUST be used as-is
+  for identity and session context. No JWT, OAuth, or session-token infrastructure SHOULD
+  be added until product-market fit is confirmed (see Principle VI).
 - **Dependency management**: `uv` (recommended). Workspace config lives in
   `pyproject.toml` at the repository root.
 - **Containers**: Docker + Docker Compose (`deploy/compose/`). Both local and cloud
@@ -160,4 +193,4 @@ amendment — not a quiet exception.
 
 Runtime development guidance lives in `README.md` and the `/specs` directory.
 
-**Version**: 1.1.0 | **Ratified**: 2026-06-18 | **Last Amended**: 2026-06-19
+**Version**: 1.2.0 | **Ratified**: 2026-06-18 | **Last Amended**: 2026-06-19
