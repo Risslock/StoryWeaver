@@ -4,7 +4,7 @@
 - `id: UUID` — primary key
 - `username: str` — unique, 3–50 chars, case-insensitive uniqueness enforced by app logic and DB index
 - `email: str` — unique, normalized to lowercase
-- `hashed_password: str` — bcrypt hash stored in SQLite
+- `hashed_password: str` — SHA-256 hex digest (`hashlib.sha256(password.encode()).hexdigest()`); stored in the existing column; no bcrypt dependency
 - `is_active: bool`
 - `created_at: datetime`
 - Relationships:
@@ -17,6 +17,8 @@
 - `gm_display_name: str` — display name for the GM
 - `game_system: str` — e.g. `earthdawn_4e`
 - `settings: JSON` — persisted campaign settings
+- `world_notes: str | None` — single freeform Markdown document for the campaign; edited and rendered in the World Notes tab
+- `archived: bool` — defaults to `False`; when `True` the campaign is hidden from the GM's default campaign list but all data is retained
 - `created_at: datetime`
 - `owner_id: UUID` — foreign key to `User`
 - Relationships:
@@ -96,11 +98,13 @@
 ## Session
 - `id: UUID`
 - `campaign_id: UUID`
-- `session_number: int`
-- `title: str`
-- `date_played: date`
+- `session_number: int` — auto-incremented per campaign
+- `title: str` — GM-provided session name (e.g. "Session 1 — The Kaer")
+- `date_played: date` — defaults to creation date; editable by GM
 - `summary: str | None`
 - `created_at: datetime`
+- Behavior:
+  - GMs create a Session before logging story events. StoryEvents are linked to a Session via `session_id`. Sessions act as grouping headers in the Story History view.
 
 ## StoryEvent
 - `id: UUID`
@@ -140,7 +144,9 @@
 ## Key Validation Rules
 - `Campaign.join_code` must be globally unique.
 - `Campaign.name` must be unique per owner, case-insensitive.
+- `Campaign.archived` defaults to `False`; archived campaigns are excluded from the default campaign list query.
 - `Player.player_name` must be unique per campaign, case-insensitive.
 - `Character.name` must be unique per campaign, case-insensitive.
 - `NPC.name` must be unique per campaign, case-insensitive.
 - Player join requires non-empty `join_code` and `player_name`; campaign name is not required.
+- `StoryEvent.session_id` should reference an existing `Session` for the same campaign; standalone events without a session are permitted but displayed under an "Unsorted" group.

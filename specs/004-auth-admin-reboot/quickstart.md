@@ -43,6 +43,20 @@
 - If Ollama or ComfyUI are not running, verify the UI shows visible placeholder messages instead of blank tabs or crashes.
 - Expected outcome: AI-dependent tabs render a clear unavailable state and non-AI tabs remain interactive.
 
+### 6. Session Creation and Story Event Logging
+- As GM, enter a campaign and navigate to the **Story History** tab.
+- Create a new session with a title (e.g. "Session 1 — The Kaer") and today's date.
+- Select the session from the dropdown and log a story event (e.g. "The party discovered the sealed kaer entrance.").
+- Expected outcome: the history view shows the session as a header with the logged event beneath it.
+
+### 7. Players Tab
+- As GM, navigate to the **Players** tab.
+- Expected outcome: a read-only table shows all players who have joined the campaign with their player name and character name (or "—" if no character created yet). No edit or remove actions are present.
+
+### 8. Campaign Archive
+- On the campaign dashboard, select a campaign and click **Archive**.
+- Expected outcome: a visible confirmation message appears and the campaign no longer appears in the campaign table. Rejoining via the original join code returns "No campaign found with that join code" (the campaign is soft-deleted, not physically removed).
+
 ## Notes
 - The app should not require `uvicorn` as the standard runtime after this feature is implemented.
 - If local AI services are unavailable, the app should still launch and allow auth, campaign management, and player join.

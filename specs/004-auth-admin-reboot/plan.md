@@ -16,7 +16,7 @@ The plan keeps the Gradio UI architecture in `apps/web/app.py`, centralizes auth
 
 **Language/Version**: Python 3.11
 
-**Primary Dependencies**: Gradio 4.x, bcrypt, SQLAlchemy 2.x, aiosqlite, Ollama provider, ComfyUI optional
+**Primary Dependencies**: Gradio 4.x, SQLAlchemy 2.x, aiosqlite, Ollama provider, ComfyUI optional (bcrypt removed — password hashing uses SHA-256 via stdlib `hashlib`, no external dependency required)
 
 **Storage**: SQLite file-backed database with WAL mode
 

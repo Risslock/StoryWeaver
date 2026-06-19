@@ -39,22 +39,39 @@
 - `create_btn` — create campaign action
 - campaign table row selection
 - `resume_btn` — enter selected campaign
+- `archive_btn` — archive the selected campaign (soft-delete)
 
 ### Outputs
-- campaign table rows: `[Name, Join Code, Created]`
+- campaign table rows: `[Name, Join Code, Created]` — shows only non-archived campaigns by default
 - campaign detail fields: name, join code, game system, created date
 - `session_state` — `CampaignSession` with `role = "gm"` on resume
+- `archive_status` — visible confirmation or error message after archive action
 
 ### Contract
 - Campaign names must be unique per user, case-insensitive.
 - Duplicate names show a visible error message near the create form.
 - Successful campaign creation refreshes the table and hides the create form.
+- Archiving a campaign sets `Campaign.archived = True` and removes it from the table. A visible confirmation message is shown. No data is deleted.
 
 ## GM Dashboard
 ### Outputs
-- `gm_join_code` — read-only textbox showing the active campaign join code
-- Tabs: Characters, NPCs, Story History, World Notes, Session Plan
-- Visible placeholder banner when `CampaignSession.ai_available` is false
+- `gm_join_code` — read-only textbox showing the active campaign join code, displayed prominently at the top
+- Tabs: Characters, NPCs, Story History, World Notes, Session Plan, Players
+- Visible placeholder banner on AI-dependent tabs when `CampaignSession.ai_available` is false
+
+### World Notes Tab Contract
+- Inputs: `world_notes_input` (Markdown text area), `save_notes_btn`
+- Outputs: rendered Markdown preview of the saved content, `notes_status` (visible save confirmation or error)
+- Behavior: loads the current `Campaign.world_notes` value on tab entry; saving writes to `Campaign.world_notes` and re-renders the Markdown preview.
+
+### Story History Tab Contract
+- Inputs: `session_title` (textbox), `session_date` (date picker, defaults to today), `create_session_btn`; `event_description` (textbox), `log_event_btn`, `session_selector` (dropdown — selects which session to log under)
+- Outputs: history view grouped by Session (session title as header, story events listed below); `session_status` / `event_status` visible messages
+- Behavior: GMs create a Session before logging events; events are displayed grouped by session in chronological order.
+
+### Players Tab Contract
+- Outputs: read-only table with columns `[Player Name, Character Name]`; character name shows "—" if no character has been created yet
+- Behavior: lists all `Player` records for the active campaign; no edit or remove actions.
 
 ## Player Dashboard
 ### Outputs

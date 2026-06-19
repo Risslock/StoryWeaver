@@ -15,6 +15,11 @@
 ### Session 2026-06-19
 
 - Q: What fields does a player need to join a campaign? → A: Join code and player name only. The join code is globally unique and identifies the campaign on its own. No campaign name input is required on the player join form.
+- Q: What does "simplified (lighter) password check" mean for sign-in implementation? → A: SHA-256 hash — store `sha256(password)` in the existing `hashed_password` column; no bcrypt dependency, no threading workaround required.
+- Q: What is a "World Note" — what data model and rendering does it require? → A: A single freeform Markdown document stored per campaign and rendered as Markdown in the UI. No separate entity table; stored as a text field on the Campaign record.
+- Q: Can GMs delete or remove campaigns? → A: Soft-delete / archive only — an "Archive" button hides the campaign from the GM's default list; all campaign data (players, characters, history) is retained.
+- Q: Is "Session" a separate entity from StoryEvent, or just an alias for the event log? → A: Session is a lightweight header (name + date) per campaign; story events are linked to a session. GMs create a new session before logging events under it.
+- Q: Can GMs see who has joined their campaign ("manage users")? → A: Yes — a read-only "Players" tab in the GM dashboard lists all players who have joined (player name + character name). No remove action required.
 
 ---
 
@@ -139,13 +144,13 @@ Specs, plans, and task lists from prior phases that are now superseded by this r
 ### Functional Requirements
 
 - **FR-001**: The system MUST provide a single Gradio auth screen with two panels: "Sign In" and "Create Account". No separate registration URL or page is required.
-- **FR-002**: Sign-in MUST validate the username and password against the existing `User` SQLite table. On success, the user's identity is stored in a `gr.State` object for the active browser tab.
+- **FR-002**: Sign-in MUST validate the username and password against the existing `User` SQLite table by comparing `sha256(entered_password)` against the stored `hashed_password` value. On success, the user's identity is stored in a `gr.State` object for the active browser tab.
 - **FR-003**: Account creation MUST insert a new row into the `User` table and immediately transition the UI to the authenticated campaign dashboard — no additional sign-in step after registration.
 - **FR-004**: All sign-in and registration errors MUST be displayed as visible text inside the Gradio UI. Errors MUST NOT be logged to the server console only.
 - **FR-005**: The application MUST launch as a pure Gradio app (`gr.Blocks().launch()`). No FastAPI ASGI wrapper or uvicorn entrypoint is required for standard use.
 - **FR-006**: An authenticated GM MUST see a campaign dashboard listing all their campaigns, with each campaign's name, join code, and creation date visible.
 - **FR-007**: GMs MUST be able to create a new campaign. Campaign names MUST be unique per account (case-insensitive); duplicates MUST be rejected with a visible UI error.
-- **FR-008**: GMs MUST be able to enter a campaign and access a GM dashboard with these tabs: Characters, NPCs, Story History, World Notes, Session Plan.
+- **FR-008**: GMs MUST be able to enter a campaign and access a GM dashboard with these tabs: Characters, NPCs, Story History, World Notes, Session Plan, Players.
 - **FR-009**: Players MUST join a campaign by entering only their **join code** and **player name** — no campaign name field. The join code is globally unique and identifies the campaign on its own.
 - **FR-010**: Players MUST be able to access these tabs from their dashboard: Character (view/edit), Twin Chat, Story History.
 - **FR-011**: All tabs that depend on an external AI service (Ollama, ComfyUI) MUST display a visible placeholder message when that service is unavailable, instead of crashing or showing a blank panel.
@@ -155,16 +160,22 @@ Specs, plans, and task lists from prior phases that are now superseded by this r
 - **FR-015**: The digital twin (twin chat) feature MUST be accessible from both the GM dashboard (for NPCs) and the Player dashboard (for the player's character), with a visible "AI unavailable" placeholder when Ollama is not running.
 - **FR-016**: Sign-out MUST clear the user's `gr.State` and return the UI to the auth screen.
 - **FR-017**: The join code for a campaign MUST be prominently displayed at the top of the GM dashboard when the GM is inside a campaign, making it easy to share with players at the table.
+- **FR-018**: The World Notes tab MUST present a single Markdown text area per campaign. The GM can edit and save the content; the saved text is rendered as Markdown in the same tab. No separate note records or titles are required.
+- **FR-019**: The campaign list MUST include an "Archive" button per campaign. Clicking it sets the campaign's `archived` flag to true and removes it from the default list view. Archived campaigns are not permanently deleted; all associated player, character, and history data is retained.
+- **FR-020**: The GM MUST be able to create a new Session (with a name and optional date) from the Story History tab before logging events. Story events are linked to a session; events MUST be grouped and displayed under their parent session in the history view.
+- **FR-021**: The Story History tab for players (FR-010) MUST display all public story events grouped by session in chronological order.
+- **FR-022**: The Players tab in the GM dashboard MUST display a read-only list of all players who have joined the campaign, showing each player's name and their associated character name (if a character has been created). No remove or edit action is required.
 
 ### Key Entities *(include if feature involves data)*
 
 - **User**: Authenticated GM identity. Stored in the `users` SQLite table with username and password fields.
-- **Campaign**: Story container owned by a User. Identified globally by a unique 6-character join code. Name is unique per owner (case-insensitive).
+- **Campaign**: Story container owned by a User. Identified globally by a unique 6-character join code. Name is unique per owner (case-insensitive). Carries a `world_notes` text field (Markdown) and an `archived` boolean flag. Archived campaigns are hidden from the GM's default campaign list but their data is retained.
 - **Player**: Named identity within a campaign, linked to a Character. Created when a player first joins with a join code + player name pair.
 - **Character**: Player-controlled entity in a campaign. Upserted on name match (case-insensitive, per campaign).
 - **NPC**: GM-controlled entity in a campaign. Upserted on name match (case-insensitive, per campaign).
 - **DigitalTwin**: Stores AI conversation history for character/NPC twin chats. One DigitalTwin per Character or NPC entity.
-- **Session / StoryEvent**: Records of campaign play history. Events are logged by the GM.
+- **Session**: A named, dated game-night record belonging to a campaign. Created by the GM before logging events. Has a `name` and `date` (defaults to creation date). Acts as a grouping header for StoryEvents.
+- **StoryEvent**: A single narrative event logged by the GM, linked to a Session. Has a `description` field.
 - **SessionPlan**: AI-assisted or manually authored plan for an upcoming campaign session.
 
 ---
@@ -186,7 +197,7 @@ Specs, plans, and task lists from prior phases that are now superseded by this r
 ## Assumptions
 
 - The existing `User` SQLite model schema (including `hashed_password`) is retained as-is for DB compatibility. Auth simplification removes the bcrypt+threading complexity from the runtime code path, not the database column.
-- A simplified (lighter) password check is acceptable for this pre-product-market-fit phase per the project constitution (Principle VI).
+- Password authentication uses SHA-256 hashing (`sha256(password)` stored in `hashed_password`). No bcrypt dependency or threading workaround is required. This is acceptable for the pre-product-market-fit phase per the project constitution (Principle VI).
 - Gradio's `gr.State` per-tab isolation is relied upon for session management — no server-side session cookie or token store is needed.
 - The `DigitalTwin` model is the implementation of what the team colloquially calls "twins" or "digital twins". There is no separate `GameStar` model in the codebase.
 - Ollama and ComfyUI are optional local services. Their absence must not prevent the app from launching or any UI tab from rendering.
