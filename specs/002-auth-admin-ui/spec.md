@@ -126,9 +126,9 @@ Within a user's account, campaign names are unique. Attempting to create a campa
 ### Functional Requirements
 
 - **FR-001**: The system MUST provide a login form that accepts credentials (username/email and password) and authenticates the user.
-- **FR-016**: The system MUST provide an open registration form allowing any visitor to create a new GM account with a username/email and password. Because Gradio's built-in auth blocks the entire main app, registration MUST be served via a companion unauthenticated Gradio interface at a dedicated path (e.g. `/register`) that writes the new credential to the application database; the main app's `auth` callable then validates against that database.
+- **FR-016**: The system MUST provide an open registration form allowing any visitor to create a new GM account with a username/email and password. Registration MUST be accessible without prior authentication, served at a dedicated URL path separate from the main authenticated application.
 - **FR-017**: Username and email address MUST each be unique across all registered accounts; duplicate registration attempts MUST be rejected with a descriptive error.
-- **FR-002**: The system MUST maintain an authenticated session across page reloads and new tabs within the same browser. Session persistence is managed by Gradio's built-in authentication mechanism (cookie-based, Gradio-managed internally).
+- **FR-002**: The system MUST maintain an authenticated session across page reloads and new tabs within the same browser. Session state is managed entirely by the application server via a cookie set at login, requiring no additional client-side configuration.
 - **FR-003**: Authenticated users MUST be able to view a dashboard listing all campaigns associated with their account.
 - **FR-004**: Authenticated users MUST be able to resume any of their campaigns from the dashboard and continue where they left off.
 - **FR-005**: The system MUST block unauthenticated access to all campaign, character, and NPC data and redirect to the login page.

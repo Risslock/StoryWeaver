@@ -16,7 +16,7 @@
 **Purpose**: Write the required ADR and add new runtime dependencies before any code changes.
 FastAPI must be documented via ADR (constitution § Technology Stack Constraints) before implementation begins.
 
-- [ ] T001 Write docs/adr/ADR-006-fastapi-minimal-router.md — document FastAPI-as-ASGI-routing-adapter decision (scope, rationale, alternatives rejected, migration path); required by constitution before any implementation
+- [X] T001 Write docs/adr/ADR-006-fastapi-minimal-router.md — document FastAPI-as-ASGI-routing-adapter decision (scope, rationale, alternatives rejected, migration path); required by constitution before any implementation
 - [ ] T002 [P] Add passlib[bcrypt], fastapi, uvicorn to apps/web/pyproject.toml dependencies
 
 ---
