@@ -20,7 +20,7 @@
 
 **Purpose**: Confirm starting state before any changes so regressions can be caught.
 
-- [ ] T001 Run `uv run pytest -v` and note which 34 integration tests fail — confirms the M1 fix is needed and provides a diff baseline
+- [X] T001 Run `uv run pytest -v` and note which 34 integration tests fail — confirms the M1 fix is needed and provides a diff baseline
 
 ---
 
@@ -34,14 +34,14 @@
 
 **Independent Test**: `uv run pytest tests/integration/ -v` exits 0 with all 39 tests PASS.
 
-- [ ] T002 [US7] Create `tests/integration/conftest.py` — shared `test_owner_id` pytest-asyncio fixture that creates a `User` row (imports `User` from `core.models`, `hash_password` from `apps.web.services.auth`) and returns `user.id: uuid.UUID`
-- [ ] T003 [P] [US7] Add `test_owner_id: uuid.UUID` parameter to `campaign` fixture and add `owner_id=test_owner_id` to `Campaign(...)` in `tests/integration/test_character_creation.py`
-- [ ] T004 [P] [US7] Same campaign fixture fix in `tests/integration/test_role_access.py`
-- [ ] T005 [P] [US7] Same campaign fixture fix in `tests/integration/test_story_history.py`
-- [ ] T006 [P] [US7] Same campaign fixture fix in `tests/integration/test_image_generation.py`
-- [ ] T007 [P] [US7] Same campaign fixture fix in `tests/integration/test_session_planning.py`
-- [ ] T008 [US7] Fix `tests/integration/test_shared_campaign.py`: update `campaign` fixture (add `test_owner_id` param + `owner_id=test_owner_id`) AND fix inline `Campaign(...)` creation in `test_concurrent_gm_player_no_data_corruption` (create a `User` inline in the same `async with` block before creating the `Campaign`, pass `owner_id=user.id`)
-- [ ] T009 [US7] CHECKPOINT: Run `uv run pytest tests/integration/ -v` — confirm 39/39 PASS before proceeding
+- [X] T002 [US7] Create `tests/integration/conftest.py` — shared `test_owner_id` pytest-asyncio fixture that creates a `User` row (imports `User` from `core.models`, `hash_password` from `apps.web.services.auth`) and returns `user.id: uuid.UUID`
+- [X] T003 [P] [US7] Add `test_owner_id: uuid.UUID` parameter to `campaign` fixture and add `owner_id=test_owner_id` to `Campaign(...)` in `tests/integration/test_character_creation.py`
+- [X] T004 [P] [US7] Same campaign fixture fix in `tests/integration/test_role_access.py`
+- [X] T005 [P] [US7] Same campaign fixture fix in `tests/integration/test_story_history.py`
+- [X] T006 [P] [US7] Same campaign fixture fix in `tests/integration/test_image_generation.py`
+- [X] T007 [P] [US7] Same campaign fixture fix in `tests/integration/test_session_planning.py`
+- [X] T008 [US7] Fix `tests/integration/test_shared_campaign.py`: update `campaign` fixture (add `test_owner_id` param + `owner_id=test_owner_id`) AND fix inline `Campaign(...)` creation in `test_concurrent_gm_player_no_data_corruption` (create a `User` inline in the same `async with` block before creating the `Campaign`, pass `owner_id=user.id`)
+- [X] T009 [US7] CHECKPOINT: Run `uv run pytest tests/integration/ -v` — confirm 39/39 PASS before proceeding
 
 ---
 
@@ -53,14 +53,14 @@
 
 **Independent Test**: `uv run ruff check .` exits 0 and `uv run pytest -v` still passes.
 
-- [ ] T010 [P] Add `"harness/**" = ["E501"]` under `[tool.ruff.lint.per-file-ignores]` in `pyproject.toml` (removes 107 harness-runner violations from scope per contracts/ux-improvements.md Contract 3)
-- [ ] T011 Run `uv run ruff check --fix .` to auto-fix 68 violations (import sort, unused imports, f-string cleanup, UP007/UP017/UP035 upgrades)
-- [ ] T012 CHECKPOINT: Run `uv run pytest -v` — confirm no regressions after auto-fix
-- [ ] T013 [P] Manually fix E501 line-length violations in `apps/web/pages/` (wrap lines longer than 88 chars using `(` `)` continuation)
-- [ ] T014 [P] Manually fix E501 line-length violations in `apps/web/services/` and `packages/` files
-- [ ] T015 [P] Fix ANN401 violations in `apps/web/pages/` — annotate Gradio event handler inner functions that return `gr.update()` as `dict[str, Any]` or explicit typed tuples/unions
-- [ ] T016 [P] Fix SIM102 (collapsible nested if), B905 (add `strict=False` to `zip()` calls), F841 (remove unused local variables or rename to `_`), and N806 (lowercase local variable names) across `apps/` and `packages/`
-- [ ] T017 CHECKPOINT: Run `uv run ruff check .` — confirm 0 violations; run `uv run pytest -v` — confirm all tests still pass
+- [X] T010 [P] Add `"harness/**" = ["E501"]` under `[tool.ruff.lint.per-file-ignores]` in `pyproject.toml` (removes 107 harness-runner violations from scope per contracts/ux-improvements.md Contract 3)
+- [X] T011 Run `uv run ruff check --fix .` to auto-fix 68 violations (import sort, unused imports, f-string cleanup, UP007/UP017/UP035 upgrades)
+- [X] T012 CHECKPOINT: Run `uv run pytest -v` — confirm no regressions after auto-fix
+- [X] T013 [P] Manually fix E501 line-length violations in `apps/web/pages/` (wrap lines longer than 88 chars using `(` `)` continuation)
+- [X] T014 [P] Manually fix E501 line-length violations in `apps/web/services/` and `packages/` files
+- [X] T015 [P] Fix ANN401 violations in `apps/web/pages/` — annotate Gradio event handler inner functions that return `gr.update()` as `dict[str, Any]` or explicit typed tuples/unions
+- [X] T016 [P] Fix SIM102 (collapsible nested if), B905 (add `strict=False` to `zip()` calls), F841 (remove unused local variables or rename to `_`), and N806 (lowercase local variable names) across `apps/` and `packages/`
+- [X] T017 CHECKPOINT: Run `uv run ruff check .` — confirm 0 violations; run `uv run pytest -v` — confirm all tests still pass
 
 ---
 
@@ -68,7 +68,7 @@
 
 **Purpose**: Confirm both M1 and M2 deliverables are satisfied before beginning enhancement work.
 
-- [ ] T018 [US7] Run `uv run pytest -v` (full suite) — confirm 70/70 PASS, exit code 0 (39 integration + 31 unit)
+- [X] T018 [US7] Run `uv run pytest -v` (full suite) — confirm 70/70 PASS, exit code 0 (39 integration + 31 unit)
 - [ ] T019 [US7] Run `uv run python apps/web/main.py` — confirm app starts on localhost:7860 with no import errors or startup exceptions
 
 ---

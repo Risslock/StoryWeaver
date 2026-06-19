@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import BaseModel
-
 from core.config import settings
-from core.errors import ProviderUnavailableError
 from llm.interface import LLMProvider
+from pydantic import BaseModel
 
 
 class SuggestedResponse(BaseModel):
@@ -202,7 +200,7 @@ def make_turn_entry(role: str, content: str) -> dict[str, Any]:
     return {
         "role": role,
         "content": content,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
 
@@ -232,7 +230,7 @@ async def run_twin_turn(
     history = _prune_history(history, settings.max_twin_turns)
 
     twin_record.conversation_history = history
-    twin_record.last_active = datetime.now(timezone.utc)
+    twin_record.last_active = datetime.now(UTC)
     await db_session.commit()
 
     return response, history
@@ -246,8 +244,8 @@ async def get_or_create_twin(
     db_session: Any,
 ) -> Any:
     """Fetch or create a DigitalTwin record for the given entity."""
-    from sqlalchemy import select
     from core.models import DigitalTwin
+    from sqlalchemy import select
 
     result = await db_session.execute(
         select(DigitalTwin).where(

@@ -9,10 +9,8 @@
 from __future__ import annotations
 
 import uuid
-from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from core.schemas import CampaignSession
 
 

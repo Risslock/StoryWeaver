@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from core.config import settings
+
 from imagegen.interface import ImageProvider
 
 

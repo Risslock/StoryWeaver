@@ -6,13 +6,12 @@ import uuid
 from typing import Any, Literal
 
 import gradio as gr
-
+from components.image_display import build_portrait_display
 from core.config import settings
 from core.schemas import CampaignSession
+from storage.sqlite.adapter import SQLiteBackend
 from story.history import create_event, list_events
 from story.session import list_sessions
-from storage.sqlite.adapter import SQLiteBackend
-from components.image_display import build_portrait_display
 
 _backend = SQLiteBackend(settings.database_url)
 
@@ -123,7 +122,7 @@ def build_gm_history_page(session_state: gr.State) -> None:
         )
         generate_summary_btn = gr.Button(
             "Generate Session Summary",
-            interactive=True,  # updated to False by session_state.change when ai_available=False
+            interactive=True,  # disabled when ai_available=False
         )
         summary_display = gr.Markdown("")
 
@@ -170,7 +169,16 @@ def build_gm_history_page(session_state: gr.State) -> None:
 
         async def load_page(
             state: CampaignSession | None,
-        ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, str], list[list[Any]], list[str], dict[str, Any], dict[str, Any]]:
+        ) -> tuple[
+            dict[str, Any],
+            dict[str, Any],
+            dict[str, Any],
+            dict[str, str],
+            list[list[Any]],
+            list[str],
+            dict[str, Any],
+            dict[str, Any],
+        ]:
             session_map, session_labels = await _load_session_data(state)
             log_choices = ["None (campaign-wide)"] + session_labels
             view_choices = ["All Sessions"] + session_labels
@@ -179,10 +187,11 @@ def build_gm_history_page(session_state: gr.State) -> None:
 
             rows, ids = await _fetch_event_rows(state, "All Sessions", session_map)
 
+            summary_value = summary_choices[0] if summary_choices else None
             return (
                 gr.update(choices=log_choices, value="None (campaign-wide)"),
                 gr.update(choices=view_choices, value="All Sessions"),
-                gr.update(choices=summary_choices, value=summary_choices[0] if summary_choices else None),
+                gr.update(choices=summary_choices, value=summary_value),
                 session_map,
                 rows,
                 ids,
@@ -238,7 +247,16 @@ def build_gm_history_page(session_state: gr.State) -> None:
             state: CampaignSession | None,
             selected_session: str,
             session_map: dict[str, str],
-        ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, str], list[list[Any]], list[str], dict[str, Any], dict[str, Any]]:
+        ) -> tuple[
+            dict[str, Any],
+            dict[str, Any],
+            dict[str, Any],
+            dict[str, str],
+            list[list[Any]],
+            list[str],
+            dict[str, Any],
+            dict[str, Any],
+        ]:
             return await load_page(state)
 
         async def on_view_session_change(
@@ -256,11 +274,20 @@ def build_gm_history_page(session_state: gr.State) -> None:
             participants_raw: str,
             is_public: bool,
             session_map: dict[str, str],
-        ) -> tuple[str, str, dict[str, Any], dict[str, str], list[list[Any]], list[str], dict[str, Any], dict[str, Any]]:
+        ) -> tuple[
+            str, str, dict[str, Any], dict[str, str],
+            list[list[Any]], list[str], dict[str, Any], dict[str, Any],
+        ]:
             if state is None:
-                return "Error: not in a campaign session.", "", gr.update(), session_map, [], [], gr.update(), gr.update()
+                return (
+                    "Error: not in a campaign session.", "", gr.update(),
+                    session_map, [], [], gr.update(), gr.update(),
+                )
             if not content.strip():
-                return "Event description cannot be empty.", "", gr.update(), session_map, [], [], gr.update(), gr.update()
+                return (
+                    "Event description cannot be empty.", "", gr.update(),
+                    session_map, [], [], gr.update(), gr.update(),
+                )
 
             log_session_id: uuid.UUID | None = None
             if log_session and log_session != "None (campaign-wide)":
@@ -273,7 +300,11 @@ def build_gm_history_page(session_state: gr.State) -> None:
                 for name in participants_raw.split(","):
                     n = name.strip()
                     if n:
-                        participants.append({"entity_type": "character", "entity_id": None, "name": n})
+                        participants.append({
+                            "entity_type": "character",
+                            "entity_id": None,
+                            "name": n,
+                        })
 
             async with await _backend.get_session() as db:
                 await create_event(
@@ -287,8 +318,26 @@ def build_gm_history_page(session_state: gr.State) -> None:
                 )
 
             page = await load_page(state)
-            _, new_session_map, view_update, updated_session_map, rows, ids, summary_btn_update, scene_btn_update = page
-            return "✓ Event logged.", "", view_update, updated_session_map, rows, ids, summary_btn_update, scene_btn_update
+            (
+                _,
+                new_session_map,
+                view_update,
+                updated_session_map,
+                rows,
+                ids,
+                summary_btn_update,
+                scene_btn_update,
+            ) = page
+            return (
+                "✓ Event logged.",
+                "",
+                view_update,
+                updated_session_map,
+                rows,
+                ids,
+                summary_btn_update,
+                scene_btn_update,
+            )
 
         async def on_select_row(evt: gr.SelectData, ids: list[str]) -> str:
             if not ids or evt.index[0] >= len(ids):
@@ -304,7 +353,9 @@ def build_gm_history_page(session_state: gr.State) -> None:
             if event is None:
                 return "*Event not found.*"
             visibility = "**Public**" if event.is_public else "**GM only**"
-            participants = ", ".join(p.get("name", "") for p in (event.participants or []))
+            participants = ", ".join(
+                p.get("name", "") for p in (event.participants or [])
+            )
             lines = [
                 f"**{event.event_type.replace('_', ' ').title()}** · {visibility}",
                 "",
@@ -376,7 +427,8 @@ def build_gm_history_page(session_state: gr.State) -> None:
             lines = [f"**{selected_label} — Summary**", ""]
             for e in events:
                 prefix = "📖" if e.is_public else "🔒"
-                lines.append(f"{prefix} *{e.event_type.replace('_', ' ').title()}*: {e.content}")
+                event_label = e.event_type.replace("_", " ").title()
+                lines.append(f"{prefix} *{event_label}*: {e.content}")
             return "\n".join(lines)
 
         # ── Wire events ───────────────────────────────────────────────────────

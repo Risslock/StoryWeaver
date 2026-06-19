@@ -6,13 +6,13 @@ import uuid
 from typing import Any
 
 import gradio as gr
+from components.image_display import build_portrait_display
 from core.config import settings
 from core.errors import ProviderUnavailableError
 from core.models import NPC
 from core.schemas import CampaignSession, NPCSchema
 from sqlalchemy import func, select
 from storage.sqlite.adapter import SQLiteBackend
-from components.image_display import build_portrait_display
 
 _backend = SQLiteBackend(settings.database_url)
 
@@ -63,9 +63,16 @@ async def _update_npc(npc_id: uuid.UUID, updates: dict[str, Any]) -> NPC | None:
 
 def _render_npc_sheet(npc: NPC) -> str:
     schema = NPCSchema.model_validate(npc)
-    visibility = "Visible to players" if schema.is_visible_to_players else "Hidden from players"
+    visibility = (
+        "Visible to players" if schema.is_visible_to_players else "Hidden from players"
+    )
+    subtitle = (
+        f"*{schema.role or 'Unknown role'}"
+        f" · {schema.race or 'Unknown race'}"
+        f" · Circle {schema.circle}*"
+    )
     return f"""## {schema.name}
-*{schema.role or "Unknown role"} · {schema.race or "Unknown race"} · Circle {schema.circle}*
+{subtitle}
 
 **Visibility**: {visibility}
 
@@ -148,12 +155,18 @@ def build_npc_page(session_state: gr.State) -> None:
 
         with gr.Group():
             with gr.Row():
-                npc_name = gr.Textbox(label="Name *", placeholder="Vorgath the Merchant")
-                npc_role = gr.Textbox(label="Role", placeholder="merchant, villain, ally…")
+                npc_name = gr.Textbox(
+                    label="Name *", placeholder="Vorgath the Merchant"
+                )
+                npc_role = gr.Textbox(
+                    label="Role", placeholder="merchant, villain, ally…"
+                )
             with gr.Row():
                 npc_race = gr.Textbox(label="Race", placeholder="Ork, Elf, Troll…")
                 npc_discipline = gr.Textbox(label="Discipline", placeholder="optional")
-                npc_circle = gr.Slider(label="Circle", minimum=0, maximum=15, step=1, value=0)
+                npc_circle = gr.Slider(
+                    label="Circle", minimum=0, maximum=15, step=1, value=0
+                )
 
         with gr.Group():
             npc_personality = gr.Textbox(
@@ -182,7 +195,9 @@ def build_npc_page(session_state: gr.State) -> None:
             save_status = gr.Markdown("")
 
         with gr.Row():
-            portrait_btn = gr.Button("Generate Portrait", variant="secondary", interactive=False)
+            portrait_btn = gr.Button(
+                "Generate Portrait", variant="secondary", interactive=False
+            )
             portrait_status = gr.Markdown("")
 
         # ── Internal state ────────────────────────────────────────────────
@@ -197,7 +212,9 @@ def build_npc_page(session_state: gr.State) -> None:
             choices = [(n.name, str(n.id)) for n in npcs]
             return gr.update(choices=choices, value=choices[0][1] if choices else None)
 
-        async def on_select_npc(npc_id: str | None) -> tuple[str | None, str, bool, Any]:
+        async def on_select_npc(
+            npc_id: str | None,
+        ) -> tuple[str | None, str, bool, Any]:
             if not npc_id:
                 return None, "*No NPC selected.*", False, None
             async with await _backend.get_session() as session:
@@ -207,7 +224,12 @@ def build_npc_page(session_state: gr.State) -> None:
                 npc = result.scalar_one_or_none()
             if npc is None:
                 return None, "*NPC not found.*", False, None
-            return npc.portrait_url or None, _render_npc_sheet(npc), npc.is_visible_to_players, npc_id
+            return (
+                npc.portrait_url or None,
+                _render_npc_sheet(npc),
+                npc.is_visible_to_players,
+                npc_id,
+            )
 
         async def on_generate_portrait(
             state: CampaignSession | None,
@@ -231,9 +253,9 @@ def build_npc_page(session_state: gr.State) -> None:
 
             from imagegen.factory import get_image_provider
             from imagegen.interface import (
-                ImageGenRequest,
-                PORTRAIT_PROMPT_PREFIX,
                 PORTRAIT_NEGATIVE_PROMPT,
+                PORTRAIT_PROMPT_PREFIX,
+                ImageGenRequest,
             )
 
             prompt = (
@@ -263,10 +285,17 @@ def build_npc_page(session_state: gr.State) -> None:
         ) -> str:
             if state is None or not npc_id_val:
                 return "Select an NPC first."
-            npc = await _update_npc(uuid.UUID(npc_id_val), {"is_visible_to_players": is_visible})
+            npc = await _update_npc(
+                uuid.UUID(npc_id_val),
+                {"is_visible_to_players": is_visible},
+            )
             if npc is None:
                 return "NPC not found."
-            status = "visible to players" if npc.is_visible_to_players else "hidden from players"
+            status = (
+                "visible to players"
+                if npc.is_visible_to_players
+                else "hidden from players"
+            )
             return f"✓ **{npc.name}** is now {status}."
 
         async def on_twin_send(
@@ -311,7 +340,11 @@ def build_npc_page(session_state: gr.State) -> None:
                         db_session=session,
                     )
                 except ProviderUnavailableError:
-                    return history, user_msg, "AI is currently unreachable. Try again later."
+                    return (
+                        history,
+                        user_msg,
+                        "AI is currently unreachable. Try again later.",
+                    )
 
             updated = list(history) + [
                 {"role": "user", "content": user_msg.strip()},
@@ -371,8 +404,12 @@ def build_npc_page(session_state: gr.State) -> None:
             ai_ok = state.ai_available if state is not None else False
             return gr.update(interactive=ai_ok)
 
-        session_state.change(load_npc_list, inputs=[session_state], outputs=[npc_selector])
-        session_state.change(_update_portrait_btn, inputs=[session_state], outputs=[portrait_btn])
+        session_state.change(
+            load_npc_list, inputs=[session_state], outputs=[npc_selector]
+        )
+        session_state.change(
+            _update_portrait_btn, inputs=[session_state], outputs=[portrait_btn]
+        )
         refresh_btn.click(load_npc_list, inputs=[session_state], outputs=[npc_selector])
 
         npc_selector.change(

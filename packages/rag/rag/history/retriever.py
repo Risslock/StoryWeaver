@@ -13,7 +13,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from rag.interface import Retriever, RetrievedChunk
+from rag.interface import RetrievedChunk, Retriever
 
 _COLLECTION_PREFIX = "campaign_history"
 
@@ -58,6 +58,7 @@ class HistoryRetriever(Retriever):
             results["documents"][0],
             results["metadatas"][0],
             results["distances"][0],
+            strict=False,
         ):
             chunks.append(
                 RetrievedChunk(

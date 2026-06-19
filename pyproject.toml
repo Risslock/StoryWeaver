@@ -33,14 +33,13 @@ select = [
     "SIM",  # flake8-simplify
     "ANN",  # flake8-annotations (type hints)
 ]
-ignore = [
-    "ANN101",  # missing type annotation for self
-    "ANN102",  # missing type annotation for cls
-]
+ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["ANN", "E501"]
 "**/models.py" = ["E501"]
+"harness/**" = ["E501", "ANN401", "SIM102", "N806", "F841"]
+"packages/**" = ["E501", "ANN401"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -64,3 +63,4 @@ exclude = [
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+addopts = "--import-mode=importlib"

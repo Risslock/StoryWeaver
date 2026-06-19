@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import httpx
-
 from core.config import settings
 from core.errors import ProviderUnavailableError
+
 from llm.interface import LLMProvider
 
 _HF_INFERENCE_BASE = "https://api-inference.huggingface.co/models"

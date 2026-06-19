@@ -26,13 +26,14 @@ async def backend() -> SQLiteBackend:
 
 
 @pytest_asyncio.fixture
-async def campaign(backend: SQLiteBackend) -> Campaign:
+async def campaign(backend: SQLiteBackend, test_owner_id: uuid.UUID) -> Campaign:
     async with await backend.get_session() as session:
         c = Campaign(
             id=uuid.uuid4(),
             name="Role Access Test Campaign",
             join_code="RATEST01",
             gm_display_name="TestGM",
+            owner_id=test_owner_id,
         )
         session.add(c)
         await session.commit()
