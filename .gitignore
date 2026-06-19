@@ -99,6 +99,11 @@ logs/
 docs/_build/
 /site
 
+# --- Model Context Protocol (MCP) servers & configuration ----
+mcps/
+playwright-mcp/
+.mcp.json
+
 # --- IDE — VS Code ------------------------------------------------------------
 # Commit .vscode/extensions.json (recommended extensions) but not personal settings
 .vscode/settings.json
