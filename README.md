@@ -305,7 +305,7 @@ uv run pyright
 
 ### Planned (unordered)
 
-- [ ] **M6 — Beyond Earthdawn**: system-agnostic core, second rule system.
+- [ ] **Beyond Earthdawn**: system-agnostic core, second rule system.
 - [ ] **RAG auto-indexing**: automatically index story events and character updates at write time — no manual calls to `index_event()` required.
 - [ ] **Authentication & admin UI**: Gradio-based login for GM admin privileges; recover and continue old campaigns from the UI without manual DB access.
 - [ ] **Places model**: cities, towns, roads, kaerns, ruins — location entities with their own events, history, and AI-generated descriptions.
