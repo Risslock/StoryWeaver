@@ -1,0 +1,87 @@
+# Session planning scenarios: multi-session history
+# Covers US6 acceptance scenario 1 — plan references plot_thread_opened events
+
+scenarios:
+
+  - id: session_plan_references_open_plot_threads
+    description: "Multi-session history — prompt includes plot_thread_opened events from all sessions"
+    tool: generate_session_plan
+    setup:
+      campaign:
+        name: "Multi-Session Plan Test"
+        join_code: "PLAN0020"
+        gm_display_name: "PlanGM"
+      sessions:
+        - title: "Session 1: The Gathering Storm"
+          date_played: "2026-01-10"
+        - title: "Session 2: Into the Badlands"
+          date_played: "2026-01-17"
+        - title: "Session 3: The Ambush"
+          date_played: "2026-01-24"
+      events:
+        - session_index: 0
+          event_type: "plot_thread_opened"
+          content: "A mysterious sigil appeared on the city gates — no one knows its origin."
+          is_public: true
+        - session_index: 0
+          event_type: "dialogue"
+          content: "The party met with Governor Ashkan and received the expedition charter."
+          is_public: true
+        - session_index: 1
+          event_type: "plot_thread_opened"
+          content: "The party discovered the ruins of a pre-Scourge kaer beneath the Badlands."
+          is_public: true
+        - session_index: 1
+          event_type: "combat_outcome"
+          content: "The party defeated the Theran advance scouts but lost Kira's sword."
+          is_public: true
+        - session_index: 2
+          event_type: "plot_thread_opened"
+          content: "A winged Horror was spotted circling the kaer entrance at night."
+          is_public: false
+        - session_index: 2
+          event_type: "decision"
+          content: "The party resolved to enter the kaer at dawn, before the Horror returns."
+          is_public: true
+    plan_input:
+      session_number: 4
+      focus_hints: []
+    expected:
+      outcome: success
+      events_referenced_count: 6
+      plan_not_empty: true
+      prompt_must_contain:
+        - "sigil"
+        - "kaer"
+        - "Horror"
+
+  - id: session_plan_includes_gm_only_events
+    description: "GM-only events are included in the planning context (GM role sees all)"
+    tool: generate_session_plan
+    setup:
+      campaign:
+        name: "GM Role Plan Test"
+        join_code: "PLAN0021"
+        gm_display_name: "PlanGM"
+      sessions:
+        - title: "Session 1: Secrets"
+          date_played: "2026-03-01"
+      events:
+        - session_index: 0
+          event_type: "world_change"
+          content: "The mayor is secretly in league with the Undead faction."
+          is_public: false
+        - session_index: 0
+          event_type: "dialogue"
+          content: "The party accepted the mayor's contract to find the missing merchant."
+          is_public: true
+    plan_input:
+      session_number: 2
+      focus_hints: []
+    expected:
+      outcome: success
+      events_referenced_count: 2
+      plan_not_empty: true
+      prompt_must_contain:
+        - "Undead faction"
+        - "missing merchant"

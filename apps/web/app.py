@@ -24,6 +24,7 @@ from core.schemas import CampaignSession
 from pages.gm.characters import build_characters_page
 from pages.gm.history import build_gm_history_page
 from pages.gm.npcs import build_npc_page
+from pages.gm.session_plan import build_session_plan_page
 from pages.gm.world_notes import build_world_notes_page
 from pages.landing import build_landing, get_backend
 from pages.player.character import build_character_page
@@ -76,8 +77,7 @@ def create_app() -> gr.Blocks:
                 build_npc_page(session_state)
                 build_gm_history_page(session_state)
                 build_world_notes_page(session_state)
-                with gr.Tab("Session Plan"):
-                    gr.Markdown("*Session planning coming in Phase 8.*")
+                build_session_plan_page(session_state)
 
         # ── Navigation triggered by session_state changes ────────────────
         def _navigate(state: CampaignSession | None) -> tuple:
