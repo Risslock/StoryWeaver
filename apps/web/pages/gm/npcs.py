@@ -10,7 +10,7 @@ from core.config import settings
 from core.errors import ProviderUnavailableError
 from core.models import NPC
 from core.schemas import CampaignSession, NPCSchema
-from sqlalchemy import select
+from sqlalchemy import func, select
 from storage.sqlite.adapter import SQLiteBackend
 from components.image_display import build_portrait_display
 
@@ -27,7 +27,21 @@ async def _load_npcs(campaign_id: uuid.UUID) -> list[NPC]:
 
 async def _save_npc(campaign_id: uuid.UUID, data: dict[str, Any]) -> NPC:
     async with await _backend.get_session() as session:
-        npc = NPC(campaign_id=campaign_id, **data)
+        result = await session.execute(
+            select(NPC).where(
+                NPC.campaign_id == campaign_id,
+                func.lower(NPC.name) == data["name"].lower(),
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing is not None:
+            for k, v in data.items():
+                if k not in ("id", "created_at", "campaign_id"):
+                    setattr(existing, k, v)
+            await session.commit()
+            await session.refresh(existing)
+            return existing
+        npc = NPC(id=uuid.uuid4(), campaign_id=campaign_id, **data)
         session.add(npc)
         await session.commit()
         await session.refresh(npc)

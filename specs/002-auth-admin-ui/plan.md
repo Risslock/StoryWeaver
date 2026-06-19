@@ -108,3 +108,42 @@ docs/adr/
 | Concern | Why Needed | Simpler Alternative Rejected Because |
 |---------|-----------|-------------------------------------|
 | FastAPI ASGI adapter | Gradio `auth=` blocks the entire main app; registration must be unauthenticated at a separate URL in the same process | Two separate ports (e.g., 7860 + 7861) breaks single-container Docker assumption and gives players two different URLs to manage. Two separate processes doubles infra and loses shared DB connection context. Running both from a single FastAPI ASGI host is the Gradio-recommended pattern and adds only routing glue — no business logic in FastAPI. |
+| Custom auth panel instead of Gradio `auth=` | Gradio's built-in `auth=` flow requires a page reload between registration and first login; the custom `auth_col` panel can set `user_state` directly and navigate immediately after account creation | Gradio `auth=` is opaque — no way to intercept the post-login transition or set additional state (e.g., `UserInfo.user_id`). Custom panel adds ~80 lines but gives full control over the UX and the signed-in identity object. |
+
+---
+
+## Implementation Decision — Auth Mechanism Change
+
+**Date**: 2026-06-19 | **Status**: Adopted
+
+### Original plan
+
+- Main Gradio app at `/` uses `auth=make_auth_callable(backend)` (Gradio built-in auth gate).
+- Separate unauthenticated Gradio app at `/register` (via FastAPI `gr.mount_gradio_app`).
+- User identity inside handlers accessed via `gr.Request.username`.
+
+### Actual implementation
+
+- **Single Gradio app** at `/` with no `auth=` parameter.
+- Initial screen is `auth_col` — a `gr.Column` built by `pages/auth.py` containing two tabs: **Sign In** and **Create Account**.
+- Login and registration both write `user_state: gr.State(UserInfo | None)`. On success the navigation state machine (`user_state.change` → `_navigate`) transitions to `admin_col` immediately.
+- `user_state` carries `UserInfo(user_id, username)` — the source of truth for the current user in all handlers.
+- `pages/registration.py` (`create_registration_app()`) was implemented as planned but is **not mounted** in `main.py`. It is retained as a potential future standalone registration endpoint.
+- `make_auth_callable` in `services/auth.py` is implemented but **not used** at runtime. Retained for future use.
+- FastAPI is still used as the ASGI adapter (ADR-006 still applies) but mounts only one Gradio app.
+
+### Why the change was made
+
+1. **Auto-login after registration** — Gradio `auth=` requires a full page reload and a second form submission after registration. The custom panel sets `user_state` on the same click, immediately navigating to the campaign dashboard.
+2. **`UserInfo.user_id` access** — Gradio's built-in `auth=` exposes only a username string via `gr.Request.username`. The custom panel stores the full `UserInfo(user_id, username)` in state, which downstream handlers need to scope DB queries.
+3. **Single session context** — Two mounted Gradio apps would share the FastAPI process but have independent Gradio session state. A single app keeps all state in one place.
+
+### Files affected by this decision
+
+| File | Change from original plan |
+|------|--------------------------|
+| `apps/web/pages/auth.py` | **NEW** — not in original plan; replaces Gradio built-in auth screen |
+| `apps/web/app.py` | No `auth=` on `gr.Blocks`; `user_state` drives navigation instead of `gr.Request` |
+| `apps/web/main.py` | Mounts one Gradio app (not two); no `/register` mount |
+| `apps/web/pages/registration.py` | Created but not mounted — standby for future use |
+| `apps/web/services/auth.py` | `make_auth_callable` retained but unused; `validate_user` added for custom panel |

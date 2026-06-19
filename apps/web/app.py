@@ -2,25 +2,35 @@
 
 Multi-user session isolation model
 ───────────────────────────────────
-1. Per-tab state: gr.State(value=None) holds a CampaignSession dataclass.
+1. Per-tab state: two gr.State objects per browser tab.
+   - user_state: UserInfo | None — who is signed in.
+   - session_state: CampaignSession | None — active campaign.
    Gradio 4.x guarantees that gr.State is isolated per browser tab — no
-   CampaignSession object is ever shared between concurrent user sessions.
+   state object is ever shared between concurrent user connections.
 
-2. No module-level mutable session state: CampaignSession is never stored in a
-   module-level variable. All state flows through gr.State and event handlers.
+2. Navigation state machine (driven by user_state + session_state):
+   None / None   → auth_col    (Sign In / Create Account)
+   user / None   → admin_col   (campaign dashboard + player join)
+   user / "gm"   → gm_col
+   user / "player" → player_col
 
 3. Concurrent DB writes: SQLiteBackend sets PRAGMA journal_mode=WAL at
-   connection-open time (packages/storage/sqlite/adapter.py). WAL allows
-   concurrent readers alongside a single serialised writer, preventing
-   read-blocking and database locking under multi-user load.
+   connection-open time (packages/storage/sqlite/adapter.py).
 """
 
 from __future__ import annotations
 
-import gradio as gr
+from typing import Any
 
+import gradio as gr
 from components.banner import build_banner
-from core.schemas import CampaignSession
+from core.schemas import CampaignSession, UserInfo
+from pages.admin.campaigns import (
+    CampaignPageRefs,
+    build_campaigns_page,
+    load_campaigns_for_user,
+)
+from pages.auth import build_auth_page
 from pages.gm.characters import build_characters_page
 from pages.gm.history import build_gm_history_page
 from pages.gm.npcs import build_npc_page
@@ -33,9 +43,8 @@ from pages.player.twin_chat import build_twin_chat_page
 
 
 async def _startup_verify() -> None:
-    """Initialize the DB and verify WAL mode is active before serving requests."""
+    """Verify WAL mode is active — schema must already exist via Alembic."""
     db = get_backend()
-    await db.initialize_db()
     if not await db.verify_wal_mode():
         raise RuntimeError(
             "SQLite WAL mode is not active. "
@@ -46,17 +55,24 @@ async def _startup_verify() -> None:
 
 def create_app() -> gr.Blocks:
     with gr.Blocks(title="StoryWeaver") as app:
-        # gr.State is per-browser-tab in Gradio 4.x — CampaignSession never leaks
-        # between concurrent user connections.
+        user_state: gr.State = gr.State(value=None)
         session_state: gr.State = gr.State(value=None)
 
         banner = build_banner()
 
-        # ── Landing ───────────────────────────────────────────────────────
-        with gr.Column(visible=True) as landing_col:
+        # ── Auth screen (default — shown until sign-in) ───────────────────────
+        with gr.Column(visible=True) as auth_col:
+            build_auth_page(user_state)
+
+        # ── Campaigns admin dashboard + player join ───────────────────────────
+        with gr.Column(visible=False) as admin_col:
+            campaign_refs: CampaignPageRefs = build_campaigns_page(
+                session_state, user_state
+            )
+            gr.Markdown("---")
             build_landing(session_state)
 
-        # ── Player dashboard ──────────────────────────────────────────────
+        # ── Player dashboard ──────────────────────────────────────────────────
         with gr.Column(visible=False) as player_col:
             gr.Markdown("# StoryWeaver — Player Dashboard")
             with gr.Tabs():
@@ -64,7 +80,7 @@ def create_app() -> gr.Blocks:
                 build_twin_chat_page(session_state)
                 build_player_history_page(session_state)
 
-        # ── GM dashboard ──────────────────────────────────────────────────
+        # ── GM dashboard ──────────────────────────────────────────────────────
         with gr.Column(visible=False) as gm_col:
             gr.Markdown("# StoryWeaver — GM Dashboard")
             gm_join_code = gr.Textbox(
@@ -79,38 +95,70 @@ def create_app() -> gr.Blocks:
                 build_world_notes_page(session_state)
                 build_session_plan_page(session_state)
 
-        # ── Navigation triggered by session_state changes ────────────────
-        def _navigate(state: CampaignSession | None) -> tuple:
-            """Show the correct panel and conditionally display the AI banner."""
-            if state is None:
+        # ── Navigation ────────────────────────────────────────────────────────
+        def _navigate(
+            user: UserInfo | None, session: CampaignSession | None
+        ) -> tuple[Any, ...]:
+            """Return visibility/value updates for all panels."""
+            if user is None:
                 return (
-                    gr.update(visible=True),
+                    gr.update(visible=True),   # auth_col
+                    gr.update(visible=False),  # banner
+                    gr.update(visible=False),  # admin_col
+                    gr.update(visible=False),  # player_col
+                    gr.update(visible=False),  # gm_col
+                    gr.update(value=""),       # gm_join_code
+                )
+            if session is None:
+                return (
                     gr.update(visible=False),
+                    gr.update(visible=False),
+                    gr.update(visible=True),
                     gr.update(visible=False),
                     gr.update(visible=False),
                     gr.update(value=""),
                 )
-            show_banner = not state.ai_available
-            if state.role == "gm":
+            show_banner = not session.ai_available
+            if session.role == "gm":
                 return (
                     gr.update(visible=False),
                     gr.update(visible=show_banner),
                     gr.update(visible=False),
+                    gr.update(visible=False),
                     gr.update(visible=True),
-                    gr.update(value=state.join_code),
+                    gr.update(value=session.join_code),
                 )
             return (
                 gr.update(visible=False),
                 gr.update(visible=show_banner),
+                gr.update(visible=False),
                 gr.update(visible=True),
                 gr.update(visible=False),
                 gr.update(value=""),
             )
 
+        _nav_outputs = [auth_col, banner, admin_col, player_col, gm_col, gm_join_code]
+
+        user_state.change(
+            _navigate,
+            inputs=[user_state, session_state],
+            outputs=_nav_outputs,
+        )
         session_state.change(
             _navigate,
-            inputs=[session_state],
-            outputs=[landing_col, banner, player_col, gm_col, gm_join_code],
+            inputs=[user_state, session_state],
+            outputs=_nav_outputs,
+        )
+
+        # Load campaigns whenever the user signs in.
+        user_state.change(
+            load_campaigns_for_user,
+            inputs=[user_state],
+            outputs=[
+                campaign_refs.table,
+                campaign_refs.campaign_ids,
+                campaign_refs.no_campaigns_msg,
+            ],
         )
 
     return app
@@ -120,5 +168,4 @@ if __name__ == "__main__":
     import asyncio
 
     asyncio.run(_startup_verify())
-    app = create_app()
-    app.launch(theme=gr.themes.Soft())
+    create_app().launch()

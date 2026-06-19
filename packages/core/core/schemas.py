@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, date
+from datetime import date, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -132,6 +132,42 @@ class SessionPlanSchema(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class UserSchema(BaseModel):
+    id: uuid.UUID
+    username: str
+    email: str
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PlayerSchema(BaseModel):
+    id: uuid.UUID
+    campaign_id: uuid.UUID
+    player_name: str
+    character_id: uuid.UUID | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+@dataclass
+class RegisterRequest:
+    username: str
+    email: str
+    password: str
+    confirm_password: str
+
+
+@dataclass
+class UserInfo:
+    """Transient Gradio state — identifies the currently signed-in user."""
+
+    user_id: uuid.UUID
+    username: str
 
 
 @dataclass

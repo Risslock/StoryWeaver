@@ -2,6 +2,8 @@
 
 **Feature**: 002-auth-admin-ui | **Date**: 2026-06-19
 
+> **Implementation Decision (2026-06-19)**: This contract was written assuming Gradio's built-in `auth=` callable. The final implementation does **not** use `auth=`. Authentication is handled by `pages/auth.py` embedded inside the single Gradio app. `user_state: gr.State(UserInfo | None)` replaces `gr.Request.username` as the identity source. `make_auth_callable` is implemented in `services/auth.py` but is not called at runtime — retained for future use. The sections below remain as reference for the original design intent; see plan.md "Implementation Decision — Auth Mechanism Change" for the rationale.
+
 ---
 
 ## Overview

@@ -6,7 +6,7 @@ import uuid
 from typing import Any
 
 import gradio as gr
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from core.config import settings
 from core.models import Character
@@ -40,6 +40,21 @@ async def _load_characters(campaign_id: uuid.UUID, player_name: str) -> list[Cha
 
 async def _save_character(campaign_id: uuid.UUID, player_name: str, data: dict[str, Any]) -> Character:
     async with await _backend.get_session() as session:
+        result = await session.execute(
+            select(Character).where(
+                Character.campaign_id == campaign_id,
+                func.lower(Character.name) == data["name"].lower(),
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing is not None:
+            for k, v in data.items():
+                if k not in ("id", "created_at", "campaign_id"):
+                    setattr(existing, k, v)
+            existing.player_display_name = player_name
+            await session.commit()
+            await session.refresh(existing)
+            return existing
         char = Character(
             id=uuid.uuid4(),
             campaign_id=campaign_id,

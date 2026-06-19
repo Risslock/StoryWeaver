@@ -1,21 +1,18 @@
-"""Campaign create and join flow."""
+"""Player campaign join flow."""
 
 from __future__ import annotations
 
-import random
-import string
-import uuid
 from typing import Any
 
 import gradio as gr
-from sqlalchemy import select
-
 from core.config import settings
 from core.errors import CampaignJoinError
 from core.models import Campaign
 from core.schemas import CampaignSession
 from llm.providers.ollama import OllamaProvider
+from sqlalchemy import func, select
 from storage.sqlite.adapter import SQLiteBackend
+from storage.users import get_or_create_player
 
 _backend = SQLiteBackend(settings.database_url)
 
@@ -25,125 +22,86 @@ def get_backend() -> SQLiteBackend:
     return _backend
 
 
-def _generate_join_code() -> str:
-    return "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+async def join_campaign(
+    campaign_name: str,
+    join_code: str,
+    player_name: str,
+) -> tuple[str, Any]:
+    """Join an existing campaign by name + join code, returning (role, CampaignSession).
 
+    Creates or restores the Player record. If Player.character_id is set, the
+    character is accessible in the returned session via the existing character
+    display logic (loaded by player_display_name in character.py).
+    """
+    campaign_name = campaign_name.strip()
+    join_code = join_code.strip().upper()
+    player_name = player_name.strip()
 
-async def _ensure_db() -> None:
-    await _backend.initialize_db()
-
-
-async def create_campaign(name: str, gm_display_name: str) -> tuple[str, Any]:
-    """Create a new campaign and return (join_code, CampaignSession)."""
-    if not name.strip() or not gm_display_name.strip():
-        raise CampaignJoinError("Campaign name and GM display name are required.")
-
-    await _ensure_db()
-    session = await _backend.get_session()
-    async with session:
-        join_code = _generate_join_code()
-        campaign = Campaign(
-            id=uuid.uuid4(),
-            name=name.strip(),
-            join_code=join_code,
-            gm_display_name=gm_display_name.strip(),
+    if not campaign_name or not join_code or not player_name:
+        raise CampaignJoinError(
+            "Campaign name, join code, and player name are all required."
         )
-        session.add(campaign)
-        await session.commit()
-        ai_available = await OllamaProvider().health_check()
-        state = CampaignSession(
-            campaign_id=campaign.id,
-            display_name=gm_display_name.strip(),
-            role="gm",
-            join_code=join_code,
-            ai_available=ai_available,
-        )
-        return join_code, state
 
-
-async def join_campaign(join_code: str, display_name: str) -> tuple[str, Any]:
-    """Join an existing campaign and return (role, CampaignSession)."""
-    if not join_code.strip() or not display_name.strip():
-        raise CampaignJoinError("Join code and display name are required.")
-
-    await _ensure_db()
-    session = await _backend.get_session()
-    async with session:
+    async with await _backend.get_session() as session:
         result = await session.execute(
-            select(Campaign).where(Campaign.join_code == join_code.strip().upper())
+            select(Campaign).where(
+                func.lower(Campaign.name) == campaign_name.lower(),
+                Campaign.join_code == join_code,
+            )
         )
         campaign = result.scalar_one_or_none()
         if campaign is None:
-            raise CampaignJoinError(f"No campaign found with join code '{join_code}'.")
+            raise CampaignJoinError(
+                "No campaign found with that name and join code."
+            )
 
-        role: str = (
-            "gm"
-            if display_name.strip().lower() == campaign.gm_display_name.lower()
-            else "player"
-        )
+        await get_or_create_player(session, campaign.id, player_name)
+
         ai_available = await OllamaProvider().health_check()
         state = CampaignSession(
             campaign_id=campaign.id,
-            display_name=display_name.strip(),
-            role=role,  # type: ignore[arg-type]
+            display_name=player_name,
+            role="player",
             join_code=campaign.join_code,
             ai_available=ai_available,
         )
-        return role, state
+        return "player", state
 
 
 def build_landing(session_state: gr.State) -> None:
-    """Build the landing tab UI.
+    """Build the player join tab UI inside the current Blocks context.
 
-    Handlers return the updated session state through Gradio's output system so
-    the session_state.change() event fires and the app navigates to the correct
-    player/GM dashboard.
+    Players enter campaign name + join code + player name to join or rejoin
+    a campaign session. No campaign creation — GMs create campaigns from the
+    Campaign Dashboard.
     """
-    gr.Markdown("# StoryWeaver")
+    gr.Markdown("### Join a Campaign")
     gr.Markdown(
-        "An AI-assisted narrative companion for tabletop RPGs. "
-        "Create a campaign or join an existing one with a join code."
+        "Ask your GM for the campaign name and join code, then enter "
+        "your player name below."
     )
 
-    with gr.Tab("Create Campaign"):
-        camp_name = gr.Textbox(label="Campaign Name", placeholder="The Kaer of Shadows")
-        gm_name = gr.Textbox(label="Your Display Name (GM)", placeholder="Dungeon Master")
-        create_btn = gr.Button("Create Campaign", variant="primary")
-        create_out = gr.Textbox(label="Join Code", interactive=False)
-        create_status = gr.Markdown("")
+    join_campaign_name = gr.Textbox(
+        label="Campaign Name", placeholder="The Iron Crown"
+    )
+    join_code_in = gr.Textbox(label="Join Code", placeholder="A3KP72")
+    join_name = gr.Textbox(label="Your Player Name", placeholder="Kira Stonefist")
+    join_btn = gr.Button("Join Campaign", variant="primary")
+    join_status = gr.Markdown("")
 
-        async def on_create(name: str, gm: str) -> tuple[str, str, Any]:
-            try:
-                code, state = await create_campaign(name, gm)
-                return (
-                    code,
-                    f"Campaign created! Share this code with your players: **{code}**",
-                    state,
-                )
-            except CampaignJoinError as exc:
-                return "", f"Error: {exc}", None
+    async def on_join(
+        campaign_nm: str,
+        code: str,
+        name: str,
+    ) -> tuple[str, Any]:
+        try:
+            _, state = await join_campaign(campaign_nm, code, name)
+            return f"Joined! Welcome, **{name}**.", state
+        except CampaignJoinError as exc:
+            return f"Error: {exc}", None
 
-        create_btn.click(
-            on_create,
-            inputs=[camp_name, gm_name],
-            outputs=[create_out, create_status, session_state],
-        )
-
-    with gr.Tab("Join Campaign"):
-        join_code_in = gr.Textbox(label="Join Code", placeholder="ABC12345")
-        join_name = gr.Textbox(label="Your Display Name", placeholder="Gandalf")
-        join_btn = gr.Button("Join", variant="primary")
-        join_status = gr.Markdown("")
-
-        async def on_join(code: str, name: str) -> tuple[str, Any]:
-            try:
-                role, state = await join_campaign(code, name)
-                return f"Joined as **{role.upper()}**. Welcome, {name}!", state
-            except CampaignJoinError as exc:
-                return f"Error: {exc}", None
-
-        join_btn.click(
-            on_join,
-            inputs=[join_code_in, join_name],
-            outputs=[join_status, session_state],
-        )
+    join_btn.click(
+        on_join,
+        inputs=[join_campaign_name, join_code_in, join_name],
+        outputs=[join_status, session_state],
+    )

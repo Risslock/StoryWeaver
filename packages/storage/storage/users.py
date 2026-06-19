@@ -1,0 +1,85 @@
+"""User and Player repository functions."""
+
+from __future__ import annotations
+
+import uuid
+
+from core.models import Player, User
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+async def get_user_by_username_or_email(
+    session: AsyncSession,
+    identifier: str,
+) -> User | None:
+    """Look up a user by username or email (both case-insensitive)."""
+    normalised = identifier.strip().lower()
+    result = await session.execute(
+        select(User).where(func.lower(User.username) == normalised)
+    )
+    user = result.scalar_one_or_none()
+    if user is not None:
+        return user
+    result = await session.execute(
+        select(User).where(func.lower(User.email) == normalised)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_user(
+    session: AsyncSession,
+    username: str,
+    email: str,
+    hashed_password: str,
+) -> User:
+    user = User(
+        id=uuid.uuid4(),
+        username=username.strip(),
+        email=email.lower().strip(),
+        hashed_password=hashed_password,
+    )
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return user
+
+
+async def get_or_create_player(
+    session: AsyncSession,
+    campaign_id: uuid.UUID,
+    player_name: str,
+) -> Player:
+    """Return existing Player (case-insensitive name match) or create a new one."""
+    normalised = player_name.strip().lower()
+    result = await session.execute(
+        select(Player).where(
+            Player.campaign_id == campaign_id,
+            func.lower(Player.player_name) == normalised,
+        )
+    )
+    existing = result.scalar_one_or_none()
+    if existing is not None:
+        return existing
+    player = Player(
+        id=uuid.uuid4(),
+        campaign_id=campaign_id,
+        player_name=player_name.strip(),
+    )
+    session.add(player)
+    await session.commit()
+    await session.refresh(player)
+    return player
+
+
+async def link_player_character(
+    session: AsyncSession,
+    player_id: uuid.UUID,
+    character_id: uuid.UUID,
+) -> Player:
+    result = await session.execute(select(Player).where(Player.id == player_id))
+    player = result.scalar_one()
+    player.character_id = character_id
+    await session.commit()
+    await session.refresh(player)
+    return player
