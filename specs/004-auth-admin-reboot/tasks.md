@@ -10,6 +10,8 @@
 
 **Constitution**: Principle VII (Placeholder-First & Explicit Failures) applies throughout — every new UI surface MUST render a visible stub before real logic is wired in.
 
+**Note (2026-06-20 clarification)**: Decisions reached in the clarification session on 2026-06-20 require reworking the player join flow and the post-login navigation. Prior tasks that implemented the old anonymous join flow (T016–T018) and the old direct-to-admin routing (T007–T008) are marked with ⚠️ SUPERSEDED where their implementation conflicts with the new design. New tasks T039+ address all 2026-06-20 changes.
+
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies)
@@ -23,7 +25,7 @@
 **Purpose**: Confirm the foundational files are in the right shape before any user story work begins.
 
 - [x] T001 Audit `apps/web/app.py` and ensure it can be launched as a pure Gradio app with `gr.Blocks().launch()` — document anything blocking a clean launch
-- [x] T002 Verify `packages/core/core/schemas.py` defines `UserInfo` (user_id, username) and `CampaignSession` (campaign_id, display_name, role, join_code, ai_available) dataclasses; add or correct them if missing
+- [x] T002 Verify `packages/core/core/schemas.py` defines `UserInfo` (user_id, username) and `CampaignSession` (campaign_id, display_name, role, join_code, ai_available) dataclasses; add or correct them if missing ⚠️ SUPERSEDED by T039 — `CampaignSession` also needs `user_id: UUID`
 - [x] T003 [P] Verify `packages/storage/storage/users.py` has stub functions for `get_user_by_username()`, `create_user()`, `get_campaign_by_join_code()`, and `get_or_create_player()`; add missing stubs with `raise NotImplementedError` bodies
 
 ---
@@ -34,49 +36,61 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [x] T004 Implement `apps/web/services/auth.py` with two functions: `sign_in(username, password) -> UserInfo | str` and `register(username, email, password, confirm_password) -> UserInfo | str`; password hashing MUST use `hashlib.sha256(password.encode()).hexdigest()` stored in `hashed_password` — no bcrypt dependency; both functions MUST return visible error strings, never raise exceptions to the UI layer
-- [x] T005 [P] Implement repository helpers in `packages/storage/storage/users.py`: `get_user_by_username(username) -> User | None`, `create_user(username, email, hashed_password) -> User`, `get_campaign_by_join_code(join_code) -> Campaign | None`, `get_or_create_player(campaign_id, player_name) -> Player`; use SQLAlchemy 2.x session patterns and SQLite-compatible upsert semantics
-- [x] T006 [P] Implement campaign repository helpers in `packages/storage/storage/users.py`: `get_campaigns_for_user(user_id) -> list[Campaign]` (excludes archived), `create_campaign(owner_id, name, game_system) -> Campaign | str` (returns error string on duplicate case-insensitive name per owner), `archive_campaign(campaign_id) -> None` (sets `Campaign.archived = True`); all campaign list queries MUST filter out archived campaigns by default
-- [x] T007 Rewrite `apps/web/app.py` to use `gr.Blocks().launch()` as the sole app entry point with three top-level panels: auth screen, player join screen, GM campaign dashboard — each panel rendered as a visible placeholder stub per Principle VII (e.g., `gr.Markdown("Sign In — not yet implemented")`)
-- [x] T008 Add `gr.State()` objects to `apps/web/app.py` for `user_state` (holds `UserInfo | None`) and `session_state` (holds `CampaignSession | None`); wire tab visibility so auth screen is shown when `user_state` is None and campaign dashboard is shown when `user_state` is set
+- [x] T004 Implement `apps/web/services/auth.py` with `hash_password()` and `verify_password()` using `hashlib.sha256`; `validate_user(backend, identifier, password) -> bool`; `register_user(backend, username, email, password) -> tuple[bool, str]`; no bcrypt dependency; errors returned as strings, never raised to UI
+- [x] T005 [P] Implement repository helpers in `packages/storage/storage/users.py`: `get_user_by_username_or_email(session, identifier) -> User | None`, `create_user(session, username, email, hashed_password) -> User`, `get_campaign_by_join_code(session, join_code) -> Campaign | None`; use SQLAlchemy 2.x async session patterns ⚠️ SUPERSEDED for `get_or_create_player` — see T041
+- [x] T006 [P] Implement campaign repository helpers in `packages/storage/storage/users.py`: `get_campaigns_for_user(session, user_id) -> list[Campaign]` (excludes archived), `archive_campaign(session, campaign_id) -> None`; all campaign list queries MUST filter out archived campaigns by default
+- [x] T007 Rewrite `apps/web/app.py` to use `gr.Blocks().launch()` as the sole app entry point ⚠️ SUPERSEDED by T044–T046 — app.py needs a hub_col between auth and campaign screens
+- [x] T008 Add `gr.State()` objects to `apps/web/app.py` for `user_state` and `session_state`; wire tab visibility so auth screen is shown when `user_state` is None ⚠️ SUPERSEDED by T044 — `_navigate()` needs a hub state between auth and the GM/Player panels
+- [ ] T039 [P] Add `user_id: UUID` field to `CampaignSession` dataclass in `packages/core/core/schemas.py` — player dashboard pages will use this to query Player records by `(campaign_id, user_id)` instead of display name
+- [ ] T040 Write Alembic migration `packages/core/core/migrations/versions/0004_player_user_link.py`: add `user_id UUID REFERENCES users(id) ON DELETE RESTRICT` column to `players` table (nullable for migration safety); drop `ix_players_campaign_player_name_lower` unique index; add `ix_players_campaign_user` unique index on `(campaign_id, user_id)`; run `uv run alembic upgrade head` to apply
+- [ ] T041 Update `get_or_create_player()` in `packages/storage/storage/users.py` to signature `(session, campaign_id, user_id, username) -> Player`: match on `(campaign_id, user_id)` instead of player_name; populate `player_name = username` on creation; existing callers in `apps/web/pages/landing.py` and `apps/web/pages/player/join.py` must be updated
+- [ ] T042 [P] Add `get_campaigns_for_player(session, user_id) -> list[Campaign]` to `packages/storage/storage/users.py`: join `Player` on `Campaign` where `Player.user_id == user_id` and `Campaign.archived == False`; return newest first — used by the player join screen's previously-joined campaigns list
+- [ ] T043 Move `get_backend()` SQLiteBackend singleton from `apps/web/pages/landing.py` to `apps/web/services/db.py`; update all existing import references in `apps/web/pages/auth.py` and `apps/web/pages/admin/campaigns.py`
 
-**Checkpoint**: App launches with `uv run python apps/web/app.py`, shows placeholder panels, and `gr.State` objects are in place.
+**Checkpoint**: Migration applied, `get_or_create_player()` uses `user_id`, `CampaignSession` carries `user_id`, `get_backend()` lives in `services/db.py`. App still launches with `uv run python apps/web/app.py`.
 
 ---
 
 ## Phase 3: User Story 1 — GM Signs In and Reaches Their Campaign Dashboard (Priority: P1) 🎯 MVP
 
-**Goal**: A GM can create an account and sign in from the auth screen, then immediately see their campaign dashboard. All errors appear in the UI. GMs can create, resume, and archive campaigns.
+**Goal**: A GM can create an account and sign in from the auth screen, then see the post-login hub, navigate to "My Campaigns (GM)", and immediately see their campaign dashboard. All errors appear in the UI. GMs can create, resume, and archive campaigns.
 
-**Independent Test**: Open the app in a fresh browser, use Create Account to register, verify the campaign dashboard appears immediately. Close and reopen, sign in with the same credentials, confirm the campaign list is shown. Test wrong password and duplicate username — both must show visible errors, not console-only messages. Create a campaign, archive it, confirm it disappears from the list.
+**Independent Test**: Open the app, use Create Account to register, verify the hub screen appears, click "My Campaigns (GM)", verify the campaign dashboard appears. Sign out and sign in — hub appears again. Test wrong password and duplicate username — both must show visible UI errors.
 
 ### Implementation for User Story 1
 
-- [x] T009 [US1] Implement `apps/web/pages/auth.py` Sign In tab: `gr.Textbox` for username and password (password type), Sign In button, and a `gr.Markdown` for `login_status` error output; wire sign-in button to call `sign_in()` from `apps/web/services/auth.py` and update `user_state` on success
-- [x] T010 [US1] Implement `apps/web/pages/auth.py` Create Account tab: `gr.Textbox` components for username, email, password, confirm_password, a Register button, and a `gr.Markdown` for `reg_status` output; wire register button to `register()` and on success populate `user_state` and transition directly to campaign dashboard (no additional sign-in step)
+- [x] T009 [US1] Implement `apps/web/pages/auth.py` Sign In tab: `gr.Textbox` for username and password, Sign In button, `gr.Markdown` for `login_status`; wire to `validate_user()` and populate `user_state` on success
+- [x] T010 [US1] Implement `apps/web/pages/auth.py` Create Account tab: `gr.Textbox` for username, email, password, confirm_password; wire to `register_user()` and populate `user_state` on success — no additional sign-in step after registration
 - [x] T011 [US1] Implement sign-out handler in `apps/web/app.py`: clear `user_state` and `session_state` to `None` and return the UI to the auth screen
-- [x] T012 [P] [US1] Implement `apps/web/pages/admin/campaigns.py` campaign list view: `gr.DataFrame` showing `[Name, Join Code, Created]` columns populated from `get_campaigns_for_user(user_id)` (excludes archived), a `gr.Textbox` for campaign name, a `gr.Dropdown` for game system, and a Create Campaign button
-- [x] T013 [US1] Add create campaign handler in `apps/web/pages/admin/campaigns.py`: call `create_campaign()`, display a visible `gr.Markdown` error when the name is a duplicate (case-insensitive per owner), and refresh the campaign table on success
-- [x] T014 [US1] Add archive campaign handler in `apps/web/pages/admin/campaigns.py`: an Archive button that calls `archive_campaign(campaign_id)` for the selected row, shows a visible `gr.Markdown` confirmation message, and refreshes the campaign table to remove the archived campaign; no data is deleted
-- [x] T015 [US1] Add row selection and Resume Campaign button in `apps/web/pages/admin/campaigns.py`: on click, resolve the selected campaign, populate `session_state` with `CampaignSession(role="gm")`, and transition the UI to the GM dashboard placeholder
+- [ ] T044 [US1] Add `hub_col` to `apps/web/app.py` navigation state machine: update `_navigate()` so when `user_state` is set and `session_state` is None the hub screen is shown (replacing the current direct transition to `admin_col`); `hub_col` is a new `gr.Column` containing only the hub navigation content (built inline or via `pages/hub.py`)
+- [ ] T045 [P] [US1] Build hub screen content inside `hub_col` in `apps/web/app.py`: a "My Campaigns (GM)" `gr.Button` (wired to show `gm_campaigns_col`), a "Join a Campaign (Player)" `gr.Button` (wired to show `player_join_col`), and a "Sign Out" button; all transitions must update both `session_state` and the visible panel without a page reload
+- [ ] T046 [US1] Create `apps/web/pages/gm/campaigns.py` by moving all code from `apps/web/pages/admin/campaigns.py`, updating the import of `get_backend` to `from services.db import get_backend`; update `apps/web/app.py` to import `CampaignPageRefs`, `build_campaigns_page`, `load_campaigns_for_user`, and `resume_campaign` from `pages.gm.campaigns`; delete `apps/web/pages/admin/campaigns.py`
+- [x] T012 [P] [US1] Campaign list view in `apps/web/pages/admin/campaigns.py` (now `pages/gm/campaigns.py` after T046): `gr.Dataframe` showing `[Name, Join Code, Created]` columns; campaign name textbox; game system dropdown; Create Campaign button ⚠️ Completed in old path — T046 moves this to the canonical path
+- [x] T013 [US1] Create campaign handler: calls `create_campaign()`, shows visible `gr.Markdown` error on duplicate name, refreshes table on success
+- [x] T014 [US1] Archive campaign handler: calls `archive_campaign(campaign_id)`, shows visible confirmation, refreshes table; no data deleted
+- [x] T015 [US1] Row selection and Resume Campaign button: resolves selected campaign, populates `session_state` with `CampaignSession(role="gm", user_id=user_state.user_id)`, navigates to GM dashboard
 
-**Checkpoint**: GM can create account → see (empty) campaign table → create a campaign → resume it → archive it (disappears from table). Sign-out returns to auth screen. Wrong password or duplicate username shows visible UI error.
+**Checkpoint**: GM can register → see hub → click "My Campaigns" → see campaign list → create a campaign → resume it → archive it (disappears). Sign-out returns to auth screen. Wrong password and duplicate username show visible UI errors.
 
 ---
 
-## Phase 4: User Story 2 — Player Joins a Campaign with Just a Join Code (Priority: P1)
+## Phase 4: User Story 2 — Player Creates an Account Then Joins a Campaign (Priority: P1)
 
-**Goal**: A player enters only a join code and their player name to reach their player dashboard. Returning players get the same record back.
+**Goal**: All users must authenticate before joining a campaign. After auth, the hub offers "Join a Campaign (Player)". A new player enters only the join code — player name is set from their username. A returning player sees their previously joined campaigns and can re-enter with one click.
 
-**Independent Test**: As GM, copy the 6-character join code from the campaign detail. In a separate browser tab, enter the join code and a player name — player dashboard appears. Close and reopen, enter the same two values — same player state is restored. Test invalid join code and empty fields — both show visible inline errors.
+**Independent Test**: Create a player account. From the hub, click "Join a Campaign (Player)". Enter a valid join code (no player name field visible). Verify player dashboard appears with display name matching account username. Sign out and sign in; verify the campaign appears in the joined-campaigns list. Click it — player dashboard loads without re-entering the join code. Test invalid join code and empty join code — both show distinct visible errors.
 
 ### Implementation for User Story 2
 
-- [x] T016 [US2] Rewrite `apps/web/pages/landing.py` to show exactly two inputs — `gr.Textbox` for `join_code` and `gr.Textbox` for `player_name` — removing any campaign name field; add a Join Campaign button and a `gr.Markdown` for `join_status` output
-- [x] T017 [US2] Implement player join handler in `apps/web/pages/landing.py`: validate both fields are non-empty (show field-specific inline error if either is empty), call `get_campaign_by_join_code()`, return `"No campaign found with that join code."` as a visible `join_status` message on failure
-- [x] T018 [US2] On successful join code lookup, call `get_or_create_player(campaign_id, player_name)` from `packages/storage/storage/users.py`, populate `session_state` with `CampaignSession(role="player")`, and transition the UI to the player dashboard placeholder
+- [x] T016 [US2] Rewrite `apps/web/pages/landing.py` to show `join_code` and `player_name` inputs ⚠️ SUPERSEDED by T047–T050 — anonymous join is removed; new flow in `pages/player/join.py`
+- [x] T017 [US2] Player join handler in `landing.py` ⚠️ SUPERSEDED by T048 — handler now uses `user_state.user_id` as identity
+- [x] T018 [US2] Populate `CampaignSession(role="player")` on join ⚠️ SUPERSEDED by T048 — `CampaignSession` now also carries `user_id`
+- [ ] T047 [P] [US2] Create `apps/web/pages/player/join.py` with two sections: (1) a `gr.DataFrame` listing campaigns the user has already joined (columns: Name, Join Code; populated from `get_campaigns_for_player(user_id)` when the join screen is entered); (2) a `gr.Textbox` for join code only — NO player_name input — with a "Join Campaign" `gr.Button` and `gr.Markdown` for `join_status`; stub all event handlers per Principle VII before wiring real logic
+- [ ] T048 [US2] Implement new-campaign join handler in `apps/web/pages/player/join.py`: validate join code is non-empty (show field-specific error if empty); call `get_campaign_by_join_code(session, join_code)`; on not found show visible "No campaign found with that join code."; on success call `get_or_create_player(session, campaign_id, user_id=user_state.user_id, username=user_state.username)` and populate `CampaignSession(role="player", user_id=user_state.user_id, campaign_id=..., display_name=user_state.username, join_code=...)`
+- [ ] T049 [US2] Implement previously-joined campaign click handler in `apps/web/pages/player/join.py`: clicking a row in the joined-campaigns `gr.DataFrame` loads the campaign and populates `CampaignSession(role="player", user_id=user_state.user_id, ...)` without requiring join code re-entry; mirrors the GM's resume flow
+- [ ] T050 [US2] Delete `apps/web/pages/landing.py`; update `apps/web/app.py` to import the player join screen builder from `pages.player.join`; verify no remaining import references to `pages.landing` exist in any file
 
-**Checkpoint**: Player can enter join code + player name → reach player dashboard. Returning with same two values restores the same record. Invalid code and empty fields each show a distinct visible error.
+**Checkpoint**: No player name input exists in the join form. Player display name matches account username. New join via join code creates a Player record linked to the authenticated user. Returning player sees their joined campaigns list and can re-enter with one click. Invalid or empty join code shows distinct visible errors. No anonymous join path exists.
 
 ---
 
@@ -88,17 +102,17 @@
 
 ### Implementation for User Story 3
 
-- [x] T019 [US3] Implement `apps/web/pages/gm/dashboard.py` layout: `gr.TabbedInterface` with stubs for Characters, NPCs, Story History, World Notes, Session Plan, and Players tabs — each tab renders a visible `gr.Markdown` placeholder per Principle VII
-- [x] T020 [P] [US3] Add join code display at the top of the GM dashboard in `apps/web/pages/gm/dashboard.py`: a read-only `gr.Textbox` pre-populated from `CampaignSession.join_code` with label "Campaign Join Code (share with players)"
-- [x] T021 [P] [US3] Implement NPCs tab in `apps/web/pages/gm/`: `gr.Textbox` inputs for name, role, personality; a Save NPC button; a `gr.DataFrame` listing current NPCs; save handler must call upsert logic (case-insensitive name per campaign) and show success or error in a `gr.Markdown` status output
-- [x] T022 [US3] Implement Story History tab in `apps/web/pages/gm/`: session creation form (`gr.Textbox` for session title, `gr.Textbox` for date defaulting to today) with a Create Session button; a `gr.Dropdown` to select the active session for event logging; a `gr.Textbox` for event description with a Log Event button; history view groups events under their session header in chronological order; all handlers show visible status messages on success or failure
-- [x] T023 [US3] Implement World Notes tab in `apps/web/pages/gm/`: a `gr.Textbox` (lines=20) for Markdown input, a Save Notes button, and a `gr.Markdown` component rendering the saved content as a live preview; handler writes to `Campaign.world_notes` and displays a visible save confirmation or error in a `gr.Markdown` status output
-- [x] T024 [US3] Implement NPC Twin Chat tab in `apps/web/pages/gm/`: when `CampaignSession.ai_available` is `False`, display `gr.Markdown("AI service unavailable — check that Ollama is running")` and disable the chat input; when `True`, wire the `gr.Chatbot` to the Ollama provider and surface any provider errors visibly
-- [x] T025 [US3] Implement Session Plan tab in `apps/web/pages/gm/`: when the AI planner is unavailable, display `gr.Markdown("Session planning assistant unavailable — check that Ollama is running")` as the tab body; when available, provide a text area for manual notes and a Generate Plan button
-- [x] T026 [US3] Implement Players tab in `apps/web/pages/gm/`: a read-only `gr.DataFrame` with columns `[Player Name, Character Name]` populated from all `Player` records for the active campaign; character name shows "—" if no character has been created yet; no edit or remove actions
-- [x] T027 [US3] Add a centralized error display pattern across all GM dashboard tab handlers in `apps/web/pages/gm/`: wrap each event handler in a try/except that catches all exceptions and returns a human-readable `gr.Markdown` error (never `except: pass`, never log-only)
+- [x] T019 [US3] Implement GM dashboard layout: `gr.TabbedInterface` with visible stub tabs for Characters, NPCs, Story History, World Notes, Session Plan, and Players per Principle VII
+- [x] T020 [P] [US3] Join code display at top of GM dashboard: read-only `gr.Textbox` pre-populated from `CampaignSession.join_code` with label "Campaign Join Code — share with players"
+- [x] T021 [P] [US3] NPCs tab in `apps/web/pages/gm/npcs.py`: name/role/personality inputs, Save NPC button, `gr.DataFrame` NPC list; upsert on case-insensitive name per campaign; visible status output
+- [x] T022 [US3] Story History tab in `apps/web/pages/gm/history.py`: session creation form (title, date); session dropdown for event logging; event description textbox with Log Event button; history view grouped by session header chronologically; all handlers show visible status messages
+- [x] T023 [US3] World Notes tab in `apps/web/pages/gm/world_notes.py`: `gr.Textbox` (lines=20) for Markdown input, Save Notes button, `gr.Markdown` live preview; handler writes to `Campaign.world_notes` and shows visible save confirmation or error
+- [x] T024 [US3] NPC Twin Chat tab in `apps/web/pages/gm/`: shows "AI service unavailable — check that Ollama is running" when `CampaignSession.ai_available` is False; wired to Ollama provider when True; all provider errors displayed visibly
+- [x] T025 [US3] Session Plan tab in `apps/web/pages/gm/session_plan.py`: "Session planning assistant unavailable — check that Ollama is running" when AI is down; manual notes area and Generate Plan button when available
+- [x] T026 [US3] Players tab in `apps/web/pages/gm/players.py`: read-only `gr.DataFrame` with `[Player Name, Character Name]` columns; character name shows "—" if none; no edit or remove actions
+- [x] T027 [US3] Centralized error pattern across all GM dashboard handlers: every event handler wrapped in try/except returning human-readable `gr.Markdown` error; no `except: pass`, no log-only patterns
 
-**Checkpoint**: All six GM tabs render without crashing. Join code visible at top. NPC and story event saves work. Session creation groups events under session headers. World Notes Markdown editor saves and renders. Players tab lists joined players. AI-dependent tabs show placeholders when Ollama is unavailable. Any tab error shows in-page message.
+**Checkpoint**: All six GM tabs render without crashing. Join code visible at top. NPC and story event saves work. Session creation groups events under session headers. World Notes saves and renders Markdown. Players tab lists joined players. AI-dependent tabs show placeholders when Ollama is unavailable.
 
 ---
 
@@ -106,16 +120,17 @@
 
 **Goal**: A player in an active session can view/edit their character, read story history grouped by session, and chat with their twin — or see a clear unavailable state for AI features.
 
-**Independent Test**: Join a campaign as a player. Navigate Character, Twin Chat, and History tabs. Fill in and save character details. View history (events grouped by session). If Ollama is available, send a twin chat message and verify a response. If not, verify the "AI unavailable" message appears. Rejoin with same join code and player name — character edits must be persisted.
+**Independent Test**: Join a campaign as a player (auth-first). Navigate Character, Twin Chat, and History tabs. Fill in and save character details. View history (events grouped by session). If Ollama is available, send a twin chat message. If not, verify the "AI unavailable" message appears. Rejoin via joined-campaigns list — character edits must be persisted.
 
 ### Implementation for User Story 4
 
-- [x] T028 [US4] Implement `apps/web/pages/player/dashboard.py` layout: `gr.TabbedInterface` with Character, Twin Chat, and Story History tabs — each tab renders a visible `gr.Markdown` placeholder stub per Principle VII
-- [x] T029 [P] [US4] Implement Character tab in `apps/web/pages/player/`: `gr.Textbox` inputs for name, race, discipline, background, personality; a Save Character button; handler calls upsert logic (case-insensitive name per campaign) and displays success or error in a `gr.Markdown` status output; character data is pre-loaded from the existing `Player.character_id` record on tab render
-- [x] T030 [P] [US4] Implement Story History tab in `apps/web/pages/player/`: a read-only `gr.Markdown` listing all public `StoryEvent` rows for the campaign grouped by session header in chronological order; events with no session appear under an "Unsorted" group
-- [x] T031 [US4] Implement Twin Chat tab in `apps/web/pages/player/`: when `CampaignSession.ai_available` is `False`, display `gr.Markdown("AI service unavailable — check that Ollama is running")` and disable the chat input; when `True`, wire the `gr.Chatbot` to the Ollama provider using the player's `DigitalTwin` conversation history; surface any provider errors visibly
+- [x] T028 [US4] Player dashboard layout: `gr.TabbedInterface` with Character, Twin Chat, and Story History stubs per Principle VII
+- [x] T029 [P] [US4] Character tab in `apps/web/pages/player/character.py`: name/race/discipline/background/personality inputs, Save Character button, upsert on case-insensitive name per campaign; character pre-loaded on tab render
+- [x] T030 [P] [US4] Story History tab in `apps/web/pages/player/history.py`: read-only `gr.Markdown` listing all public story events for the campaign grouped by session header chronologically; events without a session shown under "Unsorted"
+- [x] T031 [US4] Twin Chat tab in `apps/web/pages/player/twin_chat.py`: shows "AI service unavailable — check that Ollama is running" when `CampaignSession.ai_available` is False; wired to Ollama using player's `DigitalTwin` conversation history when available; all provider errors displayed visibly
+- [ ] T051 [US4] Update character pre-load logic in `apps/web/pages/player/character.py`: query the player's Character record using `CampaignSession.user_id` + `CampaignSession.campaign_id` via `Player.user_id` join (instead of display name match) to ensure the correct player record is loaded for the authenticated user
 
-**Checkpoint**: All three player tabs render without crashing. Character save is persisted. Story history shows events grouped by session. Twin chat shows AI-unavailable placeholder when Ollama is down. Rejoining with same credentials restores saved character.
+**Checkpoint**: All three player tabs render without crashing. Character save is persisted. Story history shows events grouped by session. Twin chat shows AI-unavailable placeholder when Ollama is down. Rejoining via joined-campaigns list restores saved character.
 
 ---
 
@@ -123,29 +138,30 @@
 
 **Goal**: GMs and players can see and trigger portrait generation for NPCs and characters. When ComfyUI is unavailable, a clear placeholder is shown — the control is never hidden.
 
-**Independent Test**: Navigate to an NPC with a physical description and click Generate Portrait. If ComfyUI is running, a portrait appears and is saved. If not, `"Image generation unavailable — check that ComfyUI is running"` is visible and the existing portrait (or a placeholder icon) is retained. Any image generation error shows visibly in the UI.
+**Independent Test**: Navigate to an NPC with a physical description and click Generate Portrait. If ComfyUI is running, a portrait appears and is saved. If not, "Image generation unavailable — check that ComfyUI is running" is visible and the existing portrait (or placeholder icon) is retained. Any image generation error shows visibly in the UI.
 
 ### Implementation for User Story 5
 
-- [ ] T032 [P] [US5] Add a "Generate Portrait" button and `gr.Image` display to the NPC tab in `apps/web/pages/gm/` and to the Character tab in `apps/web/pages/player/`; when the ComfyUI service is unavailable, the button is visible but disabled and a `gr.Markdown` reads `"Image generation unavailable — check that ComfyUI is running"`
-- [ ] T033 [US5] Implement portrait generation handler for both NPC and Character tabs: call the ComfyUI/image generation provider when available, display the returned image in the `gr.Image` component and persist `portrait_url` on the entity; catch and display all provider errors visibly in a `gr.Markdown` status output — never swallow exceptions
+- [ ] T032 [P] [US5] Add "Generate Portrait" button and `gr.Image` display to the NPC tab in `apps/web/pages/gm/npcs.py` and to the Character tab in `apps/web/pages/player/character.py`; when ComfyUI is unavailable, button is visible but disabled and a `gr.Markdown` reads "Image generation unavailable — check that ComfyUI is running"
+- [ ] T033 [US5] Implement portrait generation handler for both NPC and Character tabs: call the ComfyUI/image generation provider when available, display returned image and persist `portrait_url` on the entity; catch and display all provider errors visibly in `gr.Markdown` — never swallow exceptions
 
-**Checkpoint**: Generate Portrait button is visible on NPC and Character tabs regardless of service availability. When ComfyUI is down, a clear placeholder message appears. When up, a portrait is generated and saved.
+**Checkpoint**: Generate Portrait button visible on NPC and Character tabs regardless of service availability. When ComfyUI is down, visible placeholder message appears. When up, portrait is generated and saved.
 
 ---
 
 ## Phase 8: User Story 6 — Stale Spec Artifacts are Cleaned Up (Priority: P3)
 
-**Goal**: No open tasks in `/specs` reference the old FastAPI entrypoint, bcrypt threading, or the three-field player join form. The README reflects the current Gradio-only, simplified auth architecture.
+**Goal**: No open tasks in `/specs` reference the old FastAPI entrypoint, bcrypt threading, old anonymous player join flow, or `landing.py`. README reflects the current Gradio-only, auth-first architecture.
 
-**Independent Test**: Read all open `tasks.md` files in `/specs`. Confirm none reference `uvicorn`, `main:app`, or a three-field player join. Read `README.md` — confirm it describes `uv run python apps/web/app.py` as the launch command and a two-field player join.
+**Independent Test**: Read all open `tasks.md` files in `/specs`. Confirm none reference `uvicorn`, `main:app`, bcrypt threading, or `landing.py`. Read `README.md` — confirm it describes auth-first player flow, hub screen, and `uv run python apps/web/app.py` as the launch command.
 
 ### Implementation for User Story 6
 
-- [x] T034 [US6] Scan all `tasks.md` files under `/specs` (002 and 003) and mark any open task referencing FastAPI-based launching (`uvicorn`, `main:app`), bcrypt threading, or the three-field player join form as `[SUPERSEDED]` with a one-line note explaining the superseding feature
-- [x] T035 [US6] Update `README.md` to accurately describe: Gradio-only launch (`uv run python apps/web/app.py` from `apps/web/`), simplified mock auth backed by SQLite with SHA-256 password hashing, two-field player join (join code + player name), campaign archive feature, session-grouped story history, and current known limitations (no OAuth, no mobile optimization, AI services are optional)
+- [x] T034 [US6] Scan all `tasks.md` files under `/specs` (002 and 003) and mark any open task referencing FastAPI-based launching, bcrypt threading, or the three-field player join form as `[SUPERSEDED]`
+- [x] T035 [US6] Update `README.md` to accurately describe: Gradio-only launch, simplified auth, campaign management ⚠️ SUPERSEDED by T052 — README needs updating for hub screen and auth-first player flow
+- [ ] T052 [US6] Update `README.md` to reflect 2026-06-20 architectural changes: auth-first flow for all users (players must create accounts), hub screen (post-login navigation with GM and Player paths), player join no longer accepts a player name (username used automatically), module consolidation (`landing.py` and `admin/campaigns.py` deleted), current known limitations (no OAuth, no mobile, AI services optional)
 
-**Checkpoint**: No open tasks in `/specs` reference the old entrypoints or bcrypt. README launch command, join flow, and feature descriptions are accurate.
+**Checkpoint**: No open tasks in `/specs` reference old entrypoints, anonymous join, or `landing.py`. README launch command, player join flow, and feature descriptions are accurate.
 
 ---
 
@@ -153,9 +169,11 @@
 
 **Purpose**: Verification and cross-cutting quality checks that span all user stories.
 
-- [ ] T036 [P] Run all 8 quickstart.md validation scenarios against the running app: GM auth flow, campaign creation and join code display, player join flow, player rejoin persistence, AI degradation, session creation and event logging, players tab, and campaign archive — all scenarios must pass
+- [ ] T053 [P] Update `specs/004-auth-admin-reboot/contracts/ui-contract.md` to reflect new Player Join Screen contract (auth-required; join_code only; no player_name field); add Hub Screen contract (two buttons: "My Campaigns (GM)" and "Join a Campaign (Player)"); add `user_id: UUID` to Transient State Contract for `CampaignSession`
+- [ ] T036 [P] Run all 9 quickstart.md validation scenarios against the running app: GM auth flow, campaign creation and join code display, hub navigation, player join flow (auth-first, no player name), player rejoin persistence (joined-campaigns list), AI degradation, session creation and event logging, players tab, campaign archive — all scenarios must pass
 - [ ] T037 Verify all GM and player dashboard tabs render without crashing when both Ollama and ComfyUI are unavailable — every AI-dependent component must show a visible placeholder, not a blank panel or Python traceback
 - [x] T038 [P] Run `ruff check apps/web/ packages/core/ packages/storage/` and `pyright apps/web/ packages/core/ packages/storage/` and resolve all reported errors
+- [ ] T054 [P] Re-run ruff and pyright after all T039–T052 changes are complete to catch any new type or lint errors introduced by the `user_id` additions and module moves
 
 ---
 
@@ -164,71 +182,92 @@
 ### Phase Dependencies
 
 - **Setup (Phase 1)**: No dependencies — can start immediately
-- **Foundational (Phase 2)**: Depends on Setup completion — BLOCKS all user stories
+- **Foundational (Phase 2)**: Depends on Setup — BLOCKS all user stories; T039–T043 must complete before US2 work (T047–T050)
 - **User Stories (Phases 3–8)**: All depend on Foundational phase completion
-  - US1–US4 (P1) can proceed in priority order or in parallel if capacity allows
-  - US5 (P2) depends on US3 and US4 completing their portrait-capable tabs
-  - US6 (P3) is independent and can be done any time after US1 is complete
+  - US1 and US2 can proceed in parallel after Phase 2
+  - US3 depends on US1 (GM must be authenticated to enter a campaign)
+  - US4 depends on US2 (player must have joined to use the dashboard); T051 depends on T039 (`user_id` in CampaignSession)
+  - US5 depends on US3 and US4 (portrait button lives inside dashboard tabs)
+  - US6 is independent and can be done any time after US1 is complete
 - **Polish (Phase 9)**: Depends on all desired user stories being complete
 
 ### User Story Dependencies
 
-- **US1 (P1)**: Can start after Phase 2 — auth screen and campaign dashboard are independent of all other stories
-- **US2 (P1)**: Can start after Phase 2 — player join is independent of US1
-- **US3 (P1)**: Depends on US1 (GM must be authenticated to enter a campaign)
-- **US4 (P1)**: Depends on US2 (player must have joined to use the dashboard)
-- **US5 (P2)**: Depends on US3 and US4 (portrait button lives inside GM and Player dashboard tabs)
-- **US6 (P3)**: Independent of code changes — can be done any time after US1 is complete
+- **US1 (P1)**: After Phase 2 — T044 (hub) depends on T039 (`CampaignSession.user_id`); T046 (module move) depends on T043 (`services/db.py`)
+- **US2 (P1)**: After Phase 2 — T047 depends on T043 and T042; T048 depends on T041; T050 depends on T043 and T047
+- **US3 (P1)**: After US1 — all GM tab tasks are independent of each other after T019
+- **US4 (P1)**: After US2 — T051 depends on T039 (`CampaignSession.user_id`)
+- **US5 (P2)**: After US3 and US4
+- **US6 (P3)**: Independent; T052 should run after US2 is complete so README is accurate
 
 ### Within Each User Story
 
-- Models/schemas before services
-- Services/repository helpers before UI handlers
+- Schema/model changes before service layer (`CampaignSession.user_id` before `get_or_create_player` changes)
+- Migration before any code that references the new `user_id` column
+- `services/db.py` singleton move before any module moves (T043 before T046 and T047)
 - Placeholder stubs before real logic (Principle VII — mandatory)
 - Story complete and checkpoint validated before moving to next priority
 
 ### Parallel Opportunities
 
-- T003, T005, T006 can run in parallel (different files in Phase 2)
-- T012 can run in parallel with T009–T011 (different files in US1)
-- T020, T021 can run in parallel (different tabs/sections in US3, after T019)
-- T029, T030 can run in parallel (different tabs in US4, after T028)
-- T032 can run in parallel across NPC and Character tabs (US5)
-- T036, T038 can run in parallel (Phase 9)
+- T039, T042, T043 can run in parallel (different files in Phase 2)
+- T040 and T041 are sequential (migration before the updated `get_or_create_player` runs against it)
+- T044, T045 can run in parallel (different sections of `app.py` hub wiring)
+- T047 can run in parallel with T046 (different files: `pages/player/join.py` vs `pages/gm/campaigns.py`)
+- T020, T021 can run in parallel after T019 (different GM tabs)
+- T029, T030 can run in parallel after T028 (different player tabs)
+- T032 can be parallelized across NPC and Character tabs
+- T036, T053, T054 can run in parallel (Phase 9)
 
 ---
 
-## Parallel Example: User Story 3 (GM Dashboard Tabs)
+## Parallel Example: Phase 2 New Tasks
 
 ```
-# Once T019 (GM dashboard layout with stubs) is done, these can run in parallel:
-T020 — Join code display at top of dashboard
-T021 — NPCs tab implementation
-# T022 (Story History with sessions), T023 (World Notes), T024 (Twin Chat),
-# T025 (Session Plan), T026 (Players) follow after T019 is complete
+# All can start immediately after T004-T008 are confirmed complete:
+T039 — Add user_id to CampaignSession in packages/core/core/schemas.py
+T042 — Add get_campaigns_for_player() to packages/storage/storage/users.py
+T043 — Move get_backend() to apps/web/services/db.py
+
+# Then sequentially:
+T040 — Write migration 0004_player_user_link (needs schema knowledge)
+T041 — Update get_or_create_player() (needs migration to be written first)
+```
+
+## Parallel Example: User Story 2 (Auth-First Player Join)
+
+```
+# After T039, T041, T042, T043 complete:
+T046 — Create pages/gm/campaigns.py (parallel with T047)
+T047 — Create pages/player/join.py stub
+
+# Then sequentially:
+T048 — Wire new-campaign join handler (depends on T047)
+T049 — Wire rejoining handler (depends on T047)
+T050 — Delete landing.py (last — depends on T047 being complete)
 ```
 
 ---
 
 ## Implementation Strategy
 
-### MVP First (User Stories 1 + 2 Only)
+### MVP First (User Stories 1 + 2)
 
 1. Complete Phase 1: Setup
-2. Complete Phase 2: Foundational (CRITICAL — blocks all stories)
-3. Complete Phase 3: User Story 1 (GM Sign In + Campaign Dashboard + Archive)
-4. Complete Phase 4: User Story 2 (Player Join)
-5. **STOP and VALIDATE**: Auth screen works, player join works, campaign creates with join code, archive removes from list
-6. Demo if ready — core loop is now functional
+2. Complete Phase 2: Foundational including T039–T043 (migration, schema, storage helpers)
+3. Complete Phase 3: US1 — GM auth + hub screen + campaign dashboard
+4. Complete Phase 4: US2 — Auth-first player join + joined campaigns list
+5. **STOP and VALIDATE**: Hub navigates correctly; players must authenticate; join code creates player linked to user; returning player sees their campaigns
+6. Demo if ready — end-to-end loop is functional
 
 ### Incremental Delivery
 
-1. Setup + Foundational → app launches with placeholder stubs
-2. US1 → GM can sign in, manage, and archive campaigns → demo-able for GMs
-3. US2 → Players can join → end-to-end loop demo-able
-4. US3 + US4 → all dashboard tools accessible (sessions, world notes, players list) → full feature demo
-5. US5 → portrait generation visible → AI feature showcase
-6. US6 → spec hygiene → dev team quality
+1. Phase 1 + Phase 2 (including T039–T043) → app launches, migration applied
+2. US1 (T044–T046) → GM can authenticate, see hub, manage campaigns → GM demo-able
+3. US2 (T047–T050) → Players can authenticate, join via hub, return via list → full auth-first loop
+4. US3 + US4 → all dashboard tools accessible → full feature demo
+5. US5 → portrait generation → AI showcase
+6. US6 + Phase 9 → spec hygiene and validation
 
 ---
 
@@ -236,8 +275,12 @@ T021 — NPCs tab implementation
 
 - [P] tasks = different files, no shared state dependencies
 - [Story] label maps task to specific user story for traceability
-- Principle VII requires visible placeholder stubs BEFORE real logic — T007 and T019/T028 enforce this
-- Upsert semantics apply to Character, NPC, and Player saves (case-insensitive name per campaign)
+- Principle VII requires visible placeholder stubs BEFORE real logic — T007/T019/T028/T047 enforce this
+- **2026-06-20 change**: All users (including players) must have a User account — anonymous join removed
+- **2026-06-20 change**: Post-login hub screen required before routing to GM or Player paths
+- **2026-06-20 change**: `Player.user_id` FK required — migration T040 is a hard prerequisite for T041, T048
+- **2026-06-20 change**: `pages/landing.py` and `pages/admin/campaigns.py` are deleted — T043 and T050 handle this
+- Upsert semantics apply to Character and NPC saves (case-insensitive name per campaign); Player upsert is now on `(campaign_id, user_id)` not player_name
 - Password hashing: `hashlib.sha256(password.encode()).hexdigest()` — no bcrypt, no external dependency
 - `gr.State` is the only session mechanism — no JWT, no cookies, no server-side session store
 - Campaign archive is soft-delete only — `Campaign.archived = True`, data is never deleted
