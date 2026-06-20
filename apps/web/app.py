@@ -63,41 +63,61 @@ def create_app() -> gr.Blocks:
         banner = build_banner()
 
         # ── Auth screen (default — shown until sign-in) ───────────────────────
-        with gr.Column(visible=True) as auth_col:
+        with gr.Column(visible=True, elem_id="auth-column") as auth_col:
             build_auth_page(user_state)
 
         # ── Campaigns admin dashboard + player join ───────────────────────────
-        with gr.Column(visible=False) as admin_col:
-            with gr.Row():
-                gr.Markdown("## My Campaigns", scale=4)
-                admin_sign_out_btn = gr.Button("Sign Out", scale=1, size="sm")
+        with gr.Column(visible=False, elem_id="admin-column") as admin_col:
+            with gr.Row(elem_id="admin-header-row"):
+                gr.Markdown("## My Campaigns", scale=4, elem_id="admin-header")
+                admin_sign_out_btn = gr.Button(
+                    "Sign Out",
+                    scale=1,
+                    size="sm",
+                    elem_id="admin-signout-btn",
+                )
             campaign_refs: CampaignPageRefs = build_campaigns_page(
                 session_state, user_state
             )
-            gr.Markdown("---")
-            build_landing(session_state)
+            gr.Markdown("---", elem_id="admin-divider")
+            # build_landing(session_state)
 
         # ── Player dashboard ──────────────────────────────────────────────────
-        with gr.Column(visible=False) as player_col:
-            with gr.Row():
-                gr.Markdown("# StoryWeaver — Player Dashboard", scale=4)
-                player_sign_out_btn = gr.Button("Sign Out", scale=1, size="sm")
-            with gr.Tabs():
+        with gr.Column(visible=False, elem_id="player-column") as player_col:
+            with gr.Row(elem_id="player-header-row"):
+                gr.Markdown(
+                    "# StoryWeaver — Player Dashboard", scale=4, elem_id="player-header"
+                )
+                player_sign_out_btn = gr.Button(
+                    "Sign Out",
+                    scale=1,
+                    size="sm",
+                    elem_id="player-signout-btn",
+                )
+            with gr.Tabs(elem_id="player-tabs"):
                 build_character_page(session_state)
                 build_twin_chat_page(session_state)
                 build_player_history_page(session_state)
 
         # ── GM dashboard ──────────────────────────────────────────────────────
-        with gr.Column(visible=False) as gm_col:
-            with gr.Row():
-                gr.Markdown("# StoryWeaver — GM Dashboard", scale=4)
-                gm_sign_out_btn = gr.Button("Sign Out", scale=1, size="sm")
+        with gr.Column(visible=False, elem_id="gm-column") as gm_col:
+            with gr.Row(elem_id="gm-header-row"):
+                gr.Markdown(
+                    "# StoryWeaver — GM Dashboard", scale=4, elem_id="gm-header"
+                )
+                gm_sign_out_btn = gr.Button(
+                    "Sign Out",
+                    scale=1,
+                    size="sm",
+                    elem_id="gm-signout-btn",
+                )
             gm_join_code = gr.Textbox(
                 label="Campaign Join Code — share this with your players",
                 interactive=False,
                 buttons=["copy"],
+                elem_id="gm-join-code",
             )
-            with gr.Tabs():
+            with gr.Tabs(elem_id="gm-tabs"):
                 build_characters_page(session_state)
                 build_npc_page(session_state)
                 build_gm_history_page(session_state)
@@ -112,20 +132,21 @@ def create_app() -> gr.Blocks:
             """Return visibility/value updates for all panels."""
             if user is None:
                 return (
-                    gr.update(visible=True),  # auth_col
-                    gr.update(visible=False),  # banner
-                    gr.update(visible=False),  # admin_col
-                    gr.update(visible=False),  # player_col
-                    gr.update(visible=False),  # gm_col
-                    gr.update(value=""),  # gm_join_code
+                    gr.update(visible=True, elem_id="auth-column"),  # auth_col
+                    gr.update(visible=False, elem_id="banner"),  # banner
+                    gr.update(visible=False, elem_id="admin-column"),  # admin_col
+                    gr.update(visible=False, elem_id="player-column"),  # player_col
+                    gr.update(visible=False, elem_id="gm-column"),  # gm_col
+                    gr.update(value="", elem_id="gm-join-code"),  # gm_join_code
                 )
             if session is None:
                 return (
-                    gr.update(visible=False),
-                    gr.update(visible=False),
-                    gr.update(visible=True),
-                    gr.update(visible=False),
-                    gr.update(visible=False),
+                    gr.update(visible=False, elem_id="auth-column"),
+                    gr.update(visible=False, elem_id="banner"),
+                    gr.update(visible=True, elem_id="admin-column"),
+                    gr.update(visible=False, elem_id="player-column"),
+                    gr.update(visible=False, elem_id="gm-column"),
+                    gr.update(value="", elem_id="gm-join-code"),
                     gr.update(value=""),
                 )
             show_banner = not session.ai_available

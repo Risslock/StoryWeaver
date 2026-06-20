@@ -31,12 +31,24 @@ def build_landing(session_state: gr.State) -> None:
         "Ask your GM for the 6-character join code, then enter your player name."
     )
 
-    join_code_in = gr.Textbox(label="Join Code", placeholder="A3KP72", max_lines=1)
-    join_name = gr.Textbox(
-        label="Your Player Name", placeholder="Kira Stonefist", max_lines=1
+    join_code_in = gr.Textbox(
+        label="Join Code",
+        placeholder="A3KP72",
+        max_lines=1,
+        elem_id="player-join-code-input",
     )
-    join_btn = gr.Button("Join Campaign", variant="primary")
-    join_status = gr.Markdown("")
+    join_name = gr.Textbox(
+        label="YouAsk your GM for the 6-character join codr Player Name",
+        placeholder="Kira Stonefist",
+        max_lines=1,
+        elem_id="player-name-input",
+    )
+    join_btn = gr.Button(
+        "Join Campaign",
+        variant="primary",
+        elem_id="player-join-btn",
+    )
+    join_status = gr.Markdown("", elem_id="player-join-status")
 
     async def on_join(
         code: str,

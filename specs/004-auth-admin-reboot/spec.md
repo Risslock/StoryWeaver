@@ -21,6 +21,14 @@
 - Q: Is "Session" a separate entity from StoryEvent, or just an alias for the event log? → A: Session is a lightweight header (name + date) per campaign; story events are linked to a session. GMs create a new session before logging events under it.
 - Q: Can GMs see who has joined their campaign ("manage users")? → A: Yes — a read-only "Players" tab in the GM dashboard lists all players who have joined (player name + character name). No remove action required.
 
+### Session 2026-06-20
+
+- Q: Must players create an account, or can they still join anonymously with join code + player name? → A: All users — GMs and players alike — must create an account. Anonymous join (join code + player name without an account) is removed.
+- Q: What does the post-login hub look like? → A: A hub screen with two distinct actions: "My Campaigns (GM)" and "Join a Campaign (Player)". Any authenticated account can access either path.
+- Q: What replaces landing.py and campaigns.py in the module architecture? → A: app.py becomes the single Gradio entry point containing auth screen + hub + routing. landing.py and campaigns.py are deleted; GM and Player dashboards remain in separate page modules.
+- Q: How does a returning player re-enter their campaign? → A: After authenticating and selecting "Join a Campaign (Player)", they see a list of campaigns they have already joined, plus an option to enter a new join code to join additional ones.
+- Q: Is player name still entered separately when joining, or does it default to the account username? → A: Player name defaults to the account username automatically. No separate player name field is shown at join time; Player.name is populated from User.username.
+
 ---
 
 ## User Scenarios & Testing *(mandatory)*
@@ -43,21 +51,21 @@ A GM opens StoryWeaver, enters their username and password, and immediately sees
 
 ---
 
-### User Story 2 — Player Joins a Campaign with Just a Join Code (Priority: P1)
+### User Story 2 — Player Creates an Account, Then Joins a Campaign (Priority: P1)
 
-A player opens StoryWeaver, enters the 6-character join code they received from their GM and their player name, and is taken to their player dashboard — with their previously created character and story history immediately accessible. No campaign name is required.
+A player opens StoryWeaver, creates an account (or signs in), and is taken to the post-login hub. They select "Join a Campaign (Player)", enter the 6-character join code they received from their GM, and are taken to their player dashboard — with their character name set from their account username and story history immediately accessible. Returning players see their previously joined campaigns listed directly and can re-enter with a single click.
 
-**Why this priority**: Players are the most frequent users. A simpler join flow (two fields instead of three) reduces friction and join errors. The join code is globally unique so it unambiguously identifies the campaign without any additional identifier.
+**Why this priority**: Players are the most frequent users. Requiring accounts ensures each player has a persistent, recoverable identity across sessions without relying on remembering a player name. The join code still keeps onboarding to a single field after authentication.
 
-**Independent Test**: As GM, copy the 6-character join code from the campaign detail view. Open an incognito window, enter the join code and a player name. Verify the player dashboard appears. Close the incognito window, reopen it, enter the same two values, and confirm the same player dashboard (with the same character, if one was created) appears again.
+**Independent Test**: Create a player account. From the hub, select "Join a Campaign (Player)", enter the join code provided by the GM, and verify the player dashboard appears with the account username as the player name. Sign out and sign back in; confirm the campaign appears in the joined-campaigns list and the player dashboard loads correctly without re-entering the join code.
 
 **Acceptance Scenarios**:
 
-1. **Given** a valid join code and a new player name, **When** the player submits the join form, **Then** they are taken to their player dashboard and a new Player record is created for them in the correct campaign.
-2. **Given** a returning player who provides the same join code and player name as a previous session, **When** they submit the join form, **Then** their existing character, twin conversation history, and story events are all present.
-3. **Given** an invalid or unknown join code, **When** the player submits the form, **Then** a visible UI error states "No campaign found with that join code" — no crash, no blank screen.
-4. **Given** an empty player name field, **When** the player submits the form, **Then** a visible UI error prompts them to enter their name before proceeding.
-5. **Given** an empty join code field, **When** the player submits the form, **Then** a visible UI error prompts them to enter the join code.
+1. **Given** an authenticated user with a valid join code, **When** they submit the join form, **Then** they are taken to their player dashboard and a new Player record is created with `Player.name` set from `User.username`.
+2. **Given** a returning authenticated player who previously joined the campaign, **When** they select the campaign from their joined-campaigns list, **Then** their existing character, twin conversation history, and story events are all present.
+3. **Given** an invalid or unknown join code, **When** the authenticated player submits the join form, **Then** a visible UI error states "No campaign found with that join code" — no crash, no blank screen.
+4. **Given** an empty join code field, **When** the player submits the join form, **Then** a visible UI error prompts them to enter the join code.
+5. **Given** an authenticated user who has already joined a campaign, **When** they attempt to join the same campaign again via join code, **Then** their existing Player record is returned — no duplicate is created.
 
 ---
 
@@ -131,7 +139,7 @@ Specs, plans, and task lists from prior phases that are now superseded by this r
 ### Edge Cases
 
 - What if the database file is locked or unavailable at startup? The auth screen displays "Database unavailable — cannot sign in right now." The app does not crash.
-- What if two players join the same campaign with the same player name? They share the same Player record and character — per-player passwords are out of scope.
+- What if an authenticated user tries to join a campaign they have already joined? The existing Player record is returned — no duplicate is created. (Formerly: two anonymous players sharing the same player name shared a record; this case is now eliminated because each Player is linked to a unique User account.)
 - What if an NPC and a character share the same name in the same campaign? They are different entity types; name uniqueness applies independently per entity type.
 - What if a player's join code was created by a campaign that is later deleted? The join form returns "No campaign found with that join code" — no crash.
 - What if any tab component fails to load its data on render? The tab shows an inline error message with a description of what failed.
@@ -151,7 +159,7 @@ Specs, plans, and task lists from prior phases that are now superseded by this r
 - **FR-006**: An authenticated GM MUST see a campaign dashboard listing all their campaigns, with each campaign's name, join code, and creation date visible.
 - **FR-007**: GMs MUST be able to create a new campaign. Campaign names MUST be unique per account (case-insensitive); duplicates MUST be rejected with a visible UI error.
 - **FR-008**: GMs MUST be able to enter a campaign and access a GM dashboard with these tabs: Characters, NPCs, Story History, World Notes, Session Plan, Players.
-- **FR-009**: Players MUST join a campaign by entering only their **join code** and **player name** — no campaign name field. The join code is globally unique and identifies the campaign on its own.
+- **FR-009**: All users — including players — MUST be authenticated before accessing any campaign feature. Anonymous join is not permitted. A player joins a new campaign by entering only the **join code** after authentication; their `Player.name` is set automatically from `User.username`. The join code is globally unique and identifies the campaign on its own.
 - **FR-010**: Players MUST be able to access these tabs from their dashboard: Character (view/edit), Twin Chat, Story History.
 - **FR-011**: All tabs that depend on an external AI service (Ollama, ComfyUI) MUST display a visible placeholder message when that service is unavailable, instead of crashing or showing a blank panel.
 - **FR-012**: Every backend operation that can fail MUST surface its error as a visible message in the Gradio UI component nearest to the triggering action.
@@ -165,12 +173,15 @@ Specs, plans, and task lists from prior phases that are now superseded by this r
 - **FR-020**: The GM MUST be able to create a new Session (with a name and optional date) from the Story History tab before logging events. Story events are linked to a session; events MUST be grouped and displayed under their parent session in the history view.
 - **FR-021**: The Story History tab for players (FR-010) MUST display all public story events grouped by session in chronological order.
 - **FR-022**: The Players tab in the GM dashboard MUST display a read-only list of all players who have joined the campaign, showing each player's name and their associated character name (if a character has been created). No remove or edit action is required.
+- **FR-023**: After authentication, the app MUST display a hub screen with two distinct navigation actions: "My Campaigns (GM)" and "Join a Campaign (Player)". Any authenticated user account MUST be able to access either path from the hub.
+- **FR-024**: On the Player hub screen, authenticated users MUST see a list of campaigns they have already joined (ordered by most recently joined), in addition to an option to enter a new join code to join additional campaigns.
+- **FR-025**: `app.py` MUST be the single Gradio entry point containing the auth screen, hub screen, and routing logic. `landing.py` and `campaigns.py` MUST be deleted. GM and Player dashboards MUST remain in separate page modules (e.g., `pages/gm_dashboard.py`, `pages/player_dashboard.py`).
 
 ### Key Entities *(include if feature involves data)*
 
 - **User**: Authenticated GM identity. Stored in the `users` SQLite table with username and password fields.
 - **Campaign**: Story container owned by a User. Identified globally by a unique 6-character join code. Name is unique per owner (case-insensitive). Carries a `world_notes` text field (Markdown) and an `archived` boolean flag. Archived campaigns are hidden from the GM's default campaign list but their data is retained.
-- **Player**: Named identity within a campaign, linked to a Character. Created when a player first joins with a join code + player name pair.
+- **Player**: Named identity within a campaign, linked to both a Character and a User account. Created when an authenticated user first joins a campaign via join code. `Player.name` is populated from `User.username` at join time — no separate player name input is shown. One Player record per User per Campaign.
 - **Character**: Player-controlled entity in a campaign. Upserted on name match (case-insensitive, per campaign).
 - **NPC**: GM-controlled entity in a campaign. Upserted on name match (case-insensitive, per campaign).
 - **DigitalTwin**: Stores AI conversation history for character/NPC twin chats. One DigitalTwin per Character or NPC entity.
@@ -186,7 +197,7 @@ Specs, plans, and task lists from prior phases that are now superseded by this r
 
 - **SC-001**: An existing GM can sign in and reach their campaign dashboard within 2 clicks and 10 seconds on a local machine.
 - **SC-002**: A new visitor can create an account and reach their campaign dashboard in a single form submission — no page reload or additional login step.
-- **SC-003**: A player with a valid join code can reach their player dashboard by entering 2 fields (join code + player name) and clicking one button.
+- **SC-003**: An authenticated player with a valid join code can reach their player dashboard by entering 1 field (join code) and clicking one button. Returning players can reach their dashboard from the joined-campaigns list with a single click — no join code re-entry required.
 - **SC-004**: Every UI tab (GM and Player) must render without crashing when the app is started locally, regardless of whether Ollama or ComfyUI is running.
 - **SC-005**: 100% of backend failures that would previously cause a silent blank or crash in the UI now display a visible, human-readable error message.
 - **SC-006**: The app launches with a single standard Gradio command — no uvicorn, no FastAPI wrapper required.
@@ -204,3 +215,6 @@ Specs, plans, and task lists from prior phases that are now superseded by this r
 - Stale task artifacts in specs 002 and 003 will be marked `[SUPERSEDED]` rather than deleted, to preserve audit history.
 - Password reset, email verification, and OAuth are out of scope for this phase.
 - Mobile UI optimization is out of scope; the app targets desktop/tablet browsers.
+- All users — including players — must have a StoryWeaver account. Anonymous/guest join (join code + player name without an account) is no longer supported.
+- `User.username` is unique across all accounts. `Player.name` is derived from `User.username` at campaign join time — no separate player name input is presented to the user.
+- `landing.py` and `campaigns.py` are deleted as part of this feature. `app.py` becomes the single Gradio entry point; all auth, hub routing, and dashboard navigation is consolidated there or in dedicated page modules.
