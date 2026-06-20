@@ -31,11 +31,14 @@
 ## Player
 - `id: UUID`
 - `campaign_id: UUID` — links to `Campaign`
-- `player_name: str` — case-insensitive unique per campaign
+- `user_id: UUID` — FK to `User`; the authenticated account that owns this player record (added in migration `0004_player_user_link`)
+- `player_name: str` — display name; populated automatically from `User.username` at join time; not entered by the user at join
 - `character_id: UUID | None` — optional link to the player's character
 - `created_at: datetime`
+- Constraints:
+  - Unique on `(campaign_id, user_id)` — one Player record per User per Campaign (index `ix_players_campaign_user`, replaces the old `ix_players_campaign_player_name_lower`)
 - Behavior:
-  - `get_or_create_player()` performs case-insensitive upsert semantics on `player_name` per campaign
+  - `get_or_create_player()` performs upsert on `(campaign_id, user_id)`; `player_name` is set from `User.username` on creation and not updated on subsequent lookups
 
 ## Character
 - `id: UUID`
@@ -129,10 +132,11 @@
 ## Runtime Session State
 - `CampaignSession` is transient Gradio state, not persisted:
   - `campaign_id: UUID`
-  - `display_name: str`
+  - `display_name: str` — set from `User.username` for both roles
   - `role: "player" | "gm"`
   - `join_code: str`
   - `ai_available: bool`
+  - `user_id: UUID` — the authenticated user's ID; used by player dashboard pages to look up the correct Player record via `(campaign_id, user_id)` instead of player name
 
 ## Relationships
 - `User` owns `Campaign`
@@ -145,8 +149,13 @@
 - `Campaign.join_code` must be globally unique.
 - `Campaign.name` must be unique per owner, case-insensitive.
 - `Campaign.archived` defaults to `False`; archived campaigns are excluded from the default campaign list query.
-- `Player.player_name` must be unique per campaign, case-insensitive.
+- `Player` is unique per `(campaign_id, user_id)` — one record per authenticated user per campaign.
+- `Player.player_name` is populated from `User.username` at join time; no user input is required or accepted.
 - `Character.name` must be unique per campaign, case-insensitive.
 - `NPC.name` must be unique per campaign, case-insensitive.
-- Player join requires non-empty `join_code` and `player_name`; campaign name is not required.
+- Player join requires an authenticated `user_id` and a non-empty `join_code`. No `player_name` field is presented to the user. Campaign name is not required.
+- All users — including players — must be authenticated before any campaign join is permitted.
 - `StoryEvent.session_id` should reference an existing `Session` for the same campaign; standalone events without a session are permitted but displayed under an "Unsorted" group.
+
+## Required Migration
+- **`0004_player_user_link`**: Adds `user_id UUID REFERENCES users(id) ON DELETE RESTRICT` (nullable in the migration to allow backfill; set NOT NULL after migration if no anonymous records exist). Drops `ix_players_campaign_player_name_lower`. Adds `ix_players_campaign_user` unique index on `(campaign_id, user_id)`.
