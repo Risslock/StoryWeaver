@@ -7,28 +7,38 @@ from typing import Any
 
 import gradio as gr
 from components.image_display import build_portrait_display
-from core.config import settings
-from core.models import Character
+from core.models import Character, Player
 from core.schemas import CampaignSession, CharacterSchema
 from rules_earthdawn.character_builder import (
     discipline_names,
     race_names,
 )
+from services.db import get_backend
 from sqlalchemy import func, select
-from storage.sqlite.adapter import SQLiteBackend
-
-_backend = SQLiteBackend(settings.database_url)
 
 _EARTHDAWN_RACES = race_names()
 _EARTHDAWN_DISCIPLINES = discipline_names()
 
 
-async def _load_characters(campaign_id: uuid.UUID, player_name: str) -> list[Character]:
-    async with await _backend.get_session() as session:
+async def _load_characters(
+    campaign_id: uuid.UUID, user_id: uuid.UUID
+) -> list[Character]:
+    """Load characters for the player identified by (campaign_id, user_id)."""
+    backend = get_backend()
+    async with await backend.get_session() as session:
+        player_result = await session.execute(
+            select(Player).where(
+                Player.campaign_id == campaign_id,
+                Player.user_id == user_id,
+            )
+        )
+        player = player_result.scalar_one_or_none()
+        if player is None:
+            return []
         result = await session.execute(
             select(Character).where(
                 Character.campaign_id == campaign_id,
-                Character.player_display_name == player_name,
+                Character.player_display_name == player.player_name,
             )
         )
         return list(result.scalars().all())
@@ -37,7 +47,8 @@ async def _load_characters(campaign_id: uuid.UUID, player_name: str) -> list[Cha
 async def _save_character(
     campaign_id: uuid.UUID, player_name: str, data: dict[str, Any]
 ) -> Character:
-    async with await _backend.get_session() as session:
+    backend = get_backend()
+    async with await backend.get_session() as session:
         result = await session.execute(
             select(Character).where(
                 Character.campaign_id == campaign_id,
@@ -68,7 +79,8 @@ async def _save_character(
 async def _update_character(
     char_id: uuid.UUID, updates: dict[str, Any]
 ) -> Character | None:
-    async with await _backend.get_session() as session:
+    backend = get_backend()
+    async with await backend.get_session() as session:
         result = await session.execute(select(Character).where(Character.id == char_id))
         char = result.scalar_one_or_none()
         if char is None:
@@ -283,14 +295,15 @@ def build_character_page(session_state: gr.State) -> None:
         async def load_char_list(state: CampaignSession | None) -> dict[str, Any]:
             if state is None:
                 return gr.update(choices=[], value=None)
-            chars = await _load_characters(state.campaign_id, state.display_name)
+            chars = await _load_characters(state.campaign_id, state.user_id)
             choices = [(c.name, str(c.id)) for c in chars]
             return gr.update(choices=choices, value=choices[0][1] if choices else None)
 
         async def on_select_char(char_id: str | None) -> tuple[str | None, str, Any]:
             if not char_id:
                 return None, "*No character selected.*", char_id
-            async with await _backend.get_session() as session:
+            backend = get_backend()
+            async with await backend.get_session() as session:
                 result = await session.execute(
                     select(Character).where(Character.id == uuid.UUID(char_id))
                 )
@@ -308,7 +321,8 @@ def build_character_page(session_state: gr.State) -> None:
             if not state.ai_available:
                 return None, "AI features unavailable in degraded mode."
 
-            async with await _backend.get_session() as session:
+            backend = get_backend()
+            async with await backend.get_session() as session:
                 result = await session.execute(
                     select(Character).where(Character.id == uuid.UUID(char_id_val))
                 )
@@ -442,7 +456,7 @@ def build_character_page(session_state: gr.State) -> None:
 
             await _save_character(state.campaign_id, state.display_name, data)
 
-            chars = await _load_characters(state.campaign_id, state.display_name)
+            chars = await _load_characters(state.campaign_id, state.user_id)
             choices = [(c.name, str(c.id)) for c in chars]
             return (
                 f"✓ Character **{data['name']}** saved!",

@@ -9,10 +9,10 @@ Multi-user session isolation model
    state object is ever shared between concurrent user connections.
 
 2. Navigation state machine (driven by user_state + session_state):
-   None / None   → auth_col    (Sign In / Create Account)
-   user / None   → admin_col   (campaign dashboard + player join)
-   user / "gm"   → gm_col
-   user / "player" → player_col
+   None / None       → auth_col    (Sign In / Create Account)
+   user / None       → hub_col     (My Campaigns (GM) | Join a Campaign (Player))
+   user / "gm"       → gm_col
+   user / "player"   → player_col
 
 3. Concurrent DB writes: SQLiteBackend sets PRAGMA journal_mode=WAL at
    connection-open time (packages/storage/sqlite/adapter.py).
@@ -25,23 +25,24 @@ from typing import Any
 import gradio as gr
 from components.banner import build_banner
 from core.schemas import CampaignSession, UserInfo
-from pages.admin.campaigns import (
+from pages.auth import build_auth_page
+from pages.gm.campaigns import (
     CampaignPageRefs,
     build_campaigns_page,
     load_campaigns_for_user,
     resume_campaign,
 )
-from pages.auth import build_auth_page
 from pages.gm.characters import build_characters_page
 from pages.gm.history import build_gm_history_page
 from pages.gm.npcs import build_npc_page
 from pages.gm.players import build_players_page
 from pages.gm.session_plan import build_session_plan_page
 from pages.gm.world_notes import build_world_notes_page
-from pages.landing import build_landing, get_backend
 from pages.player.character import build_character_page
 from pages.player.history import build_player_history_page
+from pages.player.join import build_player_join_page, load_joined_campaigns
 from pages.player.twin_chat import build_twin_chat_page
+from services.db import get_backend
 
 
 async def _startup_verify() -> None:
@@ -66,21 +67,56 @@ def create_app() -> gr.Blocks:
         with gr.Column(visible=True, elem_id="auth-column") as auth_col:
             build_auth_page(user_state)
 
-        # ── Campaigns admin dashboard + player join ───────────────────────────
-        with gr.Column(visible=False, elem_id="admin-column") as admin_col:
-            with gr.Row(elem_id="admin-header-row"):
-                gr.Markdown("## My Campaigns", scale=4, elem_id="admin-header")
-                admin_sign_out_btn = gr.Button(
+        # ── Hub screen (post-login, before campaign selection) ────────────────
+        with gr.Column(visible=False, elem_id="hub-column") as hub_col:
+            with gr.Row(elem_id="hub-header-row"):
+                gr.Markdown("## StoryWeaver", scale=4, elem_id="hub-header")
+                hub_sign_out_btn = gr.Button(
                     "Sign Out",
                     scale=1,
                     size="sm",
-                    elem_id="admin-signout-btn",
+                    elem_id="hub-signout-btn",
+                )
+            gr.Markdown("### What would you like to do?")
+            with gr.Row():
+                hub_gm_btn = gr.Button(
+                    "My Campaigns (GM)",
+                    variant="primary",
+                    elem_id="hub-gm-btn",
+                )
+                hub_player_btn = gr.Button(
+                    "Join a Campaign (Player)",
+                    variant="secondary",
+                    elem_id="hub-player-btn",
+                )
+
+        # ── GM campaign list (from hub → GM path) ────────────────────────────
+        with gr.Column(
+            visible=False, elem_id="gm-campaigns-column"
+        ) as gm_campaigns_col:
+            with gr.Row(elem_id="gm-campaigns-header-row"):
+                gm_campaigns_back_btn = gr.Button("← Hub", scale=1, size="sm")
+                gm_campaigns_sign_out_btn = gr.Button(
+                    "Sign Out",
+                    scale=1,
+                    size="sm",
+                    elem_id="gm-campaigns-signout-btn",
                 )
             campaign_refs: CampaignPageRefs = build_campaigns_page(
                 session_state, user_state
             )
-            gr.Markdown("---", elem_id="admin-divider")
-            # build_landing(session_state)
+
+        # ── Player join screen (from hub → Player path) ───────────────────────
+        with gr.Column(visible=False, elem_id="player-join-column") as player_join_col:
+            with gr.Row(elem_id="player-join-header-row"):
+                player_join_back_btn = gr.Button("← Hub", scale=1, size="sm")
+                player_join_sign_out_btn = gr.Button(
+                    "Sign Out",
+                    scale=1,
+                    size="sm",
+                    elem_id="player-join-signout-btn",
+                )
+            player_join_refs = build_player_join_page(session_state, user_state)
 
         # ── Player dashboard ──────────────────────────────────────────────────
         with gr.Column(visible=False, elem_id="player-column") as player_col:
@@ -129,46 +165,67 @@ def create_app() -> gr.Blocks:
         def _navigate(
             user: UserInfo | None, session: CampaignSession | None
         ) -> tuple[Any, ...]:
-            """Return visibility/value updates for all panels."""
+            """Return visibility updates for all panels + join code value.
+
+            Output order must match _nav_outputs:
+              auth_col, banner, hub_col, gm_campaigns_col,
+              player_join_col, player_col, gm_col, gm_join_code
+            """
             if user is None:
                 return (
-                    gr.update(visible=True, elem_id="auth-column"),  # auth_col
-                    gr.update(visible=False, elem_id="banner"),  # banner
-                    gr.update(visible=False, elem_id="admin-column"),  # admin_col
-                    gr.update(visible=False, elem_id="player-column"),  # player_col
-                    gr.update(visible=False, elem_id="gm-column"),  # gm_col
-                    gr.update(value="", elem_id="gm-join-code"),  # gm_join_code
+                    gr.update(visible=True, elem_id="auth-column"),
+                    gr.update(visible=False, elem_id="banner"),
+                    gr.update(visible=False, elem_id="hub-column"),
+                    gr.update(visible=False, elem_id="gm-campaigns-column"),
+                    gr.update(visible=False, elem_id="player-join-column"),
+                    gr.update(visible=False, elem_id="player-column"),
+                    gr.update(visible=False, elem_id="gm-column"),
+                    gr.update(value="", elem_id="gm-join-code"),
                 )
             if session is None:
                 return (
                     gr.update(visible=False, elem_id="auth-column"),
                     gr.update(visible=False, elem_id="banner"),
-                    gr.update(visible=True, elem_id="admin-column"),
+                    gr.update(visible=True, elem_id="hub-column"),
+                    gr.update(visible=False, elem_id="gm-campaigns-column"),
+                    gr.update(visible=False, elem_id="player-join-column"),
                     gr.update(visible=False, elem_id="player-column"),
                     gr.update(visible=False, elem_id="gm-column"),
                     gr.update(value="", elem_id="gm-join-code"),
-                    gr.update(value=""),
                 )
             show_banner = not session.ai_available
             if session.role == "gm":
                 return (
-                    gr.update(visible=False),
-                    gr.update(visible=show_banner),
-                    gr.update(visible=False),
-                    gr.update(visible=False),
-                    gr.update(visible=True),
-                    gr.update(value=session.join_code),
+                    gr.update(visible=False, elem_id="auth-column"),
+                    gr.update(visible=show_banner, elem_id="banner"),
+                    gr.update(visible=False, elem_id="hub-column"),
+                    gr.update(visible=False, elem_id="gm-campaigns-column"),
+                    gr.update(visible=False, elem_id="player-join-column"),
+                    gr.update(visible=False, elem_id="player-column"),
+                    gr.update(visible=True, elem_id="gm-column"),
+                    gr.update(value=session.join_code, elem_id="gm-join-code"),
                 )
             return (
-                gr.update(visible=False),
-                gr.update(visible=show_banner),
-                gr.update(visible=False),
-                gr.update(visible=True),
-                gr.update(visible=False),
-                gr.update(value=""),
+                gr.update(visible=False, elem_id="auth-column"),
+                gr.update(visible=show_banner, elem_id="banner"),
+                gr.update(visible=False, elem_id="hub-column"),
+                gr.update(visible=False, elem_id="gm-campaigns-column"),
+                gr.update(visible=False, elem_id="player-join-column"),
+                gr.update(visible=True, elem_id="player-column"),
+                gr.update(visible=False, elem_id="gm-column"),
+                gr.update(value="", elem_id="gm-join-code"),
             )
 
-        _nav_outputs = [auth_col, banner, admin_col, player_col, gm_col, gm_join_code]
+        _nav_outputs = [
+            auth_col,
+            banner,
+            hub_col,
+            gm_campaigns_col,
+            player_join_col,
+            player_col,
+            gm_col,
+            gm_join_code,
+        ]
 
         user_state.change(
             _navigate,
@@ -181,7 +238,42 @@ def create_app() -> gr.Blocks:
             outputs=_nav_outputs,
         )
 
-        # ── Resume campaign — set session AND navigate in one event ──────────
+        # ── Hub navigation buttons ────────────────────────────────────────────
+        def _show_gm_campaigns() -> tuple[Any, Any]:
+            return gr.update(visible=False), gr.update(visible=True)
+
+        def _show_player_join() -> tuple[Any, Any]:
+            return gr.update(visible=False), gr.update(visible=True)
+
+        def _back_to_hub() -> tuple[Any, Any, Any]:
+            return (
+                gr.update(visible=True),
+                gr.update(visible=False),
+                gr.update(visible=False),
+            )
+
+        hub_gm_btn.click(
+            _show_gm_campaigns,
+            inputs=[],
+            outputs=[hub_col, gm_campaigns_col],
+        )
+        hub_player_btn.click(
+            _show_player_join,
+            inputs=[],
+            outputs=[hub_col, player_join_col],
+        )
+        gm_campaigns_back_btn.click(
+            _back_to_hub,
+            inputs=[],
+            outputs=[hub_col, gm_campaigns_col, player_join_col],
+        )
+        player_join_back_btn.click(
+            _back_to_hub,
+            inputs=[],
+            outputs=[hub_col, gm_campaigns_col, player_join_col],
+        )
+
+        # ── Resume campaign — set session AND navigate in one event ───────────
         async def _on_resume(
             campaign_id_str: str | None, user: UserInfo | None
         ) -> tuple[Any, ...]:
@@ -198,14 +290,20 @@ def create_app() -> gr.Blocks:
         def _sign_out() -> tuple[None, None]:
             return None, None
 
-        for _btn in (admin_sign_out_btn, gm_sign_out_btn, player_sign_out_btn):
+        for _btn in (
+            hub_sign_out_btn,
+            gm_campaigns_sign_out_btn,
+            player_join_sign_out_btn,
+            gm_sign_out_btn,
+            player_sign_out_btn,
+        ):
             _btn.click(
                 _sign_out,
                 inputs=[],
                 outputs=[user_state, session_state],
             )
 
-        # Load campaigns whenever the user signs in.
+        # Load campaigns whenever the user signs in (GM campaign list).
         user_state.change(
             load_campaigns_for_user,
             inputs=[user_state],
@@ -214,6 +312,13 @@ def create_app() -> gr.Blocks:
                 campaign_refs.campaign_ids,
                 campaign_refs.no_campaigns_msg,
             ],
+        )
+
+        # Load joined campaigns whenever the user signs in.
+        user_state.change(
+            load_joined_campaigns,
+            inputs=[user_state],
+            outputs=[player_join_refs.joined_table, player_join_refs.joined_codes],
         )
 
     return app

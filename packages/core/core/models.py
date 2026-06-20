@@ -203,6 +203,7 @@ class Player(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     campaign_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
     player_name: Mapped[str] = mapped_column(String(100), nullable=False)
     character_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("characters.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
@@ -234,5 +235,11 @@ Index(
     "ix_players_campaign_player_name_lower",
     func.lower(Player.player_name),
     Player.campaign_id,
+    unique=True,
+)
+Index(
+    "ix_players_campaign_user",
+    Player.campaign_id,
+    Player.user_id,
     unique=True,
 )

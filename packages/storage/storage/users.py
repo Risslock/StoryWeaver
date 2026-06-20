@@ -48,14 +48,17 @@ async def create_user(
 async def get_or_create_player(
     session: AsyncSession,
     campaign_id: uuid.UUID,
-    player_name: str,
+    user_id: uuid.UUID,
+    username: str,
 ) -> Player:
-    """Return existing Player (case-insensitive name match) or create a new one."""
-    normalised = player_name.strip().lower()
+    """Return existing Player for (campaign_id, user_id) or create a new one.
+
+    player_name is set from username at creation and not updated on lookup.
+    """
     result = await session.execute(
         select(Player).where(
             Player.campaign_id == campaign_id,
-            func.lower(Player.player_name) == normalised,
+            Player.user_id == user_id,
         )
     )
     existing = result.scalar_one_or_none()
@@ -64,7 +67,8 @@ async def get_or_create_player(
     player = Player(
         id=uuid.uuid4(),
         campaign_id=campaign_id,
-        player_name=player_name.strip(),
+        user_id=user_id,
+        player_name=username.strip(),
     )
     session.add(player)
     await session.commit()
@@ -110,6 +114,20 @@ async def archive_campaign(
     if campaign is not None:
         campaign.archived = True
         await session.commit()
+
+
+async def get_campaigns_for_player(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+) -> list[Campaign]:
+    """Return non-archived campaigns where the user has a Player record, newest first."""
+    result = await session.execute(
+        select(Campaign)
+        .join(Player, Player.campaign_id == Campaign.id)
+        .where(Player.user_id == user_id, Campaign.archived.is_(False))
+        .order_by(Campaign.created_at.desc())
+    )
+    return list(result.scalars().all())
 
 
 async def link_player_character(

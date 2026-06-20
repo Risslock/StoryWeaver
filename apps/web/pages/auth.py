@@ -5,9 +5,8 @@ from __future__ import annotations
 import gradio as gr
 from core.schemas import UserInfo
 from services.auth import register_user, validate_user
+from services.db import get_backend
 from storage.users import get_user_by_username_or_email
-
-from pages.landing import get_backend
 
 
 def build_auth_page(user_state: gr.State) -> None:

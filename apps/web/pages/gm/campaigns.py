@@ -1,4 +1,4 @@
-"""Admin campaign dashboard and campaign detail screens for authenticated GMs."""
+"""GM campaign dashboard and campaign detail screens for authenticated GMs."""
 
 from __future__ import annotations
 
@@ -11,11 +11,10 @@ import gradio as gr
 from core.models import Campaign
 from core.schemas import CampaignSession, UserInfo
 from llm.providers.ollama import OllamaProvider
+from services.db import get_backend
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from storage.users import archive_campaign as _archive_campaign
-
-from pages.landing import get_backend
 
 
 class CampaignPageRefs(NamedTuple):
@@ -76,6 +75,7 @@ async def resume_campaign(
         campaign_id=campaign.id,
         display_name=user.username,
         role="gm",
+        user_id=user.user_id,
         join_code=campaign.join_code,
         ai_available=ai_available,
     )
@@ -103,7 +103,7 @@ def build_campaigns_page(
 
     # ── Dashboard screen ──────────────────────────────────────────────────────
     with gr.Column(visible=True) as dashboard_col:
-        gr.Markdown("## My Campaigns")
+        gr.Markdown("## My Campaigns (GM)")
 
         new_campaign_btn = gr.Button("+ New Campaign", variant="secondary")
 
@@ -157,7 +157,11 @@ def build_campaigns_page(
         user: UserInfo | None,
     ) -> tuple[Any, Any, Any, list[str], Any]:
         if user is None:
-            return gr.update(), gr.update(), gr.update(value="Not signed in."), ids, gr.update()
+            return (
+                gr.update(), gr.update(),
+                gr.update(value="Not signed in."),
+                ids, gr.update(),
+            )
         if not name.strip():
             return (
                 gr.update(),
@@ -276,7 +280,9 @@ def build_campaigns_page(
     create_btn.click(
         on_create_campaign,
         inputs=[campaign_name_in, game_system_in, campaign_ids, user_state],
-        outputs=[campaign_table, create_form, create_msg, campaign_ids, no_campaigns_msg],
+        outputs=[
+            campaign_table, create_form, create_msg, campaign_ids, no_campaigns_msg,
+        ],
     )
 
     campaign_table.select(

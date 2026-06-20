@@ -16,21 +16,41 @@
 ### Behavior
 - `Sign In` returns `Invalid username or password.` when credentials fail.
 - `Create Account` returns a visible error for invalid input or duplicate username/email.
-- On successful registration, the app should populate `user_state` and transition to the admin dashboard.
+- On successful registration (or sign-in), the app populates `user_state` and transitions to the **Hub Screen** — not directly to a campaign view.
 
-## Player Join Screen
-### Inputs
-- `join_code` (textbox)
-- `player_name` (textbox)
+## Hub Screen
+**Who sees it**: any authenticated user (`user_state` set, `session_state` is None).
 
 ### Outputs
-- `session_state` — `CampaignSession` with `role = "player"` on success
-- `join_status` — visible success or failure message
+- Two action buttons: `"My Campaigns (GM)"` and `"Join a Campaign (Player)"`
+- `"Sign Out"` button
+
+### Behavior
+- Clicking `"My Campaigns (GM)"` shows the GM Campaign List (hub is hidden).
+- Clicking `"Join a Campaign (Player)"` shows the Player Join Screen (hub is hidden).
+- Both paths have a `"← Hub"` back button to return without signing out.
+- The same authenticated account can use both GM and Player paths.
+
+## Player Join Screen
+**Who sees it**: authenticated users who clicked `"Join a Campaign (Player)"` from the hub.
+
+### Inputs
+- Joined-campaigns table (read-only `gr.DataFrame`, columns: `[Campaign Name, Join Code]`) — lists campaigns the user has previously joined
+- `join_code` (textbox) — **no `player_name` field; player name is set automatically from account username**
+- `"Join Campaign"` button
+
+### Outputs
+- `session_state` — `CampaignSession` with `role = "player"` and `user_id` on success
+- `join_status` — visible success or failure message (inline, per input)
+- `rejoin_status` — visible message when a joined-campaign row is clicked
 
 ### Contract
-- Player join requires only `join_code` and `player_name`.
-- If `join_code` is invalid, return `Error: No campaign found with that join code.`
-- If either field is empty, return an inline validation error explaining the missing field.
+- Player join requires only `join_code`. No `player_name` field is presented.
+- `player_name` is set automatically from `User.username` at join time.
+- If `join_code` is empty, return `"Enter the join code your GM gave you."`.
+- If `join_code` is invalid or the campaign is archived, return `"No campaign found with that join code."`.
+- Clicking a row in the joined-campaigns table re-enters that campaign without requiring the join code again.
+- Anonymous join (join code without an account) is not supported. All users must authenticate.
 
 ## GM Campaign Dashboard
 ### Inputs
@@ -83,8 +103,9 @@
 ## Transient State Contract
 - `CampaignSession` fields:
   - `campaign_id: UUID`
-  - `display_name: str`
+  - `display_name: str` — set from `User.username` for both GM and player roles
   - `role: "player" | "gm"`
+  - `user_id: UUID` — the authenticated user's ID; used by player dashboard pages to load the correct Player record via `(campaign_id, user_id)` instead of player name
   - `join_code: str`
   - `ai_available: bool`
 
