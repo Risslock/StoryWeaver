@@ -19,6 +19,10 @@ from storage.users import (
 class PlayerJoinRefs(NamedTuple):
     joined_table: gr.Dataframe
     joined_codes: gr.State
+    join_btn: gr.Button
+    join_code_in: gr.Textbox
+    join_status: gr.Markdown
+    rejoin_status: gr.Markdown
 
 
 async def load_joined_campaigns(
@@ -35,17 +39,79 @@ async def load_joined_campaigns(
     return gr.update(value=rows), codes
 
 
+async def _build_session(campaign: Campaign, user: UserInfo) -> CampaignSession:
+    ai_available = await OllamaProvider().health_check()
+    backend = get_backend()
+    async with await backend.get_session() as session:
+        await get_or_create_player(
+            session,
+            campaign_id=campaign.id,
+            user_id=user.user_id,
+            username=user.username,
+        )
+    return CampaignSession(
+        campaign_id=campaign.id,
+        display_name=user.username,
+        role="player",
+        user_id=user.user_id,
+        join_code=campaign.join_code,
+        ai_available=ai_available,
+    )
+
+
+async def on_join(
+    code: str,
+    user: UserInfo | None,
+) -> tuple[str, CampaignSession | None]:
+    if user is None:
+        return "Sign in before joining a campaign.", None
+    code = code.strip().upper()
+    if not code:
+        return "Enter the join code your GM gave you.", None
+
+    backend = get_backend()
+    async with await backend.get_session() as session:
+        campaign = await get_campaign_by_join_code(session, code)
+    if campaign is None:
+        return "No campaign found with that join code.", None
+    if campaign.archived:
+        return "No campaign found with that join code.", None
+
+    campaign_session = await _build_session(campaign, user)
+    return f"Joined! Welcome, **{user.username}**.", campaign_session
+
+
+async def on_row_select(
+    user: UserInfo | None,
+    codes: list[str],
+    evt: gr.SelectData,
+) -> tuple[str, CampaignSession | None]:
+    if user is None:
+        return "Sign in to rejoin a campaign.", None
+    row_idx = evt.index[0]
+    if row_idx >= len(codes):
+        return "Campaign not found.", None
+    join_code = codes[row_idx]
+
+    backend = get_backend()
+    async with await backend.get_session() as session:
+        campaign = await get_campaign_by_join_code(session, join_code)
+    if campaign is None or campaign.archived:
+        return "Campaign no longer available.", None
+
+    campaign_session = await _build_session(campaign, user)
+    return f"Rejoining **{campaign.name}**…", campaign_session
+
+
 def build_player_join_page(
     session_state: gr.State, user_state: gr.State
 ) -> PlayerJoinRefs:
     """Build the player join screen. Must be called inside a gr.Blocks context."""
 
-    # ── Internal state: list of join codes parallel to table rows ────────────
     joined_codes: gr.State = gr.State(value=[])
 
     gr.Markdown("## Join a Campaign")
 
-    # ── Previously-joined campaigns ───────────────────────────────────────────
     gr.Markdown("### Your Campaigns")
     gr.Markdown("*Click a campaign below to re-enter it instantly.*")
 
@@ -61,7 +127,6 @@ def build_player_join_page(
 
     gr.Markdown("---")
 
-    # ── New join via join code ─────────────────────────────────────────────────
     gr.Markdown("### Join a New Campaign")
     gr.Markdown("Ask your GM for the 6-character join code.")
 
@@ -78,88 +143,11 @@ def build_player_join_page(
     )
     join_status = gr.Markdown("", elem_id="player-join-status")
 
-    # ── Event handlers ────────────────────────────────────────────────────────
-
-    async def _build_session(
-        campaign: Campaign, user: UserInfo
-    ) -> CampaignSession:
-        ai_available = await OllamaProvider().health_check()
-        backend = get_backend()
-        async with await backend.get_session() as session:
-            await get_or_create_player(
-                session,
-                campaign_id=campaign.id,
-                user_id=user.user_id,
-                username=user.username,
-            )
-        return CampaignSession(
-            campaign_id=campaign.id,
-            display_name=user.username,
-            role="player",
-            user_id=user.user_id,
-            join_code=campaign.join_code,
-            ai_available=ai_available,
-        )
-
-    async def on_join(
-        code: str,
-        user: UserInfo | None,
-    ) -> tuple[str, Any]:
-        if user is None:
-            return "Sign in before joining a campaign.", None
-        code = code.strip().upper()
-        if not code:
-            return "Enter the join code your GM gave you.", None
-
-        backend = get_backend()
-        async with await backend.get_session() as session:
-            campaign = await get_campaign_by_join_code(session, code)
-        if campaign is None:
-            return "No campaign found with that join code.", None
-        if campaign.archived:
-            return "No campaign found with that join code.", None
-
-        campaign_session = await _build_session(campaign, user)
-        return f"Joined! Welcome, **{user.username}**.", campaign_session
-
-    async def on_row_select(
-        user: UserInfo | None,
-        codes: list[str],
-        evt: gr.SelectData,
-    ) -> tuple[str, Any]:
-        if user is None:
-            return "Sign in to rejoin a campaign.", None
-        row_idx = evt.index[0]
-        if row_idx >= len(codes):
-            return "Campaign not found.", None
-        join_code = codes[row_idx]
-
-        backend = get_backend()
-        async with await backend.get_session() as session:
-            campaign = await get_campaign_by_join_code(session, join_code)
-        if campaign is None or campaign.archived:
-            return "Campaign no longer available.", None
-
-        campaign_session = await _build_session(campaign, user)
-        return f"Rejoining **{campaign.name}**…", campaign_session
-
-    # ── Wire events ───────────────────────────────────────────────────────────
-
-    join_btn.click(
-        on_join,
-        inputs=[join_code_in, user_state],
-        outputs=[join_status, session_state],
+    return PlayerJoinRefs(
+        joined_table=joined_table,
+        joined_codes=joined_codes,
+        join_btn=join_btn,
+        join_code_in=join_code_in,
+        join_status=join_status,
+        rejoin_status=rejoin_status,
     )
-    join_code_in.submit(
-        on_join,
-        inputs=[join_code_in, user_state],
-        outputs=[join_status, session_state],
-    )
-
-    joined_table.select(
-        on_row_select,
-        inputs=[user_state, joined_codes],
-        outputs=[rejoin_status, session_state],
-    )
-
-    return PlayerJoinRefs(joined_table=joined_table, joined_codes=joined_codes)
