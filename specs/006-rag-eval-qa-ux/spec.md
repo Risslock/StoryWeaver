@@ -116,10 +116,11 @@ then expand the sources panel and verify the cited chunks appear.
   Category, MRR, nDCG, Recall@k, Keywords Found / Total.
 - **FR-006**: The Evaluation tab MUST display aggregate metrics (mean MRR, mean nDCG, mean Recall@k)
   summarising all evaluated questions.
-- **FR-007**: Selecting a question row MUST show a detail view with retrieved document snippets and
-  a per-keyword rank breakdown.
-- **FR-008**: The Q&A tab MUST display the LLM-generated answer and cited sources in distinct,
-  separately controlled areas of the UI.
+- **FR-007**: Clicking a row in the per-question results table MUST show a detail view with retrieved
+  document snippets and a per-keyword rank breakdown. Row selection is handled via the Gradio
+  Dataframe native select event — no separate index input or dropdown is required.
+- **FR-008**: Both the GM and player Q&A tabs MUST display the LLM-generated answer and cited
+  sources in distinct, separately controlled areas of the UI.
 - **FR-009**: Cited sources in the Q&A tab MUST be hidden by default and revealed only when the
   user activates a "Show sources" control (e.g., accordion or toggle button).
 - **FR-010**: The "Show sources" control MUST be dismissible so the user can re-hide sources after
@@ -128,6 +129,8 @@ then expand the sources panel and verify the cited chunks appear.
   retrieval implementation.
 - **FR-012**: The system MUST log evaluation run start/end and any per-question errors at the
   appropriate level via the `LOG_LEVEL`-controlled logger (Principle VIII).
+- **FR-013**: The Evaluation tab MUST display a live progress counter (e.g., "Evaluating question
+  12 / 50…") that updates after each question completes, so the GM can see the run is active.
 
 ### Key Entities
 
@@ -156,6 +159,16 @@ then expand the sources panel and verify the cited chunks appear.
 - **SC-006**: A user can reveal cited sources in the Q&A tab with exactly one interaction (one click
   or tap).
 - **SC-007**: The Evaluation tab displays a visible placeholder when no test file is loaded (Principle VII).
+- **SC-008**: The GM can see a live progress count (current question / total) at all times while
+  evaluation is running; the UI does not appear frozen during a multi-question run.
+
+## Clarifications
+
+### Session 2026-06-22
+
+- Q: What does the GM see while evaluation runs across many questions? → A: Live progress counter ("Evaluating question N / total…") updating after each question completes.
+- Q: How does the GM select a question row to see the drill-down detail? → A: Click a row in the results table using Gradio's native Dataframe select event.
+- Q: Should the sources accordion apply to the player Q&A tab too? → A: Yes — both GM and player Q&A tabs get the sources accordion.
 
 ## Assumptions
 
