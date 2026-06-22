@@ -32,8 +32,8 @@ _backend = SQLiteBackend(settings.database_url)
 class IngestionPipeline:
     """Orchestrates the full ingestion flow for a single document."""
 
-    def __init__(self) -> None:
-        self._store = ChromaVectorStore()
+    def __init__(self, chroma_path: str | None = None) -> None:
+        self._store = ChromaVectorStore(chroma_path) if chroma_path else ChromaVectorStore()
 
     async def run(
         self,
@@ -88,7 +88,7 @@ class IngestionPipeline:
                 embeddings = await embed_fn.embed(compound_texts)
 
                 # Phase 4 — Store: upsert this batch immediately so it is queryable now
-                await self._store.upsert(collection_name, ids, embeddings, compound_texts, metadatas, embed_fn=embed_fn)
+                await self._store.upsert(collection_name, ids, embeddings, compound_texts, metadatas)
 
                 stored += len(batch)
                 await self._set_progress(doc_id, stored)

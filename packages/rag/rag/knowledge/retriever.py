@@ -1,4 +1,9 @@
-"""ChromaDB-backed knowledge retriever with multi-query expansion and RRF ranking."""
+"""ChromaDB-backed knowledge retriever with multi-query expansion and RRF ranking.
+
+All embeddings are pre-computed via OllamaEmbedFn before being passed to ChromaDB.
+No embedding function is registered on the collection — this avoids ChromaDB 0.5+
+protocol requirements that break custom embedding classes.
+"""
 
 from __future__ import annotations
 
@@ -25,8 +30,11 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
     def __init__(self, chroma_path: str | None = None) -> None:
         self._store = ChromaVectorStore(chroma_path) if chroma_path else ChromaVectorStore()
 
-    def _get_collection(self, name: str) -> Any:
-        return self._store.collection(name, embed_fn=get_embed_fn())
+    async def _embed_query(self, query: str) -> list[float]:
+        """Pre-compute a single query embedding via Ollama."""
+        embed_fn = get_embed_fn()
+        vectors = await embed_fn.embed([query])
+        return vectors[0]
 
     async def search(
         self,
@@ -61,21 +69,23 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
         result_sets: list[list[tuple[str, dict[str, Any], str]]] = []
 
         for q in queries:
+            try:
+                q_embedding = await self._embed_query(q)
+            except ProviderUnavailableError:
+                raise
+
             for col_name in [GLOBAL_COLLECTION, campaign_collection(campaign_id)]:
                 try:
-                    col = self._get_collection(col_name)
-                    count = col.count()
-                    if count == 0:
+                    res = await self._store.query(
+                        collection_name=col_name,
+                        query_embeddings=[q_embedding],
+                        n_results=top_k,
+                        where=where,
+                        include=["documents", "metadatas", "distances"],
+                    )
+                    if res is None:
                         result_sets.append([])
                         continue
-                    kwargs: dict[str, Any] = {
-                        "query_texts": [q],
-                        "n_results": min(top_k, count),
-                        "include": ["documents", "metadatas", "distances"],
-                    }
-                    if where is not None:
-                        kwargs["where"] = where
-                    res = col.query(**kwargs)
                     ranked: list[tuple[str, dict[str, Any], str]] = []
                     for chunk_id, meta, doc in zip(
                         res["ids"][0],
@@ -102,7 +112,6 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
 
         sorted_ids = sorted(rrf_scores, key=lambda cid: rrf_scores[cid], reverse=True)
 
-        # Build a larger candidate pool for LLM re-ranking, then trim to top_k.
         retrieval_k = min(top_k * 2, len(sorted_ids))
         candidates: list[KnowledgeChunk] = []
         for chunk_id in sorted_ids[:retrieval_k]:
