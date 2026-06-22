@@ -1,29 +1,30 @@
 <!--
 ## Sync Impact Report
 
-**Version Change**: 1.2.0 → 1.3.0
-**Type of Bump**: MINOR — added Principle VII (Placeholder-First & Explicit Failures) and
-updated Development Workflow step 4 to mandate placeholder stubs before real implementation.
+**Version Change**: 1.3.0 → 1.4.0
+**Type of Bump**: MINOR — material update to Principle IV (image generation provider
+clarified; HuggingFace API designated as current MVP provider; ComfyUI deferred);
+TODO(LICENSE) resolved (LICENSE file confirmed present in repo).
 
 ### Principles Modified
-- None renamed. Principles I–VI content unchanged.
+- **IV. Local-First, Cloud-Optional**: Added explicit carve-out for image generation —
+  HuggingFace Inference API (free tier) is the current image generation provider for
+  the MVP; ComfyUI/SD (local) is deferred to a later milestone. All other local-first
+  constraints (LLM, embeddings, vector store, DB) remain unchanged.
 
 ### Principles Added
-- **VII. Placeholder-First & Explicit Failures** (new) — every feature starts as a visible
-  stub; all failures MUST be surfaced to the user, never swallowed silently.
+- None.
 
-### Workflow Modified
-- Step 4 (Implement): expanded to require placeholder stubs before wiring real logic, and
-  to mandate visible error surfaces over silent failures.
+### Sections Modified
+- **Technology Stack Constraints**: Removed `TODO(LICENSE)` — LICENSE file confirmed
+  present in the repository.
 
 ### Templates Reviewed
 - `.specify/templates/plan-template.md` ✅ — Constitution Check gate is generic; no change required.
 - `.specify/templates/spec-template.md` ✅ — No conflicts; no change required.
-- `.specify/templates/tasks-template.md` ✅ — Foundational phase already supports stub tasks;
-  no structural change required.
+- `.specify/templates/tasks-template.md` ✅ — No structural change required.
 
 ### Deferred TODOs
-- TODO(LICENSE): Still unresolved — project license TBD before public release.
 - TODO(RATIFICATION_DATE): Carried from v1.0.0 — ratification date kept as 2026-06-18.
 -->
 
@@ -80,16 +81,26 @@ and it makes the "add a second rule system" path tractable.
 
 ### IV. Local-First, Cloud-Optional
 
-Default operation MUST work entirely without cloud services:
+Default operation MUST work entirely without cloud services for core features:
 local LLM (Ollama), local embeddings (nomic-embed-text via Ollama),
-local vector store (ChromaDB), local DB (SQLite), local image generation (ComfyUI/SD).
+local vector store (ChromaDB), local DB (SQLite).
 Cloud providers are opt-in upgrades controlled via environment variables.
 No code path may *require* a cloud service to function at runtime unless it is
-explicitly gated behind a provider config that also has a local equivalent.
+explicitly gated behind a provider config that also has a local equivalent — or is
+explicitly designated as a temporary MVP exception (see below).
+
+**Image generation exception (MVP)**: The HuggingFace Inference API (free tier) is the
+designated image generation provider for the current MVP stage. ComfyUI / Stable Diffusion
+(local image generation) is planned but deferred to a later milestone. This is the one
+intentional cloud dependency in the MVP; it MUST be gated by a provider config so that
+swapping to a local provider requires only an environment-variable change (Principle II).
+When HuggingFace is unavailable or unconfigured, the UI MUST show a clear placeholder
+per Principle VII — never a crash or blank panel.
 
 **Rationale**: Tabletop RPG sessions happen in varied environments (offline, low-bandwidth,
 privacy-sensitive). Local-first ensures StoryWeaver is useful and private by default, with
-cloud as an upgrade — not a dependency.
+cloud as an upgrade — not a dependency. The HuggingFace free tier removes the ComfyUI
+setup burden at MVP stage while the abstraction layer keeps the local upgrade path open.
 
 ### V. Harness-Driven Agent Quality
 
@@ -160,6 +171,9 @@ as an Architecture Decision Record (ADR) under `docs/adr/` before implementation
   mandatory. The `User`, `Player`, and `GameStar` SQLAlchemy models MUST be used as-is
   for identity and session context. No JWT, OAuth, or session-token infrastructure SHOULD
   be added until product-market fit is confirmed (see Principle VI).
+- **Image generation**: HuggingFace Inference API (free tier) is the current MVP provider,
+  configured via environment variable. ComfyUI / Stable Diffusion (local) is the planned
+  future provider and MUST be wired through the same `packages/imagegen/` abstraction.
 - **Dependency management**: `uv` (recommended). Workspace config lives in
   `pyproject.toml` at the repository root.
 - **Containers**: Docker + Docker Compose (`deploy/compose/`). Both local and cloud
@@ -168,9 +182,8 @@ as an Architecture Decision Record (ADR) under `docs/adr/` before implementation
   `ruff` for linting and `pyright` for type-checking on every CI push.
 - **IP compliance**: StoryWeaver MUST NOT redistribute copyrighted rulebook text, art,
   or proprietary game content. Only distilled mechanics, tables, and structured facts
-  derived from the user's own rulebooks may be bundled.
-  TODO(LICENSE): A project license (MIT or Apache-2.0 recommended) MUST be added as
-  `LICENSE` before any public release.
+  derived from the user's own rulebooks may be bundled. Project is released under the
+  license in the `LICENSE` file at the repository root.
 
 ## Development Workflow
 
@@ -216,4 +229,4 @@ amendment — not a quiet exception.
 
 Runtime development guidance lives in `README.md` and the `/specs` directory.
 
-**Version**: 1.3.0 | **Ratified**: 2026-06-18 | **Last Amended**: 2026-06-19
+**Version**: 1.4.0 | **Ratified**: 2026-06-18 | **Last Amended**: 2026-06-22
