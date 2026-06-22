@@ -1,28 +1,29 @@
 <!--
 ## Sync Impact Report
 
-**Version Change**: 1.3.0 → 1.4.0
-**Type of Bump**: MINOR — material update to Principle IV (image generation provider
-clarified; HuggingFace API designated as current MVP provider; ComfyUI deferred);
-TODO(LICENSE) resolved (LICENSE file confirmed present in repo).
+**Version Change**: 1.4.0 → 1.5.0
+**Type of Bump**: MINOR — new Principle VIII (Structured Logging & Observability) added;
+log level controlled via `LOG_LEVEL` environment variable; logging requirements added to
+Technology Stack Constraints and Development Workflow.
 
 ### Principles Modified
-- **IV. Local-First, Cloud-Optional**: Added explicit carve-out for image generation —
-  HuggingFace Inference API (free tier) is the current image generation provider for
-  the MVP; ComfyUI/SD (local) is deferred to a later milestone. All other local-first
-  constraints (LLM, embeddings, vector store, DB) remain unchanged.
+- None (existing principles unchanged).
 
 ### Principles Added
-- None.
+- **VIII. Structured Logging & Observability**: Governs logging discipline across all packages —
+  standard `logging` module, named loggers, `LOG_LEVEL` env-var control, no bare `print()`
+  for debugging, and structured log output.
 
 ### Sections Modified
-- **Technology Stack Constraints**: Removed `TODO(LICENSE)` — LICENSE file confirmed
-  present in the repository.
+- **Technology Stack Constraints**: Added logging toolchain entry (`LOG_LEVEL` env var,
+  standard `logging` module, `structlog` optional).
+- **Development Workflow**: Step 5 (Verify) updated to include log-level smoke check.
 
 ### Templates Reviewed
 - `.specify/templates/plan-template.md` ✅ — Constitution Check gate is generic; no change required.
 - `.specify/templates/spec-template.md` ✅ — No conflicts; no change required.
-- `.specify/templates/tasks-template.md` ✅ — No structural change required.
+- `.specify/templates/tasks-template.md` ✅ — T008 already covers logging infrastructure;
+  T017-pattern already covers per-story logging tasks. No structural change required.
 
 ### Deferred TODOs
 - TODO(RATIFICATION_DATE): Carried from v1.0.0 — ratification date kept as 2026-06-18.
@@ -155,6 +156,37 @@ a demo proceed; a crash or blank panel kills it. Explicit, visible errors also s
 the debugging loop — a console-only traceback is invisible during a live session and
 silently misleads stakeholders into thinking something works when it does not.
 
+### VIII. Structured Logging & Observability
+
+All packages MUST use Python's standard `logging` module — never bare `print()` calls
+for diagnostic or debug output. `print()` is permitted only for intentional CLI-facing
+output (e.g., help text, interactive prompts).
+Every module MUST obtain its logger via `logging.getLogger(__name__)` so log records
+carry the full dotted module path and can be filtered precisely.
+The active log level MUST be controlled exclusively by the `LOG_LEVEL` environment
+variable (e.g., `LOG_LEVEL=DEBUG`). Code MUST NOT hard-code a level; the application
+entry point reads `LOG_LEVEL` (defaulting to `WARNING` when absent) and applies it once
+at startup via `logging.basicConfig` or an equivalent root-logger configuration.
+Log messages MUST be written at the appropriate severity:
+- `DEBUG` — internal state useful during development (e.g., intermediate embeddings,
+  prompt text, raw LLM responses). MUST NOT appear in production by default.
+- `INFO` — significant lifecycle events (startup, provider selection, milestone completions).
+- `WARNING` — recoverable anomalies (missing optional config, fallback provider chosen).
+- `ERROR` — failures that prevented an operation from completing; MUST include enough
+  context to reproduce the failure without a debugger.
+- `CRITICAL` — unrecoverable failures requiring immediate operator attention.
+Log messages MUST be human-readable strings in development and SHOULD be structured
+(key=value pairs or JSON) when the project adds a log aggregation target. `structlog`
+is the approved optional dependency for structured output; using it MUST remain
+opt-in and not required to run the app locally.
+No package may suppress or re-raise an exception without logging it at `ERROR` or higher.
+
+**Rationale**: `print()` debugging does not survive in containerised or headless
+environments and cannot be filtered by severity. Consistent named loggers with
+environment-variable level control let any developer dial from `WARNING` (quiet demos)
+to `DEBUG` (deep inspection) without touching code, which shortens the debugging loop
+and preserves the demo experience simultaneously.
+
 ## Technology Stack Constraints
 
 The following technology choices are project-wide defaults. Deviations MUST be recorded
@@ -174,6 +206,11 @@ as an Architecture Decision Record (ADR) under `docs/adr/` before implementation
 - **Image generation**: HuggingFace Inference API (free tier) is the current MVP provider,
   configured via environment variable. ComfyUI / Stable Diffusion (local) is the planned
   future provider and MUST be wired through the same `packages/imagegen/` abstraction.
+- **Logging**: Python's standard `logging` module is mandatory (see Principle VIII).
+  Log level is set via the `LOG_LEVEL` environment variable; default is `WARNING`.
+  `structlog` is an approved optional dependency for structured/JSON output when a log
+  aggregation target is introduced. No third-party logging framework (Loguru, etc.) MUST
+  be introduced without an ADR.
 - **Dependency management**: `uv` (recommended). Workspace config lives in
   `pyproject.toml` at the repository root.
 - **Containers**: Docker + Docker Compose (`deploy/compose/`). Both local and cloud
@@ -199,6 +236,8 @@ as an Architecture Decision Record (ADR) under `docs/adr/` before implementation
    UI — never log-only. Replace the placeholder with real logic incrementally; keep
    packages isolated throughout.
 5. **Verify**: `pytest` passes; harness evals pass; `ruff` and `pyright` report no errors.
+   Confirm no bare `print()` debugging remains in non-CLI code paths. Smoke-check that
+   `LOG_LEVEL=DEBUG` surfaces expected log lines without crashing.
 6. **README currency**: Update `README.md` to reflect the current implemented state of
    the project. This MUST cover: newly completed features, changed setup/usage
    instructions, removed or renamed commands, and known limitations introduced by this
@@ -229,4 +268,4 @@ amendment — not a quiet exception.
 
 Runtime development guidance lives in `README.md` and the `/specs` directory.
 
-**Version**: 1.4.0 | **Ratified**: 2026-06-18 | **Last Amended**: 2026-06-22
+**Version**: 1.5.0 | **Ratified**: 2026-06-18 | **Last Amended**: 2026-06-22
