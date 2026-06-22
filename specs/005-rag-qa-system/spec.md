@@ -44,7 +44,7 @@ A GM uploads a PDF rulebook or setting document. The system converts it to a rea
 
 ### User Story 3 - Ingest a Markdown File Directly (Priority: P2)
 
-A GM or player writes session notes, a lore summary, or a faction overview as a Markdown file and uploads it directly. The system skips PDF conversion and runs the file straight through the RAG pipeline (enhancement, chunking, embeddings). This supports lightweight, ongoing knowledge contributions alongside formal rulebooks.
+A GM or player writes session notes, a lore summary, or a faction overview as a Markdown file and uploads it directly. The system skips PDF conversion and runs the file straight through the RAG pipeline (enhancement, chunking, embeddings). Both GMs and players may upload Markdown files; PDF upload is restricted to GMs only.
 
 **Why this priority**: Peer with PDF ingestion — Markdown files are the simpler path and unlock GM/player notes as a first-class knowledge source.
 
@@ -101,25 +101,27 @@ After receiving an answer, the user can inspect the cited passages that contribu
 
 ### Functional Requirements
 
-- **FR-001**: Users MUST be able to type a natural language question and receive a generated answer drawn from ingested content.
-- **FR-002**: Every answer MUST include citations identifying which document(s) and section(s) contributed to the response.
+- **FR-001**: Users MUST be able to type a natural language question and receive a generated answer synthesized across multiple relevant chunks and documents.
+- **FR-002**: Every answer MUST include citations identifying all contributing document(s) and section(s), ranked by relevance.
 - **FR-003**: The system MUST expand user queries internally to improve retrieval coverage before searching the knowledge base.
 - **FR-004**: Retrieved content segments MUST be ranked by relevance before being passed to the answer generator.
-- **FR-005**: Users MUST be able to upload PDF files; the system MUST convert them to a structured text format before indexing.
-- **FR-006**: Users MUST be able to upload Markdown (`.md`) files directly; these MUST skip the conversion step and go straight into the RAG pipeline (chunking, enrichment, embedding).
+- **FR-005**: GMs MUST be able to upload PDF files; the system MUST convert them to a structured text format before indexing. Players MUST NOT be permitted to upload PDF files.
+- **FR-006**: GMs and players MUST be able to upload Markdown (`.md`) files directly; these MUST skip the conversion step and go straight into the RAG pipeline (chunking, enrichment, embedding).
 - **FR-007**: Both ingestion paths (PDF and Markdown) MUST produce the same enriched chunk structure in the knowledge base.
 - **FR-008**: Documents MUST be split into semantically coherent segments using an automated process assisted by a language model.
-- **FR-009**: Each content segment MUST be enriched with metadata: a headline, a short summary, a topic label, and an access level (GM-only or player-visible).
+- **FR-009**: Each content segment MUST be enriched with metadata: a headline, a short summary, a topic label, and an access level (GM-only or player-visible). The access level MUST be inferred per-chunk by the language model during enrichment; the uploader MUST be able to set a document-level default access level at upload time that overrides the LLM inference for that document.
+- **FR-009b**: When a document is uploaded whose title or content matches an existing entry in the knowledge base, the system MUST warn the user that the document appears to already exist and MUST require explicit confirmation before replacing it and re-ingesting. If the user does not confirm, the upload MUST be cancelled and the existing document left unchanged.
 - **FR-010**: The system MUST enforce access-level filtering: player queries MUST NOT surface GM-only content.
 - **FR-011**: The Q&A interface MUST display a clear, user-visible message when no relevant content is found rather than fabricating an answer.
 - **FR-012**: The Q&A interface MUST display a clear, user-visible error message if the knowledge service is unavailable.
 - **FR-013**: The UI MUST display cited passages alongside answers so users can verify and read source context.
 - **FR-014**: The ingestion pipeline MUST be designed to support additional content types in future (session notes, character sheets) without changing the storage or retrieval layer.
+- **FR-015**: When a document is submitted for ingestion, it MUST appear immediately in the knowledge base list with a visible "processing" status. The status MUST update to "ready" automatically when ingestion completes, and to "failed" with a descriptive message if ingestion fails. The UI MUST remain fully usable during background ingestion.
 
 ### Key Entities
 
-- **Document**: A source material item uploaded by a user (GM or player). Attributes: title, format (PDF or Markdown), access level, ingestion status.
-- **Chunk**: A semantically coherent segment of a Document. Attributes: text, headline, summary, topic, access level, source document reference.
+- **Document**: A source material item uploaded by a user (GM or player). Attributes: title, format (PDF or Markdown), access level (document-level default), ingestion status (processing / ready / failed). Title is used as the uniqueness key for duplicate detection.
+- **Chunk**: A semantically coherent segment of a Document. Attributes: text, headline, summary, topic, access level (LLM-inferred, overridable by document-level default), source document reference.
 - **Query**: A user's natural language question, internally expanded for retrieval.
 - **Answer**: The generated response to a Query, composed from ranked Chunks, with citations back to source Chunks.
 
@@ -135,6 +137,16 @@ After receiving an answer, the user can inspect the cited passages that contribu
 - **SC-006**: The knowledge base handles at least 3 simultaneously ingested documents without degraded retrieval quality.
 - **SC-007**: The Q&A page remains usable (shows a clear placeholder or error message) even when the underlying knowledge service is unavailable.
 
+## Clarifications
+
+### Session 2026-06-22
+
+- Q: How is the access level (GM-only vs. player-visible) determined for document chunks? → A: LLM infers access level per-chunk automatically during enrichment; uploader sets a document-level default at upload time that overrides LLM inference for that document.
+- Q: What happens when a user uploads a document that already exists in the knowledge base? → A: Warn the user the document appears to already exist and require explicit confirmation before replacing and re-ingesting; cancel the upload if not confirmed.
+- Q: How should the UI communicate ingestion progress during a long-running PDF ingest? → A: Background processing — document appears immediately in the list with a "processing" status that updates to "ready" when ingestion completes; UI remains usable throughout.
+- Q: Which roles can upload which document formats? → A: GMs can upload both PDF and Markdown files; players can upload Markdown only. Players must not be permitted to upload PDFs.
+- Q: Should answers synthesize across multiple chunks and documents, or focus on the single best match? → A: Synthesize across multiple chunks and documents; cite all contributing sources ranked by relevance.
+
 ## Assumptions
 
 - The UI is a single Gradio tab or page; no separate backend service is introduced (per constitution Principle VI and technology stack constraints).
@@ -144,6 +156,6 @@ After receiving an answer, the user can inspect the cited passages that contribu
 - Documents ingested are the user's own legally-owned materials; the system stores processed chunks only and does not redistribute original copyrighted text verbatim (per constitution IP compliance requirement).
 - Access control uses the existing `User`, `Player`, and `GameStar` SQLAlchemy models for role determination (GM vs. player); no new authentication infrastructure is introduced.
 - PDF-to-Markdown conversion handles standard text-based PDFs; scanned/image-only PDFs are out of scope for MVP.
-- Document deletion and re-ingestion are out of scope for MVP; the knowledge base is append-only in this iteration.
+- Document deletion is out of scope for MVP. Re-ingestion (replacement) is supported only via the confirmed-overwrite flow defined in FR-009b.
 - Session notes and character sheet ingestion share the same pipeline architecture but are deferred to a future spec; the pipeline is designed to accommodate them.
 - Mobile support is out of scope; the UI targets desktop browser sessions.

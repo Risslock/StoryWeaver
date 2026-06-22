@@ -33,5 +33,6 @@
 
 - Spec covers both ingestion paths (PDF → MD → RAG, and MD → RAG directly) per user clarification
 - Access control scoped to existing User/Player/GameStar models (no new auth stack)
-- Document deletion deferred to a future iteration (append-only KB for MVP)
+- Document deletion deferred; re-ingestion (replacement) supported via confirmed-overwrite flow (FR-009b)
 - Session notes and character sheet ingestion share the pipeline architecture but are deferred
+- Clarifications session (2026-06-22): 5 questions answered — access level mechanism, duplicate handling, ingestion progress UX, upload permissions by role, answer synthesis scope
