@@ -2,123 +2,28 @@
 
 from __future__ import annotations
 
-import json
 import os
-import urllib.request
 from typing import Any
 
 from core.errors import ProviderUnavailableError
 
+from rag.knowledge.embedder import get_embed_fn
 from rag.knowledge.interface import KnowledgeChunk, KnowledgeRetriever
-
-_CHROMA_PATH = "./data/chroma"
-_GLOBAL_COLLECTION = "knowledge_global"
-
-
-class _OllamaEmbedFn:
-    """ChromaDB-compatible embedding function backed by Ollama's /api/embed.
-
-    Avoids chromadb's built-in OllamaEmbeddingFunction which has moved across
-    versions and requires an explicit package install in chromadb >= 0.5.
-    """
-
-    def __init__(self, model: str, base_url: str) -> None:
-        self._model = model
-        self._url = base_url.rstrip("/") + "/api/embed"
-
-    def __call__(self, input: list[str]) -> list[list[float]]:
-        body = json.dumps({"model": self._model, "input": input}).encode()
-        req = urllib.request.Request(
-            self._url,
-            data=body,
-            headers={"Content-Type": "application/json"},
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                return json.loads(resp.read())["embeddings"]
-        except Exception as exc:
-            raise ProviderUnavailableError(
-                f"Ollama embedding failed (model={self._model}, url={self._url}): {exc}"
-            ) from exc
-
-
-def _campaign_collection(campaign_id: str) -> str:
-    return f"knowledge_{campaign_id.replace('-', '')}"
+from rag.knowledge.vector_store import (
+    GLOBAL_COLLECTION,
+    ChromaVectorStore,
+    campaign_collection,
+)
 
 
 class ChromaKnowledgeRetriever(KnowledgeRetriever):
     """Retriever over knowledge_global + knowledge_{campaign_id} ChromaDB collections."""
 
-    def __init__(self, chroma_path: str = _CHROMA_PATH) -> None:
-        self._chroma_path = chroma_path
-        self._client: Any = None
-
-    def _get_client(self) -> Any:
-        if self._client is not None:
-            return self._client
-        try:
-            import chromadb  # type: ignore[import-untyped]
-            self._client = chromadb.PersistentClient(path=self._chroma_path)
-            return self._client
-        except Exception as exc:
-            raise ProviderUnavailableError(f"Cannot initialise ChromaDB: {exc}") from exc
-
-    def _embed_fn(self) -> _OllamaEmbedFn:
-        from core.config import settings as _cfg
-        embed_model = os.environ.get("KNOWLEDGE_EMBED_MODEL", _cfg.knowledge_embed_model)
-        ollama_url = os.environ.get("OLLAMA_BASE_URL", _cfg.ollama_base_url)
-        return _OllamaEmbedFn(model=embed_model, base_url=ollama_url)
+    def __init__(self, chroma_path: str | None = None) -> None:
+        self._store = ChromaVectorStore(chroma_path) if chroma_path else ChromaVectorStore()
 
     def _get_collection(self, name: str) -> Any:
-        client = self._get_client()
-        ef = self._embed_fn()
-        return client.get_or_create_collection(
-            name=name,
-            embedding_function=ef,
-            metadata={"hnsw:space": "cosine"},
-        )
-
-    async def add_chunk(
-        self,
-        chunk_id: str,
-        text: str,
-        metadata: dict[str, object],
-        scope: str,
-        campaign_id: str | None = None,
-    ) -> None:
-        try:
-            if scope == "global":
-                col = self._get_collection(_GLOBAL_COLLECTION)
-            else:
-                if campaign_id is None:
-                    raise ValueError("campaign_id required for campaign-scoped chunks")
-                col = self._get_collection(_campaign_collection(campaign_id))
-            col.upsert(ids=[chunk_id], documents=[text], metadatas=[metadata])
-        except ProviderUnavailableError:
-            raise
-        except Exception as exc:
-            raise ProviderUnavailableError(f"ChromaDB upsert failed: {exc}") from exc
-
-    async def delete_chunks_by_doc(
-        self,
-        doc_id: str,
-        scope: str,
-        campaign_id: str | None = None,
-    ) -> None:
-        try:
-            if scope == "global":
-                col = self._get_collection(_GLOBAL_COLLECTION)
-            else:
-                if campaign_id is None:
-                    return
-                col = self._get_collection(_campaign_collection(campaign_id))
-            all_ids = col.get(where={"doc_id": {"$eq": doc_id}})
-            if all_ids and all_ids.get("ids"):
-                col.delete(ids=all_ids["ids"])
-        except ProviderUnavailableError:
-            raise
-        except Exception as exc:
-            raise ProviderUnavailableError(f"ChromaDB delete failed: {exc}") from exc
+        return self._store.collection(name, embed_fn=get_embed_fn())
 
     async def search(
         self,
@@ -131,6 +36,7 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
         from llm.providers.ollama import OllamaProvider
 
         from core.config import settings as _cfg
+
         llm_model = os.environ.get("KNOWLEDGE_LLM_MODEL", _cfg.knowledge_llm_model)
         enricher = ChunkEnricher(OllamaProvider(model=llm_model))
 
@@ -152,10 +58,7 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
         result_sets: list[list[tuple[str, dict[str, Any], str]]] = []
 
         for q in queries:
-            for col_name, col_scope in [
-                (_GLOBAL_COLLECTION, "global"),
-                (_campaign_collection(campaign_id), "campaign"),
-            ]:
+            for col_name in [GLOBAL_COLLECTION, campaign_collection(campaign_id)]:
                 try:
                     col = self._get_collection(col_name)
                     count = col.count()

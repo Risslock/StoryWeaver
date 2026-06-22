@@ -56,23 +56,3 @@ class KnowledgeRetriever(ABC):
         top_k: int = 8,
     ) -> list[KnowledgeChunk]:
         """Return RRF-ranked chunks visible to the given role."""
-
-    @abstractmethod
-    async def add_chunk(
-        self,
-        chunk_id: str,
-        text: str,
-        metadata: dict[str, object],
-        scope: str,
-        campaign_id: str | None = None,
-    ) -> None:
-        """Upsert one chunk into the appropriate collection."""
-
-    @abstractmethod
-    async def delete_chunks_by_doc(
-        self,
-        doc_id: str,
-        scope: str,
-        campaign_id: str | None = None,
-    ) -> None:
-        """Remove all chunks whose chunk_id starts with {doc_id}_."""
