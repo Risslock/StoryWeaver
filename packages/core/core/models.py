@@ -211,6 +211,31 @@ class Player(Base):
     campaign: Mapped[Campaign] = relationship("Campaign", back_populates="players")
 
 
+class KnowledgeDocument(Base):
+    __tablename__ = "knowledge_documents"
+    __table_args__ = (
+        UniqueConstraint("scope", "campaign_id", "title", name="uq_knowledge_doc_title"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    scope: Mapped[str] = mapped_column(String(16), nullable=False)
+    campaign_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    format: Mapped[str] = mapped_column(String(8), nullable=False)
+    access_level_default: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    ingestion_status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    chunk_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    chunks_processed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+    campaign: Mapped[Campaign | None] = relationship("Campaign")
+
+
 # Functional unique indexes — defined after all classes so column references resolve.
 # Mirror Alembic migration 0002; also used by Base.metadata.create_all() in tests.
 Index(

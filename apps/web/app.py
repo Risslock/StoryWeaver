@@ -37,9 +37,11 @@ from pages.gm.history import build_gm_history_page
 from pages.gm.npcs import build_npc_page
 from pages.gm.players import build_players_page
 from pages.gm.session_plan import build_session_plan_page
+from pages.gm.knowledge_qa import build_knowledge_qa_page as build_gm_knowledge_qa_page
 from pages.gm.world_notes import build_world_notes_page
 from pages.player.character import build_character_page
 from pages.player.history import build_player_history_page
+from pages.player.knowledge_qa import build_knowledge_qa_page as build_player_knowledge_qa_page
 from pages.player.join import (
     build_player_join_page,
     load_joined_campaigns,
@@ -106,6 +108,7 @@ def create_app() -> gr.Blocks:
                 build_character_page(session_state)
                 build_twin_chat_page(session_state)
                 build_player_history_page(session_state)
+                build_player_knowledge_qa_page(session_state)
 
         # ── GM dashboard ──────────────────────────────────────────────────────
         with gr.Column(visible=False, elem_id="gm-column") as gm_col:
@@ -132,6 +135,7 @@ def create_app() -> gr.Blocks:
                 build_world_notes_page(session_state)
                 build_session_plan_page(session_state)
                 build_players_page(session_state)
+                build_gm_knowledge_qa_page(session_state)
 
         # ── Navigation ────────────────────────────────────────────────────────
         def _navigate(

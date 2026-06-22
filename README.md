@@ -34,6 +34,7 @@ All milestones M0–M5 are **implemented and passing integration tests**.
 | M5 — Cloud providers | ✅ Implemented | Anthropic, OpenAI, HuggingFace LLM providers; Postgres adapter; harness runner complete |
 | M6 — Auth & Admin UI | ✅ Implemented | GM account registration/login, campaign admin dashboard, join code sharing, player rejoin, character/NPC upsert semantics |
 | M7 — Auth & Admin Reboot | ✅ Implemented | Auth-first for all users (players must create accounts), post-login hub screen, `user_id`-linked player records, no anonymous join, `pages/landing.py` and `pages/admin/campaigns.py` deleted, `services/db.py` singleton, pure Gradio launch |
+| M8 — Game Knowledge Q&A | ✅ Implemented | Two-tier RAG (global rulebooks + campaign lore), PDF→Markdown ingestion, heading-based chunking, LLM chunk enrichment, multi-query expansion, RRF ranking, access-level filtering, GM/player Knowledge Q&A tabs with upload, status polling, duplicate detection |
 
 ### Known limitations
 
@@ -46,6 +47,9 @@ All milestones M0–M5 are **implemented and passing integration tests**.
 - **No join code rotation**: once a join code is set at campaign creation, it cannot be changed.
 - **No OAuth / social login**: accounts use SHA-256 password hashing via stdlib `hashlib`; no external auth provider is wired.
 - **No mobile support**: UI is desktop/browser only.
+- **Knowledge Q&A requires Ollama models**: `ollama pull nomic-embed-text` and `ollama pull llama3.1` must be run before using the Knowledge Q&A feature. If these models are unavailable, ingestion shows ❌ failed and Q&A shows a visible error message.
+- **No document deletion**: deleting knowledge documents is out of scope for MVP; re-ingestion (replacement) is supported via the confirmed-overwrite flow.
+- **Scanned/image-only PDFs**: not supported for MVP; text-based PDFs only. Image-only pages emit a visible warning rather than failing silently.
 - **AI services are optional**: if Ollama or ComfyUI are not running, the app still launches and shows visible placeholders in AI-dependent tabs.
 - **M8 — Beyond Earthdawn**: system-agnostic core and second rule system are not yet implemented.
 
@@ -74,6 +78,7 @@ All milestones M0–M5 are **implemented and passing integration tests**.
 - **Session-grouped history** — story events are grouped under session headers; GMs create sessions (title + date) before logging events; unsession events appear under "Unsorted".
 - **Players tab** — read-only GM view showing all joined players and their linked character names.
 - **Character/NPC upsert** — creating a character or NPC with a name that matches an existing one (case-insensitive, per campaign) updates the record instead of creating a duplicate.
+- **Game Knowledge Q&A** — GMs and players ask natural-language questions about rules, lore, and world content; the system synthesizes answers with source citations from ingested PDFs and Markdown files. Two-tier ChromaDB collections (global rulebooks shared across all campaigns; per-campaign lore). GM-only content is hidden from players. Background ingestion with live status polling.
 
 ### Planned
 

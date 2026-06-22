@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     max_twin_turns: int = 20
     images_dir: str = str(_repo_root / "data" / "images")
 
+    # Knowledge Q&A (RAG) settings
+    knowledge_embed_model: str = "nomic-embed-text"
+    knowledge_llm_model: str = "llama3.1"
+    knowledge_max_chunk_tokens: int = 800
+    knowledge_chunk_overlap_tokens: int = 50
+    knowledge_top_k: int = 8
+    knowledge_rrf_k: int = 60
+    knowledge_expansion_count: int = 3
+
     @model_validator(mode="after")
     def _resolve_db_path(self) -> "Settings":
         self.database_url = _resolve_sqlite_url(self.database_url)

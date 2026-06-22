@@ -4,8 +4,11 @@ version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
     "storyweaver-core",
+    "storyweaver-llm",
     "storyweaver-storage",
     "chromadb>=0.4",
+    "pymupdf4llm",
+    "pydantic-ai>=0.0.1",
 ]
 
 [build-system]
@@ -17,4 +20,5 @@ packages = ["rag"]
 
 [tool.uv.sources]
 storyweaver-core = { workspace = true }
+storyweaver-llm = { workspace = true }
 storyweaver-storage = { workspace = true }
