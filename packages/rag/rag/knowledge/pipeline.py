@@ -88,7 +88,7 @@ class IngestionPipeline:
                 embeddings = await embed_fn.embed(compound_texts)
 
                 # Phase 4 — Store: upsert this batch immediately so it is queryable now
-                await self._store.upsert(collection_name, ids, embeddings, compound_texts, metadatas)
+                await self._store.upsert(collection_name, ids, embeddings, compound_texts, metadatas, embed_fn=embed_fn)
 
                 stored += len(batch)
                 await self._set_progress(doc_id, stored)

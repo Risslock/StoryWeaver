@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
@@ -14,6 +15,8 @@ from rag.knowledge.vector_store import (
     ChromaVectorStore,
     campaign_collection,
 )
+
+_log = logging.getLogger(__name__)
 
 
 class ChromaKnowledgeRetriever(KnowledgeRetriever):
@@ -84,7 +87,8 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
                     result_sets.append(ranked)
                 except ProviderUnavailableError:
                     raise
-                except Exception:
+                except Exception as exc:
+                    _log.warning("ChromaDB query failed for collection %r: %s", col_name, exc)
                     result_sets.append([])
 
         rrf_scores: dict[str, float] = {}

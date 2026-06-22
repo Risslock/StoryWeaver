@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from core.errors import ProviderUnavailableError
+
+_log = logging.getLogger(__name__)
 
 _CHROMA_PATH = "./data/chroma"
 GLOBAL_COLLECTION = "knowledge_global"
@@ -53,9 +56,10 @@ class ChromaVectorStore:
         embeddings: list[list[float]],
         documents: list[str],
         metadatas: list[dict[str, object]],
+        embed_fn: Any | None = None,
     ) -> None:
         try:
-            col = self.collection(collection_name)
+            col = self.collection(collection_name, embed_fn=embed_fn)
             await asyncio.to_thread(
                 col.upsert,
                 ids=ids,
