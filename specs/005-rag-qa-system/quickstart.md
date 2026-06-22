@@ -159,18 +159,90 @@ uv run python apps/web/main.py
 
 ---
 
+## Automated Tests
+
+### Unit and Mock-Based Harness Tests (no Ollama required)
+
+These tests run without a live Ollama instance and should be part of every CI run:
+
+```bash
+# OllamaEmbedFn unit tests (name consistency, model mismatch detection, HTTP mock)
+uv run pytest packages/rag/tests/knowledge/test_embedder.py -v
+
+# Harness evals — enrichment mocks, RRF logic, access filter, empty KB
+uv run pytest harness/knowledge_qa/test_ingestion.py harness/knowledge_qa/test_retrieval.py -v
+
+# All non-integration tests in one command
+uv run pytest packages/rag/tests/ harness/knowledge_qa/test_ingestion.py harness/knowledge_qa/test_retrieval.py -v
+```
+
+Expected: all tests pass in under 10 seconds (no network calls).
+
+---
+
+### Integration Tests (requires Ollama)
+
+Integration tests in `harness/knowledge_qa/test_integration.py` exercise the real stack end-to-end: live Ollama embedding + enrichment + LLM synthesis + ChromaDB. Tests are **automatically skipped** if Ollama is not reachable at `OLLAMA_BASE_URL`.
+
+**Prerequisites**:
+
+```bash
+# Both models must be pulled
+ollama pull nomic-embed-text
+ollama pull llama3.2        # used for enrichment (KNOWLEDGE_ENRICH_MODEL)
+ollama pull llama3.1        # used for synthesis (KNOWLEDGE_LLM_MODEL)
+
+# Verify Ollama is running
+curl http://localhost:11434/api/tags
+```
+
+**Run integration tests**:
+
+```bash
+uv run pytest harness/knowledge_qa/test_integration.py -v
+```
+
+**Expected output**:
+
+```
+harness/knowledge_qa/test_integration.py::TestIngestionFlow::test_md_to_chunks_to_db PASSED
+harness/knowledge_qa/test_integration.py::TestRetrievalFlow::test_query_returns_relevant_chunks PASSED
+harness/knowledge_qa/test_integration.py::TestEndToEndQA::test_llm_synthesises_answer PASSED
+```
+
+Expected runtime: 30–120 seconds (depends on model load time and hardware).
+
+**If Ollama is not running**:
+
+```
+SKIPPED [1] harness/knowledge_qa/test_integration.py::TestIngestionFlow::test_md_to_chunks_to_db
+         Reason: Ollama not reachable at http://localhost:11434
+```
+
+**Run everything**:
+
+```bash
+uv run pytest packages/rag/tests/ harness/ -v
+```
+
+---
+
 ## Harness Evaluation Targets
 
 These evals must pass before the milestone is considered complete (constitution Principle V):
 
-| Eval | File | Pass Criterion |
-|---|---|---|
-| MD ingest produces enriched chunks | `harness/knowledge_qa/test_ingestion.py` | `chunk_count >= 1`; each chunk has non-empty `headline`, `summary`, `topic`, valid `access_level` |
-| Embedding model check | `harness/knowledge_qa/test_ingestion.py` | Fails with `ProviderUnavailableError` (not silent) when `nomic-embed-text` is not available |
-| GM-only filter blocks player | `harness/knowledge_qa/test_retrieval.py` | Player query returns 0 chunks for GM-only content |
-| RRF ranking relevance | `harness/knowledge_qa/test_retrieval.py` | Directly relevant chunk appears in top-3 for a targeted question |
-| No hallucination on empty KB | `harness/knowledge_qa/test_retrieval.py` | Answer contains "couldn't find" phrase; 0 citations returned |
-| Stale processing detection | `harness/knowledge_qa/test_ingestion.py` | Document with `updated_at` >15 min and status `processing` triggers visible warning |
+| Eval | File | Requires Ollama | Pass Criterion |
+|---|---|---|---|
+| MD ingest produces enriched chunks | `test_ingestion.py` | No (mocked) | `chunk_count >= 1`; each chunk has non-empty `headline`, `summary`, `topic`, valid `access_level` |
+| Embedding model check | `test_ingestion.py` | No (mocked) | Fails with `ProviderUnavailableError` (not silent) when `nomic-embed-text` unavailable |
+| GM-only filter blocks player | `test_retrieval.py` | No (mocked) | Player query returns 0 chunks for GM-only content |
+| RRF ranking relevance | `test_retrieval.py` | No (mocked) | Directly relevant chunk appears in top-3 |
+| No hallucination on empty KB | `test_retrieval.py` | No (mocked) | Answer contains "couldn't find" phrase; 0 citations |
+| Stale processing detection | `test_ingestion.py` | No (mocked) | Document with `updated_at` >15 min triggers visible warning |
+| OllamaEmbedFn name / consistency | `test_embedder.py` | No (mocked HTTP) | `name` property exists; same model → same name; different models → different names |
+| **MD → chunks → embeddings → ChromaDB** | `test_integration.py` | **Yes** | `collection.count() >= 1`; all metadata fields present; `access_level` valid |
+| **Query → embedding → ChromaDB → ranked chunks** | `test_integration.py` | **Yes** | `len(chunks) >= 1`; `rrf_score > 0`; oracle phrase present in top chunk |
+| **LLM synthesises answer from retrieved content** | `test_integration.py` | **Yes** | Answer non-empty; `"couldn't find"` absent; ≥1 citation returned |
 
 ---
 

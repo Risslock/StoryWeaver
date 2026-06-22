@@ -202,10 +202,124 @@ harness/
 └── knowledge_qa/
     ├── test_ingestion.py             # Eval: ingest produces expected chunk count and metadata
     ├── test_retrieval.py             # Eval: Q&A accuracy, RRF ranking, access filter enforcement
+    ├── test_integration.py           # NEW — three live-Ollama integration flows (Phase 10)
     └── fixtures/
         ├── sample_rules.md           # Plain rules text for ingestion tests
         └── sample_gm_only.md         # GM-only content for access-filter tests
+
+packages/rag/tests/knowledge/
+    └── test_embedder.py              # Unit tests for OllamaEmbedFn (no Ollama required)
 ```
+
+---
+
+## Phase 10: Integration Test Design
+
+**Added**: 2026-06-22 | **Branch**: `005-rag-qa-system`
+
+Existing harness tests (`test_ingestion.py`, `test_retrieval.py`) rely entirely on mocked LLM and ChromaDB. This phase adds **three live-Ollama integration tests** in `harness/knowledge_qa/test_integration.py` that exercise the real stack end-to-end.
+
+### Guiding Constraints
+
+- **Ollama skip guard**: All three tests require Ollama to be running with `nomic-embed-text` (and at least one text model for Test 3). Tests are automatically skipped if Ollama is unreachable — a `pytest.fixture(scope="module")` named `ollama_available` calls `GET /api/tags` on `OLLAMA_BASE_URL`; a reachable-but-model-missing scenario fails with a `ProviderUnavailableError` (verifying Principle VII).
+- **ChromaDB isolation**: A `tmp_path`-scoped pytest fixture creates a fresh directory per test module. `ChromaVectorStore(chroma_path=tmp_chroma)` directs all reads and writes there — the production `./data/chroma` directory is never touched.
+- **SQLite isolation**: `IngestionPipeline._get_doc_title` and `_set_status/_set_progress` hit SQLite via the module-level `_backend`. Tests patch these three private helpers with `AsyncMock` stubs — the helpers return a fixed title and silently no-op on status writes. This decouples Ollama integration from database state without requiring a live database.
+- **Deterministic fixture content**: `sample_rules.md` contains a short Earthdawn rules section with the phrase "DEX step" (unique enough that a targeted query will reliably retrieve it). This phrase is the retrieval oracle for Test 2.
+
+### Test 1 — Ingestion Flow: MD → chunks → embeddings → ChromaDB
+
+**File**: `harness/knowledge_qa/test_integration.py::TestIngestionFlow`
+
+**What it exercises**:
+- `MarkdownIngestor.ingest()` — file read and `MarkdownChunker` splitting
+- `ChunkEnricher.enrich_batch()` — real LLM call producing `ChunkEnrichment` objects
+- `OllamaEmbedFn.embed()` — real `/api/embed` call producing float vectors
+- `ChromaVectorStore.upsert()` — writes to temp ChromaDB collection
+- `KnowledgeDocument` metadata stored correctly in each chunk
+
+**Assertions**:
+```
+collection.count() >= 1
+for each chunk id:
+    metadata contains: doc_id, doc_title, headline, summary, topic, access_level, scope, original_text
+    access_level in {"gm_only", "player_visible"}
+    headline is not empty
+```
+
+**Fixture requirements**: `ollama_available`, `tmp_chroma`, patched `_get_doc_title` / `_set_status` / `_set_progress`
+
+---
+
+### Test 2 — Retrieval Flow: query text → embedding → ChromaDB search → KnowledgeChunks
+
+**File**: `harness/knowledge_qa/test_integration.py::TestRetrievalFlow`
+
+**Depends on**: ingestion from Test 1 (same `tmp_chroma` fixture, module scope)
+
+**What it exercises**:
+- `ChromaKnowledgeRetriever._get_collection()` — opens temp collection with `OllamaEmbedFn`
+- `OllamaEmbedFn.__call__()` — real Ollama embedding of query text
+- `col.query(query_texts=[q], ...)` — ChromaDB cosine similarity search
+- Multi-query expansion via `ChunkEnricher.expand_query()` — real LLM call
+- RRF merge and `ChunkEnricher.rerank()` — real LLM re-ranking call
+- Returns `list[KnowledgeChunk]` with `rrf_score > 0`
+
+**Assertions**:
+```
+len(chunks) >= 1
+chunks[0].rrf_score > 0
+"dex step" in chunks[0].text.lower()   # known phrase from sample_rules.md
+chunks[0].headline is not empty
+chunks[0].doc_title == "Sample Rules"
+```
+
+**Query**: `"How does initiative work in combat?"` — targets the DEX step passage in `sample_rules.md`.
+
+---
+
+### Test 3 — End-to-End: LLM synthesises answer from retrieved knowledge
+
+**File**: `harness/knowledge_qa/test_integration.py::TestEndToEndQA`
+
+**Depends on**: Test 2 (same `tmp_chroma` fixture, module scope — assumes chunks already ingested)
+
+**What it exercises**:
+- `services/knowledge.ask_question()` full code path
+- `ChromaKnowledgeRetriever.search()` (real Ollama embedding + ChromaDB query)
+- `OllamaProvider.generate()` — real LLM synthesis call with retrieved context
+- Citation building and `KnowledgeChunk` list returned alongside answer
+
+**Assertions**:
+```
+len(answer) > 0
+"couldn't find" not in answer.lower()      # FR-011 must not fire when content exists
+len(chunks) >= 1                            # at least one citation
+chunks[0].doc_title is not empty
+```
+
+**Query**: `"What step is used for initiative?"` — answerable only from ingested content.
+
+---
+
+### Test Architecture Summary
+
+```text
+harness/knowledge_qa/test_integration.py
+
+Module-scoped fixtures:
+  ollama_available   — GET /api/tags → skip if unreachable
+  tmp_chroma         — tmp_path_factory.mktemp("chroma")
+  ingested_doc_id    — uuid4 for the test document row
+
+Per-test class:
+  TestIngestionFlow  — patches _get_doc_title/_set_status/_set_progress; runs pipeline
+  TestRetrievalFlow  — depends on TestIngestionFlow having run in same module session
+  TestEndToEndQA     — patches _backend in services.knowledge; uses same tmp_chroma
+```
+
+### Embedding Consistency Guarantee
+
+Both the pipeline write path (`embed_fn` passed to `upsert`) and the retriever read path (`embed_fn` passed to `collection`) use `get_embed_fn()`, which reads `KNOWLEDGE_EMBED_MODEL` from the environment. The integration tests inherit whatever model is configured — if the model changes between a write and a read within one test session, the `OllamaEmbedFn.name` mismatch will cause ChromaDB to raise a `ValueError`, surfacing the problem before it silently corrupts retrieval results.
 
 ## Complexity Tracking
 

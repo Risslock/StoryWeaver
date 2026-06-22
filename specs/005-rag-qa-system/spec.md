@@ -113,7 +113,7 @@ After receiving an answer, the user can inspect the cited passages that contribu
 - **FR-009b**: When a document is uploaded whose title or content matches an existing entry in the knowledge base, the system MUST warn the user that the document appears to already exist and MUST require explicit confirmation before replacing it and re-ingesting. If the user does not confirm, the upload MUST be cancelled and the existing document left unchanged.
 - **FR-010**: The system MUST enforce access-level filtering: player queries MUST NOT surface GM-only content.
 - **FR-011**: The Q&A interface MUST display a clear, user-visible message when no relevant content is found rather than fabricating an answer.
-- **FR-012**: The Q&A interface MUST display a clear, user-visible error message if the knowledge service is unavailable.
+- **FR-012**: The Q&A interface MUST display a clear, user-visible error message if the knowledge service is unavailable. This covers both Ollama unavailability and ChromaDB unavailability — both failure modes surface the same message: "The knowledge service is unavailable — check that Ollama is running and try again." No distinction between failure types is shown to the user.
 - **FR-013**: The UI MUST display cited passages alongside answers so users can verify and read source context.
 - **FR-014**: The ingestion pipeline MUST be designed to support additional content types in future (session notes, character sheets) without changing the storage or retrieval layer.
 - **FR-015**: When a document is submitted for ingestion, it MUST appear immediately in the knowledge base list with a visible "processing" status. The status MUST update to "ready" automatically when ingestion completes, and to "failed" with a descriptive message if ingestion fails. The UI MUST remain fully usable during background ingestion.
@@ -132,10 +132,11 @@ After receiving an answer, the user can inspect the cited passages that contribu
 - **SC-001**: Users receive an answer with at least one source citation within 30 seconds of submitting a question on typical hardware.
 - **SC-002**: A GM can upload a PDF and have it fully indexed and queryable within 10 minutes of upload completion.
 - **SC-003**: A user can upload a Markdown file and have it queryable within 2 minutes of upload completion.
-- **SC-004**: At least 80% of questions asked against a fully ingested rulebook return a cited answer (not a "no content found" response) in informal testing.
+- **SC-004**: At least 4 of 5 fixture questions asked against a fully ingested `sample_rules.md` return a cited answer (not a "no content found" response), verified by an automated assertion in `harness/knowledge_qa/test_integration.py`. This replaces informal manual spot-checking with a deterministic, repeatable pass criterion.
 - **SC-005**: GM-only content never appears in a player-role session — zero leakage confirmed across all access-control test scenarios.
 - **SC-006**: The knowledge base handles at least 3 simultaneously ingested documents without degraded retrieval quality.
 - **SC-007**: The Q&A page remains usable (shows a clear placeholder or error message) even when the underlying knowledge service is unavailable.
+- **SC-008**: The three live-Ollama integration tests (ingestion flow, retrieval flow, LLM synthesis) pass in any environment where Ollama is running with `nomic-embed-text` and at least one text model. Tests auto-skip (not fail) in environments where Ollama is unreachable; the milestone requires them to pass when Ollama is available.
 
 ## Clarifications
 
@@ -146,6 +147,12 @@ After receiving an answer, the user can inspect the cited passages that contribu
 - Q: How should the UI communicate ingestion progress during a long-running PDF ingest? → A: Background processing — document appears immediately in the list with a "processing" status that updates to "ready" when ingestion completes; UI remains usable throughout.
 - Q: Which roles can upload which document formats? → A: GMs can upload both PDF and Markdown files; players can upload Markdown only. Players must not be permitted to upload PDFs.
 - Q: Should answers synthesize across multiple chunks and documents, or focus on the single best match? → A: Synthesize across multiple chunks and documents; cite all contributing sources ranked by relevance.
+
+### Session 2026-06-22 (Phase 10 Integration Tests)
+
+- Q: When ChromaDB itself is unavailable or corrupted, should the user-visible error be distinct from the Ollama unavailability message (FR-012)? → A: No distinction needed — both failures surface the same FR-012 message: "The knowledge service is unavailable — check that Ollama is running and try again." Both error types are already wrapped in `ProviderUnavailableError` by the vector store layer.
+- Q: Should the Phase 10 live-Ollama integration tests be a required milestone gate? → A: Required when Ollama is available; tests auto-skip (not fail) when Ollama is unreachable. Milestone sign-off requires integration tests to pass in any environment where Ollama is running.
+- Q: Should SC-004 ("80% of questions return a cited answer") be an automated assertion or remain informal manual spot-checking? → A: Automated — replaced with: pass ≥4 of 5 fixture questions against `sample_rules.md` returning at least one citation, verified in `harness/knowledge_qa/test_integration.py`.
 
 ## Assumptions
 

@@ -20,6 +20,11 @@ class OllamaEmbedFn:
         self._model = model
         self._url = base_url.rstrip("/") + "/api/embed"
 
+    @property
+    def name(self) -> str:
+        """ChromaDB uses this to identify and verify the embedding function per-collection."""
+        return f"ollama_{self._model}"
+
     def __call__(self, input: list[str]) -> list[list[float]]:
         body = json.dumps({"model": self._model, "input": input}).encode()
         req = urllib.request.Request(

@@ -167,6 +167,30 @@ description: "Task list for 005-rag-qa-system: Game Knowledge Q&A (RAG)"
 
 ---
 
+## Phase 10: Integration Tests — Live Ollama (SC-004, SC-008)
+
+**Purpose**: Implement the three live-Ollama integration tests designed in `plan.md §Phase 10` and the SC-004 five-question fixture battery. These replace informal manual spot-checks with deterministic, auto-skippable assertions (SC-008: skip when Ollama unreachable, required gate when Ollama is available).
+
+**Independent Test**: `uv run pytest harness/knowledge_qa/test_integration.py -v` — all 4 test classes pass when Ollama is running with `nomic-embed-text` and a text LLM; all 4 auto-skip when Ollama is unreachable.
+
+### Implementation for Phase 10
+
+- [ ] T037 Add `chroma_path: str | None = None` parameter to `IngestionPipeline.__init__` in `packages/rag/rag/knowledge/pipeline.py` — use `ChromaVectorStore(chroma_path)` when provided, fall back to `ChromaVectorStore()` when `None`; mirrors the existing `ChromaKnowledgeRetriever` pattern and is required so integration tests can direct all writes to a temp directory without touching `./data/chroma`
+
+- [ ] T038 [P] Implement module-level test fixtures in `harness/knowledge_qa/test_integration.py` — three `pytest.fixture(scope="module")` fixtures: (1) `ollama_available`: calls `urllib.request.urlopen` on `{OLLAMA_BASE_URL}/api/tags`; issues `pytest.skip("Ollama not reachable …")` if it raises, so the entire module skips cleanly; (2) `tmp_chroma`: returns `str(tmp_path_factory.mktemp("chroma"))` — a fresh temp directory per test session; (3) `ingested_doc_id`: returns `str(uuid.uuid4())` for the test document row
+
+- [ ] T039 Implement `TestIngestionFlow.test_md_to_chunks_to_db` in `harness/knowledge_qa/test_integration.py` — depends on `ollama_available`, `tmp_chroma`, `ingested_doc_id`; patches `IngestionPipeline._get_doc_title` (returns `"Sample Rules"`), `_set_status`, and `_set_progress` with `AsyncMock` stubs so no real SQLite is needed; runs `IngestionPipeline(chroma_path=tmp_chroma).run(doc_id=ingested_doc_id, file_path=str(SAMPLE_RULES), format="markdown", access_level_default=None, scope="global", campaign_id=None)`; asserts: `collection.count() >= 1`, every fetched chunk metadata contains keys `doc_id`, `doc_title`, `headline`, `summary`, `topic`, `access_level`, `original_text`, and `access_level` is one of `{"gm_only", "player_visible"}`
+
+- [ ] T040 [P] Implement `TestRetrievalFlow.test_query_returns_relevant_chunks` in `harness/knowledge_qa/test_integration.py` — depends on `ollama_available`, `tmp_chroma` (same session as T039, so data is already ingested); creates `ChromaKnowledgeRetriever(chroma_path=tmp_chroma)` and calls `await retriever.search(query="How does combat initiative work?", campaign_id="test", role="gm", top_k=4)`; asserts: `len(chunks) >= 1`, `chunks[0].rrf_score > 0`, `"dex" in chunks[0].text.lower()` (oracle phrase from `sample_rules.md`)
+
+- [ ] T041 [P] Implement `TestEndToEndQA.test_llm_synthesises_answer` in `harness/knowledge_qa/test_integration.py` — depends on `ollama_available`, `tmp_chroma`, `ingested_doc_id` (same session); patches `services.knowledge.ChromaKnowledgeRetriever` to use `chroma_path=tmp_chroma` by patching its constructor call with `partial(ChromaKnowledgeRetriever, chroma_path=tmp_chroma)`; calls `await ask_question("What step is used for initiative?", campaign_id=uuid.uuid4(), role="gm")`; asserts: `len(answer) > 0`, `"couldn't find" not in answer.lower()`, `len(chunks) >= 1`, `chunks[0].doc_title` is not empty
+
+- [ ] T042 [P] Implement `TestFixtureBattery.test_sc004_four_of_five_questions_cited` in `harness/knowledge_qa/test_integration.py` — SC-004 automated criterion; depends on `ollama_available`, `tmp_chroma`; runs these 5 questions via `ChromaKnowledgeRetriever(chroma_path=tmp_chroma).search(...)`: `["How does combat initiative work?", "What is a Talent?", "How do you use a Talent?", "What are Difficulty Numbers?", "How does Karma work?"]`; counts how many return `len(chunks) >= 1`; asserts `cited_count >= 4` (`≥4 of 5` per SC-004)
+
+**Checkpoint**: Run `uv run pytest harness/knowledge_qa/test_integration.py -v` with Ollama running. Expected: 4 test classes pass in 30–120 s. Without Ollama: 4 classes skipped. Both outcomes are a pass for CI.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -179,6 +203,7 @@ description: "Task list for 005-rag-qa-system: Game Knowledge Q&A (RAG)"
 - **US4 (Phase 6)**: Depends on US1 (retriever), US2/US3 (ingestion pipeline) — access filter and override build on both
 - **US5 (Phase 7)**: Depends on US1 (on_ask handler exists and returns KnowledgeChunk list)
 - **Polish (Phase 8)**: Depends on all user story phases complete
+- **Integration Tests (Phase 10)**: Depends on Phase 9 complete — T037 (pipeline change) must land before T038–T042 (tests consume it)
 
 ### User Story Dependencies
 
@@ -262,7 +287,9 @@ After Phase 2 completes:
 
 - **[P]** tasks operate on different files; verify before running in parallel that no incomplete task writes to the same file
 - **[Story]** label maps every task back to its user story for traceability to spec.md acceptance criteria
-- No pytest unit tests are generated (not requested); harness evals (T020, T025) satisfy Principle V
+- No pytest unit tests are generated (not requested); harness evals (T020, T025, T038–T042) satisfy Principle V
+- Phase 10 tests (T038–T042) all auto-skip when Ollama is unreachable — this is NOT a failure (SC-008 skip semantics)
+- T039 must run before T040–T042 within a test session because they share module-scoped fixtures and depend on ingested data
 - Placeholder-first (T007, T008, T009) satisfies Principle VII — app must be navigable after Phase 2
 - All error paths in UI-facing code MUST surface a descriptive Gradio message; `except: pass` is prohibited per constitution §VII
 - `confirm_overwrite` flow (FR-009b) is part of both T019 (GM) and T022 (player)
