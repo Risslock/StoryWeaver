@@ -45,12 +45,14 @@ class Settings(BaseSettings):
 
     # Knowledge Q&A (RAG) settings
     knowledge_embed_model: str = "nomic-embed-text"
-    knowledge_llm_model: str = "llama3.1"
+    knowledge_enrich_model: str = "llama3.2"   # fast small model for chunk enrichment
+    knowledge_llm_model: str = "llama3.1"      # larger model for Q&A answers
     knowledge_max_chunk_tokens: int = 800
     knowledge_chunk_overlap_tokens: int = 50
     knowledge_top_k: int = 8
     knowledge_rrf_k: int = 60
     knowledge_expansion_count: int = 3
+    knowledge_enrich_batch_size: int = 5       # chunks per enrichment LLM call
 
     @model_validator(mode="after")
     def _resolve_db_path(self) -> "Settings":

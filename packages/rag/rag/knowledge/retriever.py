@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import os
+import urllib.request
 from typing import Any
 
 from core.errors import ProviderUnavailableError
@@ -11,6 +13,33 @@ from rag.knowledge.interface import KnowledgeChunk, KnowledgeRetriever
 
 _CHROMA_PATH = "./data/chroma"
 _GLOBAL_COLLECTION = "knowledge_global"
+
+
+class _OllamaEmbedFn:
+    """ChromaDB-compatible embedding function backed by Ollama's /api/embed.
+
+    Avoids chromadb's built-in OllamaEmbeddingFunction which has moved across
+    versions and requires an explicit package install in chromadb >= 0.5.
+    """
+
+    def __init__(self, model: str, base_url: str) -> None:
+        self._model = model
+        self._url = base_url.rstrip("/") + "/api/embed"
+
+    def __call__(self, input: list[str]) -> list[list[float]]:
+        body = json.dumps({"model": self._model, "input": input}).encode()
+        req = urllib.request.Request(
+            self._url,
+            data=body,
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                return json.loads(resp.read())["embeddings"]
+        except Exception as exc:
+            raise ProviderUnavailableError(
+                f"Ollama embedding failed (model={self._model}, url={self._url}): {exc}"
+            ) from exc
 
 
 def _campaign_collection(campaign_id: str) -> str:
@@ -34,17 +63,11 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
         except Exception as exc:
             raise ProviderUnavailableError(f"Cannot initialise ChromaDB: {exc}") from exc
 
-    def _embed_fn(self) -> Any:
+    def _embed_fn(self) -> _OllamaEmbedFn:
         from core.config import settings as _cfg
         embed_model = os.environ.get("KNOWLEDGE_EMBED_MODEL", _cfg.knowledge_embed_model)
         ollama_url = os.environ.get("OLLAMA_BASE_URL", _cfg.ollama_base_url)
-        try:
-            from chromadb.utils.embedding_functions import OllamaEmbeddingFunction  # type: ignore[import-untyped]
-            return OllamaEmbeddingFunction(model_name=embed_model, url=ollama_url)
-        except Exception as exc:
-            raise ProviderUnavailableError(
-                f"Cannot create OllamaEmbeddingFunction for '{embed_model}' at {ollama_url}: {exc}"
-            ) from exc
+        return _OllamaEmbedFn(model=embed_model, base_url=ollama_url)
 
     def _get_collection(self, name: str) -> Any:
         client = self._get_client()

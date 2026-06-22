@@ -126,8 +126,10 @@ _ENRICH_FALLBACK = ChunkEnrichment(
     access_level="player_visible",
 )
 
-# Batch at most this many chunks per LLM call to stay within context limits.
-_BATCH_SIZE = 20
+# Default chunks per LLM call — kept small for local memory-constrained models.
+# Override with KNOWLEDGE_ENRICH_BATCH_SIZE env var.
+ENRICH_BATCH_SIZE = 5
+_BATCH_SIZE = ENRICH_BATCH_SIZE  # kept for internal use
 
 
 class ChunkEnricher:
@@ -149,7 +151,7 @@ class ChunkEnricher:
         results: list[ChunkEnrichment] = []
         for batch_start in range(0, len(texts), _BATCH_SIZE):
             batch = texts[batch_start : batch_start + _BATCH_SIZE]
-            batch_results = await self._enrich_batch(batch)
+            batch_results = await self.enrich_batch(batch)
             results.extend(batch_results)
         return results
 
@@ -212,7 +214,7 @@ class ChunkEnricher:
 
     # ── Private helpers ────────────────────────────────────────────────────────
 
-    async def _enrich_batch(self, texts: list[str]) -> list[ChunkEnrichment]:
+    async def enrich_batch(self, texts: list[str]) -> list[ChunkEnrichment]:
         n = len(texts)
         chunks_block = "\n\n".join(
             f"=== CHUNK {i + 1} ===\n{t}" for i, t in enumerate(texts)

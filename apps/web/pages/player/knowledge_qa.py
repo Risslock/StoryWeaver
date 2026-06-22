@@ -180,7 +180,7 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
             except Exception as exc:
                 from core.errors import ProviderUnavailableError
                 if isinstance(exc, ProviderUnavailableError):
-                    msg = "The knowledge service is unavailable — check that Ollama is running and try again."
+                    msg = f"Knowledge service unavailable: {exc}"
                 else:
                     msg = f"Error: {exc}"
                 history = list(history) + [
