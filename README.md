@@ -1,139 +1,300 @@
 # StoryWeaver
 
-> An AI-assisted companion for tabletop role-playing games — starting with **Earthdawn (4th Edition)** and growing into a system-agnostic platform.
+> **An AI-powered roleplaying companion** — and a living showcase of spec-driven development, LLM engineering, RAG pipelines, and software architecture.
 
-StoryWeaver helps players and gamemasters create characters, give every character and NPC an **AI digital twin** for dialogue and behaviour, generate **character and scene imagery**, and keep a living **story history** of the campaign. It runs **locally on your machine** or **in the cloud**, fully dockerized.
+<div align="center">
 
-> [!IMPORTANT]
-> **This document is the source of truth.** StoryWeaver follows *spec-driven development* — the README and the `/specs` directory define intent before code is written. When code and spec disagree, the spec wins. Update this file deliberately; it is the guiding point for all future development.
+*Built for tabletop RPG players. Designed to be read by engineers.*
+
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![Pydantic-AI](https://img.shields.io/badge/Agents-Pydantic--AI-E92063?logo=pydantic)](https://ai.pydantic.dev/)
+[![ChromaDB](https://img.shields.io/badge/Vector%20Store-ChromaDB-orange)](https://www.trychroma.com/)
+[![Gradio](https://img.shields.io/badge/UI-Gradio-FF7C00?logo=gradio)](https://gradio.app/)
+[![uv](https://img.shields.io/badge/Deps-uv-5C3EE8)](https://docs.astral.sh/uv/)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-green)](LICENSE)
+
+</div>
+
+---
+
+## What is this project?
+
+StoryWeaver has **two equal purposes**:
+
+### 1. A product — AI roleplaying companion
+StoryWeaver helps players and gamemasters run richer tabletop RPG campaigns. Starting with **Earthdawn 4th Edition**, it provides:
+- A rules-aware **character builder** that validates decisions against Earthdawn 4E mechanics
+- **AI digital twins** — each character and NPC gets its own persistent agent with in-character memory
+- **Scene and portrait generation** via local (ComfyUI) or cloud (HuggingFace FLUX.1) image models
+- A **living story history** with role-scoped access (GMs see everything, players see public events)
+- A **Game Knowledge Q&A** system — ask natural-language questions about rules or campaign lore, get cited answers
+
+### 2. An engineering portfolio
+
+Every architectural decision in this codebase was made deliberately and is documented. This project demonstrates:
+
+| Topic | Where to look |
+|-------|--------------|
+| **Spec-driven development** | [`/specs`](specs/) — every feature starts with a spec, plan, and data-model before code |
+| **LLM provider abstraction** | [`packages/llm/`](packages/llm/) — swap Ollama → Anthropic → OpenAI with one env var |
+| **RAG pipeline engineering** | [`packages/rag/`](packages/rag/) — two-tier retrieval, multi-query expansion, RRF ranking |
+| **Agent design with Pydantic-AI** | [`packages/agents/`](packages/agents/) — per-entity digital twins, typed tool schemas |
+| **Storage abstraction** | [`packages/storage/`](packages/storage/) — SQLite → Postgres with one env var |
+| **Architecture Decision Records** | [`docs/adr/`](docs/adr/) — documented tradeoffs, alternatives rejected |
+| **Harness-driven quality** | [`harness/`](harness/) — deterministic eval suites with composite 0–10 scoring |
+
+---
+
+## Architecture Overview
+
+```mermaid
+flowchart TD
+    subgraph UI["Gradio Browser UI"]
+        AUTH["Auth / Account"]
+        GM_DASH["GM Dashboard"]
+        PL_DASH["Player Dashboard"]
+        QA["Knowledge Q&A"]
+    end
+
+    subgraph APP["App Layer (apps/web/)"]
+        SESSION["Campaign Session"]
+        ROUTER["Page Router"]
+    end
+
+    subgraph AGENTS["Agent Package (packages/agents/)"]
+        GM_AG["GM Agent\n(session planning, world tools)"]
+        PL_AG["Player Agent\n(character tools, history)"]
+        TWIN["Digital Twin\n(per character / NPC)"]
+    end
+
+    subgraph LLM_LAYER["LLM Abstraction (packages/llm/)"]
+        IFACE["LLMProvider ABC"]
+        OLLAMA["Ollama\n(local default)"]
+        ANTHROPIC["Anthropic Claude"]
+        OPENAI["OpenAI GPT"]
+        HF_LLM["HuggingFace"]
+    end
+
+    subgraph RAG_LAYER["RAG Layer (packages/rag/)"]
+        KR["KnowledgeRetriever\n(two-tier)"]
+        HR["HistoryRetriever"]
+        CR["CharacterRetriever"]
+        RR["RulesRetriever"]
+        CHROMA["ChromaDB\n(persistent local)"]
+    end
+
+    subgraph STORAGE["Storage (packages/storage/)"]
+        STORE_IF["StorageBackend ABC"]
+        SQLITE["SQLite + aiosqlite\n(local default)"]
+        PG["Postgres + asyncpg\n(cloud)"]
+    end
+
+    subgraph IMGGEN["Image Gen (packages/imagegen/)"]
+        IMG_IF["ImageProvider ABC"]
+        FLUX["HuggingFace FLUX.1\n(default)"]
+        COMFYUI["ComfyUI\n(local)"]
+    end
+
+    subgraph RULES["Rules Engine (packages/rules_earthdawn/)"]
+        CHAR_BUILD["Character Builder"]
+        TALENT_VAL["Talent Validator"]
+        CIRCLE_PROG["Circle Progression"]
+    end
+
+    UI --> APP
+    APP --> AGENTS
+    AGENTS --> LLM_LAYER
+    AGENTS --> RAG_LAYER
+    AGENTS --> IMGGEN
+    AGENTS --> STORAGE
+    APP --> RULES
+    LLM_LAYER --> IFACE
+    IFACE --> OLLAMA & ANTHROPIC & OPENAI & HF_LLM
+    RAG_LAYER --> CHROMA
+    STORAGE --> STORE_IF
+    STORE_IF --> SQLITE & PG
+    IMGGEN --> IMG_IF
+    IMG_IF --> FLUX & COMFYUI
+```
+
+---
+
+## Spec-Driven Development Workflow
+
+One of the core engineering practices in StoryWeaver is **spec-first development**: no code is written until the spec, plan, and contracts are reviewed. This mirrors how high-trust engineering teams operate.
+
+```mermaid
+flowchart LR
+    A["1. Feature Spec\nspec.md\n\nUser stories, acceptance\ncriteria, constraints"] -->
+    B["2. Research\nresearch.md\n\nTechnical options,\nlibraries, tradeoffs"] -->
+    C["3. Plan\nplan.md\n\nPhases, constitution\ncheck, architecture"] -->
+    D["4. Data Model\ndata-model.md\n\nDB schema, Pydantic\nmodels, indexes"] -->
+    E["5. Contracts\ncontracts/\n\nUI flows, API surfaces,\nagent tool signatures"] -->
+    F["6. Tasks\ntasks.md\n\nDependency-ordered\natomic implementation steps"] -->
+    G["7. Implementation\ncode\n\nTDD, harness evals,\nintegration tests"] -->
+    H["8. ADR\ndocs/adr/\n\nRecord decisions\nand rejected alternatives"]
+
+    style A fill:#1e3a5f,color:#fff
+    style B fill:#1e3a5f,color:#fff
+    style C fill:#1e3a5f,color:#fff
+    style D fill:#1e3a5f,color:#fff
+    style E fill:#1e3a5f,color:#fff
+    style F fill:#1e3a5f,color:#fff
+    style G fill:#2d6a4f,color:#fff
+    style H fill:#5c3d11,color:#fff
+```
+
+Each feature directory under [`/specs`](specs/) contains all of these artifacts. The [`CLAUDE.md`](CLAUDE.md) enforces that the spec and plan are the source of truth — when code and spec disagree, the spec wins.
+
+---
+
+## RAG Pipeline: Game Knowledge Q&A
+
+The most technically involved feature is the two-tier RAG system that answers natural-language questions about game rules and campaign lore.
+
+```mermaid
+flowchart TD
+    subgraph INGEST["Ingestion Pipeline"]
+        PDF["PDF / Markdown\nDocument"] -->
+        EXTRACT["pymupdf4llm\nText + table extraction\nImage → caption fallback"] -->
+        CHUNK["Heading-Based Chunker\nAtomic tables, page-aware\nboundaries"] -->
+        ENRICH["LLM Chunk Enrichment\nPydantic-AI structured output\nheadline · summary · topic · access_level"] -->
+        EMBED["Embedding\nnomic-embed-text via Ollama\n(OllamaEmbeddingFunction)"] -->
+        STORE_VEC["ChromaDB\nTwo-tier collections"]
+    end
+
+    subgraph COLLECTIONS["Vector Collections"]
+        GLOBAL["knowledge_global\nRulebooks shared across\nall campaigns"]
+        CAMPAIGN["knowledge_{id}\nPer-campaign lore\nand notes"]
+    end
+
+    subgraph QUERY["Query Pipeline"]
+        Q["User Question"] -->
+        EXPAND["Multi-Query Expansion\nPydantic-AI → 3 alternative phrasings"] -->
+        RETRIEVE["Parallel Retrieval\nGlobal + Campaign collections"] -->
+        RRF["Reciprocal Rank Fusion\nRe-ranking across result sets"] -->
+        FILTER["Access-Level Filtering\nGM sees all · Player sees public only"] -->
+        SYNTH["LLM Answer Synthesis\nCited passages · source references"] -->
+        ANS["Answer + Citations\nRendered in Gradio chat"]
+    end
+
+    STORE_VEC --> GLOBAL & CAMPAIGN
+    GLOBAL & CAMPAIGN --> RETRIEVE
+
+    style INGEST fill:#1a1a2e,color:#eee
+    style COLLECTIONS fill:#16213e,color:#eee
+    style QUERY fill:#0f3460,color:#eee
+```
+
+**Key engineering choices in this pipeline:**
+
+- **Two-tier collections**: rulebooks are indexed once (`knowledge_global`) and shared across all campaigns — no per-campaign re-ingestion cost.
+- **LLM enrichment with Pydantic-AI**: every chunk gets structured metadata (headline, summary, topic, access level) validated via a Pydantic model before storage.
+- **Multi-query expansion**: the user's question is rewritten into 3 alternative phrasings to improve recall across different terminology.
+- **Reciprocal Rank Fusion**: merges results from multiple queries into a single ranked list without requiring score normalization.
+- **Access-level filtering**: enforced at retrieval time, not just UI level — player queries never surface GM-only chunks.
+
+---
+
+## Digital Twin Architecture
+
+Every character and NPC gets its own scoped AI agent — a "digital twin" — that knows only what that entity should know.
+
+```mermaid
+flowchart TD
+    subgraph SESSION["Campaign Session (role-scoped)"]
+        GM_ROLE["GM Role"]
+        PL_ROLE["Player Role"]
+    end
+
+    subgraph TWINS["Digital Twins (packages/agents/twin/)"]
+        CHAR_TWIN["Character Twin\nPlayer's own character\nPersonality + backstory + sheet"]
+        NPC_TWIN["NPC Twin\nGM-controlled\nOnly GM can converse"]
+    end
+
+    subgraph TWIN_CONTEXT["Per-Twin Context Window"]
+        SYS["System prompt\n(sheet + personality)"]
+        RAG_CTX["RAG context\n(relevant history + rules)"]
+        CONV["Conversation history\n(last N turns)"]
+    end
+
+    subgraph TOOLS["Role-Scoped Tools"]
+        PL_TOOLS["Player tools\nget_character_sheet\nlog_public_event\nask_knowledge_qa"]
+        GM_TOOLS["GM tools\nget_all_events\nplan_session\nmanage_npc\nask_knowledge_qa"]
+    end
+
+    GM_ROLE --> NPC_TWIN
+    PL_ROLE --> CHAR_TWIN
+    CHAR_TWIN & NPC_TWIN --> TWIN_CONTEXT
+    TWIN_CONTEXT --> LLM_CALL["LLMProvider.generate()"]
+    GM_ROLE --> GM_TOOLS
+    PL_ROLE --> PL_TOOLS
+```
+
+Each twin carries its own system prompt, has access only to its entity's context, and uses the RAG layer for semantic recall before falling back to SQL. The `LLMProvider` abstraction means the same twin works with Ollama locally or any cloud provider.
+
+---
+
+## Provider Abstraction Pattern
+
+A core design principle: **switch any AI provider via `.env` — no code changes required.**
+
+```mermaid
+flowchart LR
+    subgraph CODE["Application Code"]
+        AGENT["Agent / Twin"]
+        IMG_CODE["Image Gen code"]
+        STORE_CODE["Storage code"]
+    end
+
+    subgraph ABCS["Abstract Base Classes"]
+        LLM_ABC["LLMProvider ABC\npackages/llm/interface.py"]
+        IMG_ABC["ImageProvider ABC\npackages/imagegen/interface.py"]
+        STORE_ABC["StorageBackend ABC\npackages/storage/interface.py"]
+    end
+
+    subgraph IMPLS["Concrete Implementations\n(selected via env var)"]
+        direction TB
+        OLLAMA_I["OllamaProvider\nLLM_PROVIDER=ollama"]
+        ANT_I["AnthropicProvider\nLLM_PROVIDER=anthropic"]
+        OAI_I["OpenAIProvider\nLLM_PROVIDER=openai"]
+        HF_I["HuggingFaceProvider\nLLM_PROVIDER=huggingface"]
+        FLUX_I["HuggingFaceImageProvider\nIMAGE_PROVIDER=huggingface"]
+        COMFY_I["ComfyUIProvider\nIMAGE_PROVIDER=comfyui"]
+        SQ_I["SQLiteBackend\nsqlite+aiosqlite://"]
+        PG_I["PostgresBackend\npostgresql+asyncpg://"]
+    end
+
+    AGENT --> LLM_ABC
+    IMG_CODE --> IMG_ABC
+    STORE_CODE --> STORE_ABC
+    LLM_ABC --> OLLAMA_I & ANT_I & OAI_I & HF_I
+    IMG_ABC --> FLUX_I & COMFY_I
+    STORE_ABC --> SQ_I & PG_I
+```
 
 ---
 
 ## Disclaimer
 
-StoryWeaver is an **unofficial, fan-made companion tool**. *Earthdawn* is a trademark of **FASA Corporation / FASA Games**, and all related rules, settings, and intellectual property belong to their respective owners. This project:
-
-- Does **not** redistribute copyrighted rulebook text, art, or proprietary content.
-- Assumes users own the official rulebooks required to play.
-- Implements game *mechanics* as a tool to support legitimate play, not as a replacement for the books.
+StoryWeaver is an **unofficial, fan-made companion tool**. *Earthdawn* is a trademark of **FASA Corporation / FASA Games**, and all related rules, settings, and intellectual property belong to their respective owners. This project does not redistribute copyrighted rulebook text, art, or proprietary content. It implements game *mechanics* as a tool to support legitimate play, not as a replacement for the books.
 
 ---
 
-## Current Status (as of Phase 10 completion)
-
-All milestones M0–M5 are **implemented and passing integration tests**.
+## Implementation Status
 
 | Milestone | Status | What it delivers |
 |-----------|--------|-----------------|
 | M0 — Scaffolding | ✅ Complete | uv workspace, Docker Compose, ruff/pyright, `.env.example` |
 | M1 — Character creation | ✅ Complete | Guided Earthdawn 4E builder, character sheet, validation |
 | M2 — Digital twins | ✅ Complete | AI twin per character/NPC (local Ollama), role-based tools, degraded mode |
-| M3 — Image generation | ✅ Complete | HuggingFace (default) + ComfyUI (local), graceful error handling |
+| M3 — Image generation | ✅ Complete | HuggingFace FLUX.1 (default) + ComfyUI (local), graceful error handling |
 | M4 — Story history + GM planning | ✅ Complete | Persistent timeline, role-scoped events, session planning agent |
-| M4.5 — RAG layer | ✅ Implemented | ChromaDB history/character/rules indexes; twin falls back to SQL when unavailable |
-| M5 — Cloud providers | ✅ Implemented | Anthropic, OpenAI, HuggingFace LLM providers; Postgres adapter; harness runner complete |
-| M6 — Auth & Admin UI | ✅ Implemented | GM account registration/login, campaign admin dashboard, join code sharing, player rejoin, character/NPC upsert semantics |
-| M7 — Auth & Admin Reboot | ✅ Implemented | Auth-first for all users (players must create accounts), post-login hub screen, `user_id`-linked player records, no anonymous join, `pages/landing.py` and `pages/admin/campaigns.py` deleted, `services/db.py` singleton, pure Gradio launch |
-| M8 — Game Knowledge Q&A | ✅ Implemented | Two-tier RAG (global rulebooks + campaign lore), PDF→Markdown ingestion, heading-based chunking, LLM chunk enrichment, multi-query expansion, RRF ranking, access-level filtering, GM/player Knowledge Q&A tabs with upload, status polling, duplicate detection |
-
-### Known limitations
-
-- **No real-time sync**: shared campaigns use refresh-based sync only (by design for v1).
-- **RAG indexes are not auto-populated**: story events must be indexed by calling `HistoryRetriever.index_event()` at write time; the twin falls back to SQL if the index is empty.
-- **No cloud vector store**: pgvector integration is stubbed but not wired into the RAG layer (Postgres storage adapter is ready; pgvector queries require a future migration).
-- **Twin dialogue eval**: `harness/scenarios/twin_dialogue/` scenarios are SKIP in the automated runner — they require a live LLM and are scored via `harness/scoring/rubrics.py` instead.
-- **Docker end-to-end validation** requires a Docker host; the compose files are ready but automated CI validation against a live stack has not been run.
-- **No password reset**: account password reset is out of scope for this phase.
-- **No join code rotation**: once a join code is set at campaign creation, it cannot be changed.
-- **No OAuth / social login**: accounts use SHA-256 password hashing via stdlib `hashlib`; no external auth provider is wired.
-- **No mobile support**: UI is desktop/browser only.
-- **Knowledge Q&A requires Ollama models**: `ollama pull nomic-embed-text` and `ollama pull llama3.1` must be run before using the Knowledge Q&A feature. If these models are unavailable, ingestion shows ❌ failed and Q&A shows a visible error message.
-- **No document deletion**: deleting knowledge documents is out of scope for MVP; re-ingestion (replacement) is supported via the confirmed-overwrite flow.
-- **Scanned/image-only PDFs**: not supported for MVP; text-based PDFs only. Image-only pages emit a visible warning rather than failing silently.
-- **AI services are optional**: if Ollama or ComfyUI are not running, the app still launches and shows visible placeholders in AI-dependent tabs.
-- **M8 — Beyond Earthdawn**: system-agnostic core and second rule system are not yet implemented.
-
----
-
-## Features
-
-### Implemented (v1 — Earthdawn 4E)
-
-- **Character creation** — guided, rules-aware builder (Disciplines, Talents, attributes, circle progression).
-- **AI digital twins** — each character and NPC gets a persistent agent for in-character dialogue grounded in their sheet, personality, and story history.
-- **Image generation** — character portraits and GM scene illustrations via HuggingFace (free tier) or ComfyUI (local).
-- **Story history** — persistent, role-scoped timeline: GM sees all events, players see only public ones.
-- **GM session planning** — AI-generated session plans that reference past events and open plot threads.
-- **Degraded mode** — app starts and remains functional (character sheets, history, navigation) when the AI provider is unavailable.
-- **RAG layer** — ChromaDB-backed history, character, and rules indexes; twin recall falls back to SQL when RAG is unavailable.
-- **Cloud LLM providers** — Anthropic, OpenAI, and HuggingFace providers behind the same `LLMProvider` interface; switch via `LLM_PROVIDER` env var.
-- **Postgres storage** — async Postgres adapter behind the same `StorageBackend` interface; switch via `DATABASE_URL`.
-- **GM authentication** — Sign In / Create Account tabs backed by SHA-256 password hashing (stdlib `hashlib`); no external auth dependency or bcrypt.
-- **Campaign admin dashboard** — GMs see all their campaigns, create new ones, archive old ones (soft-delete, data never deleted), and navigate to campaign detail with copyable join code.
-- **Auth-first for all users** — both GMs and players must create an account before accessing any campaign feature. Anonymous join is removed.
-- **Post-login hub screen** — after signing in, users see two paths: "My Campaigns (GM)" and "Join a Campaign (Player)". The same account can take both paths.
-- **Player join via join code** — players enter only the 6-character join code; their display name is taken automatically from their account username. No player name field is shown.
-- **Player rejoin** — returning players see a list of previously joined campaigns; clicking re-enters without re-entering the join code. Character state is restored.
-- **World notes** — each campaign has a private per-campaign Markdown notes area; GM-only, never visible to players.
-- **Session-grouped history** — story events are grouped under session headers; GMs create sessions (title + date) before logging events; unsession events appear under "Unsorted".
-- **Players tab** — read-only GM view showing all joined players and their linked character names.
-- **Character/NPC upsert** — creating a character or NPC with a name that matches an existing one (case-insensitive, per campaign) updates the record instead of creating a duplicate.
-- **Game Knowledge Q&A** — GMs and players ask natural-language questions about rules, lore, and world content; the system synthesizes answers with source citations from ingested PDFs and Markdown files. Two-tier ChromaDB collections (global rulebooks shared across all campaigns; per-campaign lore). GM-only content is hidden from players. Background ingestion with live status polling.
-
-### Planned
-
-- Additional rule systems beyond Earthdawn (system-agnostic core).
-- RAG auto-indexing on event write.
-- pgvector cloud vector store wiring.
-- Cross-device sync between local and cloud play.
-- Richer GM tooling (encounter building, initiative, secret notes).
-
----
-
-## Roles & Agents
-
-| Role | Focus | Example tools |
-|------|-------|---------------|
-| **Player** | Their own character(s) | Character builder, personal digital twin, story history (public only) |
-| **Gamemaster** | The world & NPCs | NPC digital twins, scene generation, private events, session planning, full history |
-
-Each character/NPC digital twin is its own scoped agent — it sees only what that entity should know.
-
----
-
-## Architecture
-
-```mermaid
-flowchart TD
-    UI["Gradio UI (browser)"] --> APP["StoryWeaver App Layer"]
-    APP --> AG["Agent Orchestrator<br/>(role + twin agents)"]
-    APP --> RULES["Rules Engine<br/>(Earthdawn 4E)"]
-    APP --> STORY["Story History"]
-    AG --> LLM["LLM Provider Abstraction"]
-    AG --> IMG["Image Gen Abstraction"]
-    AG --> RAG["RAG / Retrieval Layer"]
-    RULES --> RAG
-    STORY --> RAG
-    RAG --> VECSTORE["Vector Store<br/>(Chroma · pgvector)"]
-    VECSTORE --> RULESIDX["Rules Index<br/>(mechanics & tables)"]
-    VECSTORE --> HISTIDX["Campaign History Index<br/>(sessions · NPCs · threads)"]
-    VECSTORE --> CHARIDX["Character Index<br/>(sheets · backstory · decisions)"]
-    LLM --> OLLAMA["Ollama / llama.cpp (local)"]
-    LLM --> CLOUDLLM["Cloud APIs<br/>(Anthropic · OpenAI · HuggingFace)"]
-    IMG --> LOCALIMG["Stable Diffusion / ComfyUI (local)"]
-    IMG --> CLOUDIMG["HuggingFace Inference API"]
-    APP --> STORAGE["Storage Backend"]
-    STORAGE --> SQLITE["SQLite (local)"]
-    STORAGE --> PG["Postgres (cloud)"]
-```
-
-### Key design decisions
-
-- **Provider-agnostic AI.** Thin abstraction layers wrap all LLM, image, and storage calls. Switch providers via `.env` — no code changes required.
-- **RAG-augmented context.** Three purpose-built retrieval indexes (rules, campaign history, character data) feed relevant chunks into agent prompts. Falls back to SQL when ChromaDB is unavailable.
-- **Local-first, cloud-optional.** SQLite + Ollama + ChromaDB + ComfyUI are defaults. Postgres + cloud LLMs are opt-in upgrades.
-- **Rules engine is isolated.** Earthdawn 4E lives in `packages/rules_earthdawn/` so additional systems can be added later.
-- **Harness-driven quality.** `/harness` holds deterministic eval suites for every agent and tool; they run as regression tests.
+| M4.5 — RAG layer | ✅ Complete | ChromaDB history/character/rules indexes; twin falls back to SQL when unavailable |
+| M5 — Cloud providers | ✅ Complete | Anthropic, OpenAI, HuggingFace LLM providers; Postgres adapter |
+| M6 — Auth & Admin UI | ✅ Complete | GM registration/login, campaign dashboard, join codes, player rejoin |
+| M7 — Auth Reboot | ✅ Complete | Auth-first for all users, post-login hub, `user_id`-linked player records |
+| M8 — Game Knowledge Q&A | ✅ Complete | Two-tier RAG, PDF→Markdown ingestion, LLM enrichment, RRF ranking, access filtering |
 
 ---
 
@@ -143,19 +304,21 @@ flowchart TD
 |------|--------|-------|
 | Language | **Python 3.11+** | |
 | UI | **Gradio 4.x** | Browser-friendly, role-scoped tabs |
-| Dependency management | **uv** | Workspace config in root `pyproject.toml` |
-| LLM (local) | **Ollama** | Default; OpenAI-compat API |
+| Dependency management | **uv** | Workspace monorepo in root `pyproject.toml` |
+| Agent framework | **Pydantic-AI** | Per-entity agents, typed tool schemas — see [ADR-005](docs/adr/ADR-005-agent-framework.md) |
+| LLM (local) | **Ollama** | Default; OpenAI-compatible REST API |
 | LLM (cloud) | **Anthropic · OpenAI · HuggingFace** | Via `LLM_PROVIDER` env var |
-| Embeddings (local) | **`nomic-embed-text` via Ollama** | |
-| Vector store (local) | **ChromaDB** | File-backed |
+| Embeddings | **`nomic-embed-text` via Ollama** | Injected into ChromaDB's `OllamaEmbeddingFunction` |
+| Vector store (local) | **ChromaDB** | File-backed persistent store |
 | Vector store (cloud) | **pgvector** | Postgres extension (wiring planned) |
-| Image gen (default) | **HuggingFace Inference API** | Free tier — `FLUX.1-schnell` |
+| PDF extraction | **pymupdf4llm** | Tables → GFM Markdown; images → caption fallback |
+| Image gen (default) | **HuggingFace Inference API** | Free tier — FLUX.1-schnell |
 | Image gen (local) | **ComfyUI** | Requires local ComfyUI server |
-| Agent framework | **Pydantic-AI** | See `docs/adr/ADR-005-agent-framework.md` |
 | DB (local) | **SQLite** | WAL mode; via SQLAlchemy 2.x + aiosqlite |
 | DB (cloud) | **Postgres** | Via asyncpg + SQLAlchemy 2.x |
 | Containers | **Docker + Docker Compose** | Local and cloud compose files in `deploy/compose/` |
-| Testing | **pytest** + **harness** | `tests/` for integration; `harness/` for agent evals |
+| Testing | **pytest** + **harness** | `tests/` for integration; `harness/` for deterministic agent evals |
+| Quality | **ruff** + **pyright** | Linting and strict type checking |
 
 ---
 
@@ -165,21 +328,18 @@ flowchart TD
 StoryWeaver/
 ├── apps/
 │   └── web/                        # Gradio UI entry point
-│       ├── main.py                 # Legacy FastAPI entry point (retained for compatibility; not the standard runtime)
-│       ├── app.py                  # Gradio app factory and entry point — launch with `uv run python app.py`
-│       ├── services/
-│       │   └── auth.py             # SHA-256 password hashing, validate_user, register_user
+│       ├── app.py                  # App factory — launch with: uv run python app.py
 │       ├── pages/
 │       │   ├── auth.py             # Sign In / Create Account tabs
-│       │   ├── player/             # Player views: join.py (auth-first join), character, twin chat, history
-│       │   └── gm/                 # GM views: campaigns.py, NPCs, characters, history, world notes, session plan, players
+│       │   ├── player/             # Player views: join, character, twin chat, history
+│       │   └── gm/                 # GM views: campaigns, NPCs, history, world notes, plans
 │       ├── services/
-│       │   ├── auth.py             # SHA-256 password hashing, validate_user, register_user
-│       │   └── db.py               # SQLiteBackend singleton (get_backend())
-│       └── components/             # Shared Gradio components (banner, image display)
+│       │   ├── auth.py             # SHA-256 hashing, validate_user, register_user
+│       │   └── db.py               # SQLiteBackend singleton
+│       └── components/             # Shared Gradio components
 ├── packages/
 │   ├── core/                       # Shared ORM models, Pydantic schemas, config, errors
-│   ├── rules_earthdawn/            # Earthdawn 4E rules engine (isolated)
+│   ├── rules_earthdawn/            # Earthdawn 4E rules engine (isolated — add systems here)
 │   ├── agents/                     # Role agents + digital twins (Pydantic-AI)
 │   │   ├── twin/                   # Digital twin (Character + NPC)
 │   │   ├── player_agent/           # Player role tools
@@ -188,32 +348,38 @@ StoryWeaver/
 │   │   └── providers/              # ollama, anthropic, openai, huggingface
 │   ├── imagegen/                   # Image generation abstraction
 │   │   └── providers/              # huggingface, comfyui
-│   ├── rag/                        # RAG retrieval layer (ChromaDB)
+│   ├── rag/                        # RAG retrieval layer
+│   │   ├── knowledge/              # Two-tier Q&A (ingestor, retriever, enricher)
 │   │   ├── history/                # Campaign event index
 │   │   ├── character/              # Character/NPC profile index
 │   │   └── rules/                  # Earthdawn mechanics index
 │   ├── storage/                    # DB backend abstraction
 │   │   ├── sqlite/                 # SQLite adapter (local default, WAL mode)
-│   │   └── postgres/               # Postgres adapter (cloud M5+)
+│   │   └── postgres/               # Postgres adapter (cloud)
 │   └── story/                      # Story event + session CRUD
 ├── harness/                        # Deterministic agent/tool eval suites
 │   ├── scenarios/                  # YAML fixtures per tool/agent
 │   ├── scoring/                    # rubrics.py — composite 0–10 scoring
-│   └── runner.py                   # Dispatch runner (all scenario types)
+│   └── runner.py                   # Dispatch runner
 ├── tests/
 │   └── integration/                # pytest integration tests (per user story)
+├── specs/                          # Spec-driven development artifacts
+│   ├── 001-project-scope/          # spec · plan · data-model · contracts · tasks
+│   ├── 002-auth-admin-ui/
+│   ├── 003-demo-readiness-polish/
+│   ├── 004-auth-admin-reboot/
+│   └── 005-rag-qa-system/
 ├── docs/adr/                       # Architecture Decision Records
 ├── deploy/
 │   ├── docker/                     # Dockerfile.web, Dockerfile.ollama
 │   └── compose/                    # docker-compose.local.yml, docker-compose.cloud.yml
-├── specs/001-project-scope/        # Spec, plan, data-model, contracts, tasks
 ├── pyproject.toml                  # uv workspace + ruff + pyright config
 └── .env.example                    # All required env vars documented
 ```
 
 ---
 
-## Getting Started (local development)
+## Getting Started
 
 **Prerequisites**: Python 3.11+, [uv](https://docs.astral.sh/uv/), [Ollama](https://ollama.com)
 
@@ -225,8 +391,9 @@ cd StoryWeaver
 # 2. Install all workspace packages
 uv sync
 
-# 3. Pull a local model
+# 3. Pull required local models
 ollama pull llama3.1
+ollama pull nomic-embed-text   # required for Knowledge Q&A
 
 # 4. Configure
 cp .env.example .env
@@ -235,60 +402,54 @@ cp .env.example .env
 # 5. Run database migrations
 uv run alembic upgrade head
 
-# 6. Start the app
+# 6. Launch
 cd apps/web && uv run python app.py
-# App opens at http://localhost:7860
-# Use the "Create Account" tab to register, then "Sign In"
-# After sign-in the hub appears: choose "My Campaigns (GM)" or "Join a Campaign (Player)"
+# Opens at http://localhost:7860
+# Use "Create Account" → "Sign In" → choose GM or Player path
 ```
 
-### Containerized (local Docker stack)
+### Docker (local full stack)
 
 ```bash
 docker compose -f deploy/compose/docker-compose.local.yml up
-# Full local stack: Gradio + Ollama + ChromaDB + SQLite volume
+# Gradio + Ollama + ChromaDB + SQLite volume — everything in one command
 ```
 
-### Containerized (cloud stack)
+### Docker (cloud stack)
 
 ```bash
-# Requires: DATABASE_URL, LLM_PROVIDER, LLM_API_KEY in environment
+# Requires DATABASE_URL, LLM_PROVIDER, LLM_API_KEY in environment
 docker compose -f deploy/compose/docker-compose.cloud.yml up
-# Cloud stack: Gradio + Postgres/pgvector + cloud LLM
 ```
 
 ---
 
 ## Configuration
 
-All providers are switched via environment variables — **no code changes required**.
+All providers switch via `.env` — no code changes.
 
 ```dotenv
-# --- LLM provider --- (ollama | anthropic | openai | huggingface)
+# LLM provider: ollama | anthropic | openai | huggingface
 LLM_PROVIDER=ollama
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.1
 
-# Cloud LLM (uncomment to switch)
+# Cloud LLM (uncomment one)
 # LLM_PROVIDER=anthropic
 # LLM_API_KEY=sk-ant-...
 
 # LLM_PROVIDER=openai
 # LLM_API_KEY=sk-...
 
-# LLM_PROVIDER=huggingface
-# HF_API_KEY=hf_...
-
-# --- Image generation --- (huggingface | comfyui)
+# Image generation: huggingface | comfyui
 IMAGE_PROVIDER=huggingface
-HF_API_KEY=               # required for HuggingFace image gen
+HF_API_KEY=
 HF_IMAGE_MODEL=black-forest-labs/FLUX.1-schnell
 
-# --- Database ---
+# Database: sqlite (local) or postgres (cloud)
 DATABASE_URL=sqlite+aiosqlite:///./data/storyweaver.db
 # DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/storyweaver
 
-# --- App ---
 MAX_TWIN_TURNS=20
 ```
 
@@ -300,21 +461,16 @@ MAX_TWIN_TURNS=20
 # All integration tests
 uv run pytest tests/integration/ -v
 
-# Specific user story
+# Per feature
 uv run pytest tests/integration/test_character_creation.py -v
 uv run pytest tests/integration/test_role_access.py -v
 uv run pytest tests/integration/test_story_history.py -v
-uv run pytest tests/integration/test_image_generation.py -v
-uv run pytest tests/integration/test_shared_campaign.py -v
-uv run pytest tests/integration/test_session_planning.py -v
 
-# Harness scenario runner (all deterministic scenario types)
+# Harness eval runner (deterministic agent/tool scenarios)
 uv run python harness/runner.py --all
-
-# Run a specific scenario directory
 uv run python harness/runner.py --dir harness/scenarios/gm_agent/
 
-# Lint and type check
+# Lint + type check
 uv run ruff check .
 uv run pyright
 ```
@@ -324,45 +480,42 @@ uv run pyright
 ## Roadmap
 
 ### Completed
+- [x] M0 — Monorepo scaffolding, config/abstraction layers, harness skeleton
+- [x] M1 — Earthdawn 4E character creation (rules engine + Gradio builder)
+- [x] M2 — Digital twins (per-character/NPC agents, role-based tools, degraded mode)
+- [x] M3 — Image generation (HuggingFace FLUX.1 + ComfyUI)
+- [x] M4 — Story history + GM session planning
+- [x] M4.5 — RAG layer (history/character/rules ChromaDB indexes)
+- [x] M5 — Cloud providers (Anthropic, OpenAI, HuggingFace; Postgres adapter)
+- [x] M6 — Auth & campaign admin UI
+- [x] M7 — Auth-first for all users (no anonymous access)
+- [x] M8 — Game Knowledge Q&A (two-tier RAG, PDF ingestion, LLM enrichment, RRF)
 
-- [x] **M0 — Foundations**: monorepo scaffolding, config/abstraction layers, harness skeleton.
-- [x] **M1 — Earthdawn 4E character creation**: rules engine + Gradio builder.
-- [x] **M2 — Digital twins**: per-character/NPC agents (local Ollama), role-based tools, degraded mode.
-- [x] **M3 — Image generation**: character & scene generation (HuggingFace free tier + ComfyUI).
-- [x] **M4 — Story history + GM session planning**: persistent timeline, role-scoped events.
-- [x] **M4.5 — RAG layer**: history/character/rules ChromaDB indexes; twin semantic recall with SQL fallback.
-- [x] **M5 — Cloud providers**: Anthropic, OpenAI, HuggingFace LLM providers; Postgres storage adapter; harness runner complete.
-
-### Planned (unordered)
-
-- [ ] **Beyond Earthdawn**: system-agnostic core, second rule system.
-- [ ] **RAG auto-indexing**: automatically index story events and character updates at write time — no manual calls to `index_event()` required.
-- [ ] **Places model**: cities, towns, roads, kaerns, ruins — location entities with their own events, history, and AI-generated descriptions.
-- [ ] **UI/UX improvements**:
-  - Agentic character creation (conversational builder instead of form-driven).
-  - One-button quick NPC creation.
-  - Story text dump for auto-event generation (import from Obsidian Portal, Discord, or local GM notes).
-  - Remove unused UI surfaces and streamline the GM/player flows.
-- [ ] **Prompt improvements**: tuned system prompts for more in-character, coherent twin dialogue and better image-generation descriptions.
-- [ ] **Tools & MCP integration**: expose StoryWeaver capabilities as MCP tools for richer agentic workflows and external integrations.
+### Planned
+- [ ] **System-agnostic core** — second rule system beyond Earthdawn
+- [ ] **RAG auto-indexing** — index story events and character updates at write time
+- [ ] **pgvector wiring** — cloud vector store via Postgres extension
+- [ ] **Agentic character creation** — conversational builder instead of forms
+- [ ] **MCP integration** — expose StoryWeaver as MCP tools for external agent workflows
+- [ ] **Places model** — cities, roads, ruins as first-class entities with history and AI descriptions
 
 ---
 
 ## Contributing
 
-1. Open or update a **spec** in `/specs` describing the change.
-2. Write or extend **harness** scenarios for any agent/tool behaviour.
+1. Open a **spec** in `/specs/<feature-name>/` — define intent before touching code.
+2. Write **harness scenarios** for any new agent or tool behaviour.
 3. Implement against the spec; keep packages isolated.
-4. Ensure `pytest` and harness scenarios pass; `ruff` and `pyright` report no errors.
-5. Update `README.md` to reflect the current implemented state before marking a milestone complete.
+4. Ensure `pytest`, harness, `ruff`, and `pyright` all pass.
+5. Update this README and add an ADR for any non-trivial architectural decision.
 
 ---
 
 ## License
 
-StoryWeaver is released under the **Apache License 2.0**. See [LICENSE](LICENSE) for the full text.
+StoryWeaver is released under the **Apache License 2.0**. See [LICENSE](LICENSE).
 
-The project license covers *StoryWeaver's own code only* — it does not extend to Earthdawn/FASA intellectual property (see Disclaimer above).
+The project license covers StoryWeaver's own code only — it does not extend to Earthdawn or FASA intellectual property.
 
 ---
 
