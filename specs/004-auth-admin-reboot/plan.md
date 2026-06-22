@@ -10,13 +10,19 @@
 
 Reimplement and simplify the existing auth, campaign admin, and player join experience while preserving the current SQLite-backed data model.
 
-The plan keeps the Gradio UI architecture in `apps/web/app.py`, centralizes authentication into a single Sign In/Create Account panel, and converts the player join flow to use only a globally unique campaign join code plus player name. The implementation will preserve existing entities in `packages/core/core/models.py`, ensure visible error feedback in Gradio, and gracefully degrade AI features when Ollama or ComfyUI are unavailable.
+All users — GMs and players alike — must authenticate before accessing any campaign feature. After signing in, users land on a hub screen with two paths: "My Campaigns (GM)" or "Join a Campaign (Player)". The same account can take both paths.
+
+The player join flow is consolidated into `pages/player/join.py`: a returning player sees their previously joined campaigns; a new player enters only the campaign join code — their player name is set automatically from their account username. Anonymous join (join code + player name without an account) is removed. This requires a new Alembic migration to add a `user_id` FK column to the `Player` table and change the uniqueness constraint from `(player_name, campaign_id)` to `(user_id, campaign_id)`.
+
+`pages/landing.py` and `pages/admin/campaigns.py` are deleted and their responsibilities redistributed: campaign management moves to `pages/gm/campaigns.py`; the player join flow moves to `pages/player/join.py`; hub routing is inlined in `app.py`. The implementation preserves all existing entities in `packages/core/core/models.py`, ensures visible error feedback in Gradio, and gracefully degrades AI features when Ollama or ComfyUI are unavailable.
 
 ## Technical Context
 
 **Language/Version**: Python 3.11
 
-**Primary Dependencies**: Gradio 4.x, bcrypt, SQLAlchemy 2.x, aiosqlite, Ollama provider, ComfyUI optional
+**Primary Dependencies**: Gradio 4.x, SQLAlchemy 2.x, aiosqlite, Ollama provider, ComfyUI optional (bcrypt removed — password hashing uses SHA-256 via stdlib `hashlib`, no external dependency required)
+
+**Migration Required**: A new Alembic migration (`0004_player_user_link`) adds `user_id UUID REFERENCES users(id)` to the `players` table, drops the old `ix_players_campaign_player_name_lower` unique index, and adds `ix_players_campaign_user` unique index on `(campaign_id, user_id)`.
 
 **Storage**: SQLite file-backed database with WAL mode
 
@@ -36,10 +42,11 @@ The plan keeps the Gradio UI architecture in `apps/web/app.py`, centralizes auth
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-- Gradio-only UI is preserved.
-- Auth uses SQLite and existing `User`/`Player` models, consistent with Principle VI.
+- Gradio-only UI is preserved. No FastAPI layer added.
+- Auth uses SQLite and existing `User`/`Player` models, consistent with Principle VI. Anonymous join removed — all users must authenticate; this is within Principle VI's permitted "mock auth" scope.
 - AI-dependent tabs will show explicit unavailable states, consistent with Principle VII.
 - No new backend service layer is introduced for the main auth/join flows.
+- `Player` model gains a `user_id` FK column; existing `player_name` column is retained (populated from `User.username`). One Alembic migration required. Consistent with Principle III (no unnecessary new packages).
 
 **Gate result**: PASS.
 
@@ -62,22 +69,34 @@ specs/004-auth-admin-reboot/
 
 ```text
 apps/web/
-├── app.py                  # Gradio app factory and session routing
-├── main.py                 # Existing FastAPI/Gradio mount entrypoint
+├── app.py                      # Gradio entry point: auth screen, hub screen, routing
+├── main.py                     # Existing FastAPI/Gradio mount entrypoint (unchanged)
 ├── pages/
-│   ├── auth.py             # Sign-in and account creation UI
-│   ├── landing.py          # Player join flow (currently campaign name + join code)
-│   ├── admin/campaigns.py  # GM campaign dashboard and resume flow
-│   ├── gm/                 # GM dashboard pages (characters, npcs, history, world notes, session plan)
-│   └── player/             # Player dashboard pages (character, twin chat, history)
-└── services/auth.py       # Password validation, registration helpers
+│   ├── auth.py                 # Sign-in and account creation UI (keep)
+│   ├── landing.py              # [DELETE] replaced by pages/player/join.py
+│   ├── admin/campaigns.py      # [DELETE] replaced by pages/gm/campaigns.py
+│   ├── gm/
+│   │   ├── campaigns.py        # [NEW] GM campaign list, create, archive, detail, resume
+│   │   ├── characters.py       # (keep)
+│   │   ├── npcs.py             # (keep)
+│   │   ├── history.py          # (keep)
+│   │   ├── world_notes.py      # (keep)
+│   │   ├── session_plan.py     # (keep)
+│   │   └── players.py          # (keep)
+│   └── player/
+│       ├── join.py             # [NEW] joined-campaigns list + new join code entry
+│       ├── character.py        # (keep)
+│       ├── twin_chat.py        # (keep)
+│       └── history.py          # (keep)
+└── services/auth.py            # Password validation, registration helpers (keep)
 
-packages/core/core/models.py    # Primary ORM entities
-packages/core/core/schemas.py   # Transient Gradio state and domain schemas
-packages/storage/storage/users.py  # User/player repository helpers
+packages/core/core/models.py    # Primary ORM entities — Player gains user_id FK
+packages/core/core/schemas.py   # Transient Gradio state — CampaignSession gains user_id
+packages/core/core/migrations/versions/0004_player_user_link.py  # [NEW]
+packages/storage/storage/users.py  # User/player repository helpers — get_or_create_player updated
 ```
 
-**Structure Decision**: Retain the existing Gradio-based web app under `apps/web` and the shared SQLite-backed ORM model package under `packages/core`. No new major source tree is required for this feature.
+**Structure Decision**: Retain the existing Gradio-based web app under `apps/web` and the shared SQLite-backed ORM model package under `packages/core`. The deleted modules (`landing.py`, `admin/campaigns.py`) are replaced by `pages/player/join.py` and `pages/gm/campaigns.py` respectively; hub routing is inlined in `app.py`.
 
 ## Complexity Tracking
 

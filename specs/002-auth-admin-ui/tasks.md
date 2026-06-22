@@ -140,7 +140,7 @@ No user story work can begin until this phase is complete.
 - [X] T024 [P] Run ruff check across apps/web/, packages/core/core/, packages/storage/storage/ and fix all reported linting and formatting issues
 - [X] T025 [P] Run pyright --strict across all new and modified files (services/auth.py, pages/registration.py, pages/admin/campaigns.py, pages/landing.py, storage/users.py, main.py) and resolve all type errors
 - [X] T026 Run full pytest suite â€” apps/web/tests/test_auth_service.py, test_admin_campaigns.py, test_upsert.py, test_player_join.py â€” ensure all tests pass with no errors or warnings
-- [ ] T027 Run quickstart.md validation scenarios 1â€“11 against a live app instance (uvicorn apps.web.main:app --port 7860) and verify all expected outcomes match
+- [SUPERSEDED] T027 Run quickstart.md validation scenarios 1â€”11 against a live app instance (uvicorn apps.web.main:app --port 7860) and verify all expected outcomes match — superseded by 004-auth-admin-reboot: FastAPI/uvicorn entry point replaced with pure Gradio `uv run python apps/web/app.py`
 
 ---
 

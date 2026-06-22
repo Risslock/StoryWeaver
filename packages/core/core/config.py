@@ -1,14 +1,33 @@
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # packages/core/core/config.py → go up 4 levels to reach repo root
 _repo_root = Path(__file__).resolve().parent.parent.parent.parent
-_default_db = "sqlite+aiosqlite:///" + str(_repo_root / "storyweaver.db").replace("\\", "/")
+_default_db = "sqlite+aiosqlite:///" + str(_repo_root / "data" / "storyweaver.db").replace("\\", "/")
+
+
+def _resolve_sqlite_url(url: str) -> str:
+    """Convert relative sqlite+aiosqlite paths to absolute using the repo root.
+
+    Relative paths in DATABASE_URL break when the app is launched from a
+    subdirectory (e.g. apps/web/). This ensures the path is always anchored
+    to the repository root regardless of CWD.
+    """
+    prefix = "sqlite+aiosqlite:///"
+    if not url.startswith(prefix):
+        return url
+    path_part = url[len(prefix):]
+    resolved = Path(path_part)
+    if not resolved.is_absolute():
+        # Strip a leading "./" if present, then join against repo root
+        resolved = (_repo_root / path_part.lstrip("./")).resolve()
+    return prefix + str(resolved).replace("\\", "/")
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(_repo_root / ".env"), env_file_encoding="utf-8", extra="ignore")
 
     database_url: str = _default_db
     llm_provider: str = "ollama"
@@ -23,6 +42,11 @@ class Settings(BaseSettings):
     embedding_provider: str = "ollama"
     max_twin_turns: int = 20
     images_dir: str = str(_repo_root / "data" / "images")
+
+    @model_validator(mode="after")
+    def _resolve_db_path(self) -> "Settings":
+        self.database_url = _resolve_sqlite_url(self.database_url)
+        return self
 
 
 settings = Settings()

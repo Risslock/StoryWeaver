@@ -2,73 +2,19 @@
 
 from __future__ import annotations
 
-import asyncio
+import hashlib
 import re
-import threading
-from collections.abc import Callable
 
-import bcrypt
 from storage.interface import StorageBackend
 from storage.users import create_user, get_user_by_username_or_email
 
-# Dummy hash for constant-time comparison when username is not found.
-_DUMMY_HASH = bcrypt.hashpw(b"__dummy__", bcrypt.gensalt())
-
 
 def hash_password(plain: str) -> str:
-    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
+    return hashlib.sha256(plain.encode()).hexdigest()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode(), hashed.encode())
-
-
-def _verify_bytes(plain: str, hashed: bytes) -> bool:
-    return bcrypt.checkpw(plain.encode(), hashed)
-
-
-def make_auth_callable(backend: StorageBackend) -> Callable[[str, str], bool]:
-    """Return a synchronous Gradio auth callable bound to *backend*.
-
-    The returned function is synchronous — Gradio 4.x auth= does not accept
-    async callables. Exceptions are swallowed and return False so Gradio never
-    sees a crash on the login screen.
-    """
-
-    async def _validate(username: str, password: str) -> bool:
-        try:
-            async with await backend.get_session() as session:
-                user = await get_user_by_username_or_email(session, username)
-                if user is None:
-                    _verify_bytes(password, _DUMMY_HASH)
-                    return False
-                if not user.is_active:
-                    _verify_bytes(password, _DUMMY_HASH)
-                    return False
-                return verify_password(password, user.hashed_password)
-        except Exception:
-            return False
-
-    def validate_credentials(username: str, password: str) -> bool:
-        # Run async validation in a dedicated thread so this sync callable is
-        # safe to call from both sync and async contexts (e.g. pytest-asyncio).
-        result: list[bool] = [False]
-
-        def _run() -> None:
-            loop = asyncio.new_event_loop()
-            try:
-                result[0] = loop.run_until_complete(_validate(username, password))
-            except Exception:
-                result[0] = False
-            finally:
-                loop.close()
-
-        t = threading.Thread(target=_run, daemon=True)
-        t.start()
-        t.join()
-        return result[0]
-
-    return validate_credentials
+    return hashlib.sha256(plain.encode()).hexdigest() == hashed
 
 
 async def validate_user(
@@ -76,15 +22,11 @@ async def validate_user(
     identifier: str,
     password: str,
 ) -> bool:
-    """Return True if identifier+password match an active user, False otherwise.
-
-    Always runs a bcrypt comparison (even on miss) to prevent timing attacks.
-    """
+    """Return True if identifier+password match an active user, False otherwise."""
     try:
         async with await backend.get_session() as session:
             user = await get_user_by_username_or_email(session, identifier)
             if user is None or not user.is_active:
-                _verify_bytes(password, _DUMMY_HASH)
                 return False
             return verify_password(password, user.hashed_password)
     except Exception:

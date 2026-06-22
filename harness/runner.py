@@ -60,9 +60,10 @@ async def _bootstrap_db(setup: dict[str, Any]) -> tuple[Any, Any, dict[str, Any]
     Returns (backend, campaign, entities) where entities may contain keys:
     'character', 'characters', 'npc', 'npcs', 'sessions'.
     """
-    from core.models import NPC, Campaign, Character
+    from core.models import NPC, Campaign, Character, User
     from storage.sqlite.adapter import SQLiteBackend
     from story.session import create_session as _create_session
+    import hashlib
 
     backend = SQLiteBackend("sqlite+aiosqlite:///:memory:")
     await backend.initialize_db()
@@ -71,11 +72,22 @@ async def _bootstrap_db(setup: dict[str, Any]) -> tuple[Any, Any, dict[str, Any]
     entities: dict[str, Any] = {}
 
     async with await backend.get_session() as db:
+        owner = User(
+            id=uuid.uuid4(),
+            username="harness_gm",
+            email="harness_gm@example.com",
+            hashed_password=hashlib.sha256(b"harness").hexdigest(),
+        )
+        db.add(owner)
+        await db.commit()
+        await db.refresh(owner)
+
         campaign = Campaign(
             id=uuid.uuid4(),
             name=campaign_cfg.get("name", "Test Campaign"),
             join_code=campaign_cfg.get("join_code", "TEST0000"),
             gm_display_name=campaign_cfg.get("gm_display_name", "GM"),
+            owner_id=owner.id,
         )
         db.add(campaign)
         await db.commit()
@@ -184,39 +196,59 @@ async def _bootstrap_db(setup: dict[str, Any]) -> tuple[Any, Any, dict[str, Any]
             entities["sessions"] = created_sessions
 
         # Events (require sessions already created)
+        from core.models import StoryEvent
         from story.history import create_event
         for ecfg in setup.get("events", []):
             session_index = ecfg.get("session_index")
             ev_session_id: uuid.UUID | None = None
             if session_index is not None and session_index < len(created_sessions):
                 ev_session_id = created_sessions[session_index].id
-            await create_event(
-                db,
-                campaign_id=campaign.id,
-                event_type=ecfg.get("event_type", "dialogue"),
-                content=ecfg.get("content", ""),
-                is_public=ecfg.get("is_public", True),
-                session_id=ev_session_id,
-                participants=ecfg.get("participants", []),
-            )
+            explicit_order = ecfg.get("event_order")
+            if explicit_order is not None:
+                # Bypass create_event auto-ordering to honor explicit event_order from YAML
+                ev = StoryEvent(
+                    campaign_id=campaign.id,
+                    session_id=ev_session_id,
+                    event_type=ecfg.get("event_type", "dialogue"),
+                    content=ecfg.get("content", ""),
+                    participants=ecfg.get("participants", []),
+                    is_public=ecfg.get("is_public", True),
+                    event_order=explicit_order,
+                )
+                db.add(ev)
+                await db.commit()
+            else:
+                await create_event(
+                    db,
+                    campaign_id=campaign.id,
+                    event_type=ecfg.get("event_type", "dialogue"),
+                    content=ecfg.get("content", ""),
+                    is_public=ecfg.get("is_public", True),
+                    session_id=ev_session_id,
+                    participants=ecfg.get("participants", []),
+                )
 
     return backend, campaign, entities
 
 
+def _resolve_value(v: Any, entities: dict[str, Any]) -> Any:
+    """Recursively resolve template variables like '$character.id' in strings, lists, dicts."""
+    if isinstance(v, str) and v.startswith("$"):
+        parts = v[1:].split(".")
+        obj = entities.get(parts[0])
+        if obj is not None and len(parts) > 1:
+            return getattr(obj, parts[1], v)
+        return v
+    if isinstance(v, dict):
+        return {str(k): _resolve_value(val, entities) for k, val in v.items()}  # type: ignore[union-attr]
+    if isinstance(v, list):
+        return [_resolve_value(item, entities) for item in v]  # type: ignore[union-attr]
+    return v
+
+
 def _resolve_tool_input(raw: dict[str, Any], entities: dict[str, Any]) -> dict[str, Any]:
     """Replace template variables like '$character.id', '$npc.id', '$campaign.id'."""
-    resolved: dict[str, Any] = {}
-    for k, v in raw.items():
-        if isinstance(v, str) and v.startswith("$"):
-            parts = v[1:].split(".")
-            obj = entities.get(parts[0])
-            if obj is not None and len(parts) > 1:
-                resolved[k] = getattr(obj, parts[1], v)
-            else:
-                resolved[k] = v
-        else:
-            resolved[k] = v
-    return resolved
+    return {k: _resolve_value(v, entities) for k, v in raw.items()}
 
 
 # ── History recall runner ─────────────────────────────────────────────────────

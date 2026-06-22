@@ -33,6 +33,7 @@ All milestones M0–M5 are **implemented and passing integration tests**.
 | M4.5 — RAG layer | ✅ Implemented | ChromaDB history/character/rules indexes; twin falls back to SQL when unavailable |
 | M5 — Cloud providers | ✅ Implemented | Anthropic, OpenAI, HuggingFace LLM providers; Postgres adapter; harness runner complete |
 | M6 — Auth & Admin UI | ✅ Implemented | GM account registration/login, campaign admin dashboard, join code sharing, player rejoin, character/NPC upsert semantics |
+| M7 — Auth & Admin Reboot | ✅ Implemented | Auth-first for all users (players must create accounts), post-login hub screen, `user_id`-linked player records, no anonymous join, `pages/landing.py` and `pages/admin/campaigns.py` deleted, `services/db.py` singleton, pure Gradio launch |
 
 ### Known limitations
 
@@ -41,10 +42,12 @@ All milestones M0–M5 are **implemented and passing integration tests**.
 - **No cloud vector store**: pgvector integration is stubbed but not wired into the RAG layer (Postgres storage adapter is ready; pgvector queries require a future migration).
 - **Twin dialogue eval**: `harness/scenarios/twin_dialogue/` scenarios are SKIP in the automated runner — they require a live LLM and are scored via `harness/scoring/rubrics.py` instead.
 - **Docker end-to-end validation** requires a Docker host; the compose files are ready but automated CI validation against a live stack has not been run.
-- **No password reset**: GM account password reset is out of scope for this phase.
+- **No password reset**: account password reset is out of scope for this phase.
 - **No join code rotation**: once a join code is set at campaign creation, it cannot be changed.
-- **Player passwords**: players join via campaign name + join code + player name; they still need a StoryWeaver account to access the authenticated main app. Per-player passwords (separate from the account password) are out of scope.
-- **M7 — Beyond Earthdawn**: system-agnostic core and second rule system are not yet implemented.
+- **No OAuth / social login**: accounts use SHA-256 password hashing via stdlib `hashlib`; no external auth provider is wired.
+- **No mobile support**: UI is desktop/browser only.
+- **AI services are optional**: if Ollama or ComfyUI are not running, the app still launches and shows visible placeholders in AI-dependent tabs.
+- **M8 — Beyond Earthdawn**: system-agnostic core and second rule system are not yet implemented.
 
 ---
 
@@ -61,9 +64,15 @@ All milestones M0–M5 are **implemented and passing integration tests**.
 - **RAG layer** — ChromaDB-backed history, character, and rules indexes; twin recall falls back to SQL when RAG is unavailable.
 - **Cloud LLM providers** — Anthropic, OpenAI, and HuggingFace providers behind the same `LLMProvider` interface; switch via `LLM_PROVIDER` env var.
 - **Postgres storage** — async Postgres adapter behind the same `StorageBackend` interface; switch via `DATABASE_URL`.
-- **GM authentication** — bcrypt account system; register at `/register`, log in at `/` via Gradio built-in auth.
-- **Campaign admin dashboard** — GMs see all their campaigns, create new ones, and navigate to campaign detail with copyable join code.
-- **Player rejoin** — players enter campaign name + join code + player name; character state is automatically restored across sessions.
+- **GM authentication** — Sign In / Create Account tabs backed by SHA-256 password hashing (stdlib `hashlib`); no external auth dependency or bcrypt.
+- **Campaign admin dashboard** — GMs see all their campaigns, create new ones, archive old ones (soft-delete, data never deleted), and navigate to campaign detail with copyable join code.
+- **Auth-first for all users** — both GMs and players must create an account before accessing any campaign feature. Anonymous join is removed.
+- **Post-login hub screen** — after signing in, users see two paths: "My Campaigns (GM)" and "Join a Campaign (Player)". The same account can take both paths.
+- **Player join via join code** — players enter only the 6-character join code; their display name is taken automatically from their account username. No player name field is shown.
+- **Player rejoin** — returning players see a list of previously joined campaigns; clicking re-enters without re-entering the join code. Character state is restored.
+- **World notes** — each campaign has a private per-campaign Markdown notes area; GM-only, never visible to players.
+- **Session-grouped history** — story events are grouped under session headers; GMs create sessions (title + date) before logging events; unsession events appear under "Unsorted".
+- **Players tab** — read-only GM view showing all joined players and their linked character names.
 - **Character/NPC upsert** — creating a character or NPC with a name that matches an existing one (case-insensitive, per campaign) updates the record instead of creating a duplicate.
 
 ### Planned
@@ -151,17 +160,17 @@ flowchart TD
 StoryWeaver/
 ├── apps/
 │   └── web/                        # Gradio UI entry point
-│       ├── main.py                 # FastAPI ASGI entry point (uvicorn main:app)
-│       ├── app.py                  # Gradio app factory, session routing
+│       ├── main.py                 # Legacy FastAPI entry point (retained for compatibility; not the standard runtime)
+│       ├── app.py                  # Gradio app factory and entry point — launch with `uv run python app.py`
 │       ├── services/
-│       │   └── auth.py             # Password hashing, auth callable factory, register_user
+│       │   └── auth.py             # SHA-256 password hashing, validate_user, register_user
 │       ├── pages/
-│       │   ├── landing.py          # Player campaign join (campaign name + join code)
-│       │   ├── registration.py     # Unauthenticated registration companion at /register
-│       │   ├── admin/
-│       │   │   └── campaigns.py    # GM campaign dashboard + campaign detail (join code)
-│       │   ├── player/             # Player views (character, twin chat, history)
-│       │   └── gm/                 # GM views (NPCs, characters, history, world notes, session plan)
+│       │   ├── auth.py             # Sign In / Create Account tabs
+│       │   ├── player/             # Player views: join.py (auth-first join), character, twin chat, history
+│       │   └── gm/                 # GM views: campaigns.py, NPCs, characters, history, world notes, session plan, players
+│       ├── services/
+│       │   ├── auth.py             # SHA-256 password hashing, validate_user, register_user
+│       │   └── db.py               # SQLiteBackend singleton (get_backend())
 │       └── components/             # Shared Gradio components (banner, image display)
 ├── packages/
 │   ├── core/                       # Shared ORM models, Pydantic schemas, config, errors
@@ -221,10 +230,11 @@ cp .env.example .env
 # 5. Run database migrations
 uv run alembic upgrade head
 
-# 6. Start the app (FastAPI + uvicorn entry point)
-cd apps/web && uv run uvicorn main:app --port 7860 --reload
-# Main app:        http://localhost:7860   (sign-in required)
-# Registration:    http://localhost:7860/register  (create a GM account first)
+# 6. Start the app
+cd apps/web && uv run python app.py
+# App opens at http://localhost:7860
+# Use the "Create Account" tab to register, then "Sign In"
+# After sign-in the hub appears: choose "My Campaigns (GM)" or "Join a Campaign (Player)"
 ```
 
 ### Containerized (local Docker stack)
@@ -322,7 +332,6 @@ uv run pyright
 
 - [ ] **Beyond Earthdawn**: system-agnostic core, second rule system.
 - [ ] **RAG auto-indexing**: automatically index story events and character updates at write time — no manual calls to `index_event()` required.
-- [ ] **Authentication & admin UI**: Gradio-based login for GM admin privileges; recover and continue old campaigns from the UI without manual DB access.
 - [ ] **Places model**: cities, towns, roads, kaerns, ruins — location entities with their own events, history, and AI-generated descriptions.
 - [ ] **UI/UX improvements**:
   - Agentic character creation (conversational builder instead of form-driven).

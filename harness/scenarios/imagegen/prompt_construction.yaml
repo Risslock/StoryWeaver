@@ -20,9 +20,9 @@ scenarios:
       - "battle-scarred knuckles"
       - "iron-grey eyes"
     expected_style_hints:
-      - "fantasy portrait"
+      - "fantasy character portrait"
       - "detailed"
-      - "professional illustration"
+      - "painterly illustration"
 
   - id: npc_portrait_prompt_includes_description
     description: "NPC physical_description and role appear in the constructed portrait prompt"
@@ -39,9 +39,9 @@ scenarios:
       - "heavyset"
       - "tusks filed to points"
     expected_style_hints:
-      - "fantasy portrait"
+      - "fantasy character portrait"
       - "detailed"
-      - "professional illustration"
+      - "painterly illustration"
 
   - id: scene_illustration_prompt_is_gm_description
     description: "Scene illustration prompt is exactly the GM-provided description plus style hints"

@@ -56,7 +56,7 @@ def build_player_history_page(session_state: gr.State) -> None:
             datatype=["str", "str", "str"],
             label="Story Events",
             interactive=False,
-            col_count=(3, "fixed"),
+            column_count=(3, "fixed"),
             wrap=True,
         )
 

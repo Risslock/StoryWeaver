@@ -6,7 +6,6 @@ dependencies = [
     "gradio>=4.0",
     "fastapi>=0.110",
     "uvicorn>=0.29",
-    "bcrypt>=4.0",
     "storyweaver-core",
     "storyweaver-agents",
     "storyweaver-llm",

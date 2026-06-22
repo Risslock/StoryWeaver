@@ -177,5 +177,6 @@ class CampaignSession:
     campaign_id: uuid.UUID
     display_name: str
     role: Literal["player", "gm"]
+    user_id: uuid.UUID = field(default_factory=uuid.uuid4)
     join_code: str = field(default="")
     ai_available: bool = field(default=True)

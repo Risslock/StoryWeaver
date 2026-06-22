@@ -10,7 +10,22 @@
       "Bash(git -C \"c:\\\\Users\\\\juane\\\\Documents\\\\personal\\\\projects\\\\StoryWeaver\" branch -a)",
       "Bash(git -C \"c:\\\\Users\\\\juane\\\\Documents\\\\personal\\\\projects\\\\StoryWeaver\" log --oneline -5)",
       "PowerShell(cd \"C:\\\\Users\\\\juane\\\\Documents\\\\personal\\\\projects\\\\StoryWeaver\\\\apps\\\\web\"; uv run pyright . 2>&1 | Select-String -Pattern \"error:\" | Where-Object { $_ -notmatch \"reportMissingTypeStubs|reportUnknownMemberType|reportUnknownVariableType|reportUnknownParameterType|reportUnknownArgumentType\" } | Select-Object -First 20)",
-      "PowerShell(.specify/scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks)"
+      "PowerShell(.specify/scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks)",
+      "mcp__playwright__browser_network_request",
+      "PowerShell(Stop-Process -Id 17740 -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Id 3296 -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Id 33464 -Force -ErrorAction SilentlyContinue)",
+      "PowerShell($repo = \"c:\\\\Users\\\\juane\\\\Documents\\\\personal\\\\projects\\\\StoryWeaver\"; $proc = Start-Process -FilePath \"uv\" -ArgumentList \"run\",\"python\",\"app.py\" -WorkingDirectory \"$repo\\\\apps\\\\web\" -RedirectStandardOutput \"$repo\\\\app-log.txt\" -RedirectStandardError \"$repo\\\\app-err.txt\" -PassThru; Write-Host \"PID $\\($proc.Id\\)\")",
+      "PowerShell(Get-Process -Id 37480 -ErrorAction SilentlyContinue)",
+      "PowerShell(netstat -ano)",
+      "PowerShell(Get-Process -Id 35048,21996 -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Process python -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force)",
+      "PowerShell($repo = \"c:\\\\Users\\\\juane\\\\Documents\\\\personal\\\\projects\\\\StoryWeaver\"; \"\" | Set-Content \"$repo\\\\app-log.txt\"; \"\" | Set-Content \"$repo\\\\app-err.txt\"; $proc = Start-Process -FilePath \"uv\" -ArgumentList \"run\",\"python\",\"app.py\" -WorkingDirectory \"$repo\\\\apps\\\\web\" -RedirectStandardOutput \"$repo\\\\app-log.txt\" -RedirectStandardError \"$repo\\\\app-err.txt\" -PassThru; Write-Host \"PID $\\($proc.Id\\)\")",
+      "PowerShell(Get-Process -Id 7016,4736 -ErrorAction SilentlyContinue)",
+      "mcp__playwright__browser_type",
+      "PowerShell(Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep -Seconds 2; $repo = \"c:\\\\Users\\\\juane\\\\Documents\\\\personal\\\\projects\\\\StoryWeaver\"; \"\" | Set-Content \"$repo\\\\app-log.txt\"; $proc = Start-Process -FilePath \"uv\" -ArgumentList \"run\",\"python\",\"app.py\" -WorkingDirectory \"$repo\\\\apps\\\\web\" -RedirectStandardOutput \"$repo\\\\app-log.txt\" -RedirectStandardError \"$repo\\\\app-err.txt\" -PassThru; Write-Host \"PID $\\($proc.Id\\)\")",
+      "PowerShell(Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep -Seconds 2; $repo = \"c:\\\\Users\\\\juane\\\\Documents\\\\personal\\\\projects\\\\StoryWeaver\"; \"\" | Set-Content \"$repo\\\\app-log.txt\"; \"\" | Set-Content \"$repo\\\\app-err.txt\"; $proc = Start-Process -FilePath \"uv\" -ArgumentList \"run\",\"python\",\"app.py\" -WorkingDirectory \"$repo\\\\apps\\\\web\" -RedirectStandardOutput \"$repo\\\\app-log.txt\" -RedirectStandardError \"$repo\\\\app-err.txt\" -PassThru; Write-Host \"PID $\\($proc.Id\\)\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\juane\\Documents\\personal\\projects\\StoryWeaver\\packages\\imagegen\\imagegen"

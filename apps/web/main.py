@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 import gradio as gr
 from app import create_app
 from fastapi import FastAPI
-from pages.landing import get_backend
+from services.db import get_backend
 
 
 @asynccontextmanager

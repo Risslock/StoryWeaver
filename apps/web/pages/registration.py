@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import gradio as gr
 from services.auth import register_user
-
-from pages.landing import get_backend
+from services.db import get_backend
 
 
 def create_registration_app() -> gr.Blocks:

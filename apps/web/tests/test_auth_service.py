@@ -7,8 +7,8 @@ import pytest_asyncio
 from core.models import User
 from services.auth import (
     hash_password,
-    make_auth_callable,
     register_user,
+    validate_user,
     verify_password,
 )
 from storage.sqlite.adapter import SQLiteBackend
@@ -29,9 +29,10 @@ async def seeded_backend(backend):
 # ── hash_password / verify_password ──────────────────────────────────────────
 
 
-def test_hash_password_produces_bcrypt_hash():
+def test_hash_password_produces_sha256_hex():
     hashed = hash_password("mypassword")
-    assert hashed.startswith("$2b$") or hashed.startswith("$2a$")
+    assert len(hashed) == 64
+    assert all(c in "0123456789abcdef" for c in hashed)
     assert hashed != "mypassword"
 
 
@@ -45,31 +46,26 @@ def test_verify_password_wrong():
     assert verify_password("wrong", hashed) is False
 
 
-# ── make_auth_callable ────────────────────────────────────────────────────────
+# ── validate_user ─────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_make_auth_callable_valid_user(seeded_backend):
+async def test_validate_user_correct_credentials(seeded_backend):
     ok, _ = await register_user(seeded_backend, "alice", "alice@example.com", "password123")
     assert ok
-
-    validate = make_auth_callable(seeded_backend)
-    assert validate("alice", "password123") is True
+    assert await validate_user(seeded_backend, "alice", "password123") is True
 
 
 @pytest.mark.asyncio
-async def test_make_auth_callable_wrong_password(seeded_backend):
+async def test_validate_user_wrong_password(seeded_backend):
     await register_user(seeded_backend, "bob", "bob@example.com", "password123")
-
-    validate = make_auth_callable(seeded_backend)
-    assert validate("bob", "wrongpassword") is False
+    assert await validate_user(seeded_backend, "bob", "wrongpassword") is False
 
 
 @pytest.mark.asyncio
-async def test_make_auth_callable_inactive_user(seeded_backend):
+async def test_validate_user_inactive_user(seeded_backend):
     await register_user(seeded_backend, "inactive", "inactive@example.com", "password123")
 
-    # Manually deactivate the user
     async with await seeded_backend.get_session() as session:
         from sqlalchemy import select
         result = await session.execute(
@@ -79,22 +75,18 @@ async def test_make_auth_callable_inactive_user(seeded_backend):
         user.is_active = False
         await session.commit()
 
-    validate = make_auth_callable(seeded_backend)
-    assert validate("inactive", "password123") is False
+    assert await validate_user(seeded_backend, "inactive", "password123") is False
 
 
 @pytest.mark.asyncio
-async def test_make_auth_callable_unknown_username(seeded_backend):
-    validate = make_auth_callable(seeded_backend)
-    assert validate("nobody", "whatever") is False
+async def test_validate_user_unknown_username(seeded_backend):
+    assert await validate_user(seeded_backend, "nobody", "whatever") is False
 
 
 @pytest.mark.asyncio
-async def test_make_auth_callable_db_exception():
-    # Backend pointing at a non-existent path — simulates DB failure
+async def test_validate_user_db_exception():
     bad_backend = SQLiteBackend("sqlite+aiosqlite:///nonexistent_dir/bad.db")
-    validate = make_auth_callable(bad_backend)
-    assert validate("user", "pass") is False
+    assert await validate_user(bad_backend, "user", "pass") is False
 
 
 # ── register_user ─────────────────────────────────────────────────────────────
