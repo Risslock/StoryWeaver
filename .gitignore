@@ -138,3 +138,4 @@ tempCodeRunnerFile.py
 
 # --- pyenv (uncomment to commit the Python version pin) ----------------------
 # .python-version
+.claude/settings.local.json
