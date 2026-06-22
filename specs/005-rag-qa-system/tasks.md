@@ -191,6 +191,19 @@ description: "Task list for 005-rag-qa-system: Game Knowledge Q&A (RAG)"
 
 ---
 
+## Phase 11: Convergence
+
+**Purpose**: Close gaps identified by `/speckit-converge` — runtime crash in overwrite flow, Constitution VII violation, stale documentation, broken harness eval, and FR-012 message mismatch.
+
+- [X] T043 Add `delete_chunks_by_doc(doc_id: str, scope: str, campaign_id: str | None)` method to `packages/rag/rag/knowledge/retriever.py` — determines target collection from `scope` (`GLOBAL_COLLECTION` or `campaign_collection(campaign_id)`), delegates to `self._store.delete_by_doc(collection_name, doc_id)`; fixes `AttributeError` crash in `confirm_overwrite` per FR-009b (missing)
+- [X] T044 Fix `apps/web/services/knowledge.py` `confirm_overwrite` — remove `except Exception: pass` (line ~167) and replace with `except ProviderUnavailableError: raise` so the caller receives the error and can surface it to the UI; satisfies Constitution VII (contradicts)
+- [X] T045 [P] Update FR-012 error message in `apps/web/pages/gm/knowledge_qa.py` and `apps/web/pages/player/knowledge_qa.py` `on_ask` handlers — replace `f"Knowledge service unavailable: {exc}"` with the spec-required exact text: "The knowledge service is unavailable — check that Ollama is running and try again." per FR-012 (partial)
+- [X] T046 [P] Rewrite `TestEmbeddingModelUnavailable` in `harness/knowledge_qa/test_ingestion.py` — replace non-existent `retriever.add_chunk(...)` call with a valid path that exercises the embed step and expects `ProviderUnavailableError` (e.g. call `OllamaEmbedFn(model="nonexistent-model-xyz", base_url="http://127.0.0.1:9").embed(["text"])` directly); eval must assert `ProviderUnavailableError` is raised per T020/SC-V (partial)
+- [X] T047 [P] Update `specs/005-rag-qa-system/plan.md` §Embedding Architecture table — replace the stale "Retrieval (read)" row (shows `embedding_function=` on collection) with the actual pre-computed strategy: `OllamaEmbedFn.embed([query])` → `self._store.query(query_embeddings=[vec], ...)` per plan §Embedding Architecture (partial)
+- [X] T048 [P] Update `README.md` lines 162 and 311 — replace `OllamaEmbeddingFunction` references with `OllamaEmbedFn` (custom embedder in `packages/rag/rag/knowledge/embedder.py`) and note that embeddings are pre-computed before ChromaDB calls on both ingestion and retrieval paths per Constitution I (partial)
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

@@ -30,6 +30,16 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
     def __init__(self, chroma_path: str | None = None) -> None:
         self._store = ChromaVectorStore(chroma_path) if chroma_path else ChromaVectorStore()
 
+    async def delete_chunks_by_doc(
+        self,
+        doc_id: str,
+        scope: str,
+        campaign_id: str | None,
+    ) -> None:
+        """Delete all chunks for a document from the appropriate collection."""
+        col_name = GLOBAL_COLLECTION if scope == "global" else campaign_collection(campaign_id or "")
+        await self._store.delete_by_doc(col_name, doc_id)
+
     async def _embed_query(self, query: str) -> list[float]:
         """Pre-compute a single query embedding via Ollama."""
         embed_fn = get_embed_fn()

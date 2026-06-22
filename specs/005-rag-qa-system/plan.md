@@ -141,14 +141,14 @@ For each batch of KNOWLEDGE_ENRICH_BATCH_SIZE chunks:
 
 ChromaDB's built-in `OllamaEmbeddingFunction` has moved across package versions and requires an explicit sub-package install in `chromadb >= 0.5`. To avoid a brittle transitive dependency, the implementation uses a custom `OllamaEmbedFn` in `packages/rag/rag/knowledge/embedder.py` that calls Ollama's `/api/embed` endpoint directly via `urllib.request` (stdlib-only, no extra install).
 
-**Split-embed strategy** — ingestion and retrieval use the same `OllamaEmbedFn` but wire it differently:
+**Pre-computed embeddings strategy** — both paths pre-compute vectors via `OllamaEmbedFn` and pass them directly to ChromaDB. No embedding function is ever registered on a collection, avoiding ChromaDB 0.5+ protocol requirements (`is_legacy`, `create_collection_configuration`) that break custom embedding classes.
 
 | Path | Embedding | ChromaDB call |
 |---|---|---|
-| **Ingestion (write)** | Pre-computed by `OllamaEmbedFn.embed(texts)` before upsert | `col.upsert(embeddings=[...])` — no embedding function on the collection |
-| **Retrieval (read)** | `OllamaEmbedFn` passed as `embedding_function=` to `get_or_create_collection` | ChromaDB embeds query texts at search time |
+| **Ingestion (write)** | `OllamaEmbedFn.embed(texts)` pre-computes vectors for the whole batch | `ChromaVectorStore.upsert(embeddings=[...])` — no embedding function on the collection |
+| **Retrieval (read)** | `OllamaEmbedFn.embed([query])` pre-computes the query vector | `ChromaVectorStore.query(query_embeddings=[vec], ...)` — no embedding function on the collection |
 
-Both paths must use the same `KNOWLEDGE_EMBED_MODEL` and `OLLAMA_BASE_URL` or retrieval quality degrades silently. `ChromaVectorStore` (`vector_store.py`) centralises client initialisation and `upsert`/`delete_by_doc` async helpers shared by `pipeline.py` and future collection-management utilities.
+Both paths must use the same `KNOWLEDGE_EMBED_MODEL` and `OLLAMA_BASE_URL` or retrieval quality degrades silently. `ChromaVectorStore` (`vector_store.py`) centralises client initialisation and `upsert`/`query`/`delete_by_doc` async helpers shared by `pipeline.py` and `retriever.py`.
 
 ## Project Structure
 

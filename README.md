@@ -1,4 +1,4 @@
-# StoryWeaver
+A# StoryWeaver
 
 > **An AI-powered roleplaying companion** — and a living showcase of spec-driven development, LLM engineering, RAG pipelines, and software architecture.
 
@@ -159,7 +159,7 @@ flowchart TD
         EXTRACT["pymupdf4llm\nText + table extraction\nImage → caption fallback"] -->
         CHUNK["Heading-Based Chunker\nAtomic tables, page-aware\nboundaries"] -->
         ENRICH["LLM Chunk Enrichment\nPydantic-AI structured output\nheadline · summary · topic · access_level"] -->
-        EMBED["Embedding\nnomic-embed-text via Ollama\n(OllamaEmbeddingFunction)"] -->
+        EMBED["Embedding\nnomic-embed-text via Ollama\n(OllamaEmbedFn — pre-computed)"] -->
         STORE_VEC["ChromaDB\nTwo-tier collections"]
     end
 
@@ -308,7 +308,7 @@ StoryWeaver is an **unofficial, fan-made companion tool**. *Earthdawn* is a trad
 | Agent framework | **Pydantic-AI** | Per-entity agents, typed tool schemas — see [ADR-005](docs/adr/ADR-005-agent-framework.md) |
 | LLM (local) | **Ollama** | Default; OpenAI-compatible REST API |
 | LLM (cloud) | **Anthropic · OpenAI · HuggingFace** | Via `LLM_PROVIDER` env var |
-| Embeddings | **`nomic-embed-text` via Ollama** | Injected into ChromaDB's `OllamaEmbeddingFunction` |
+| Embeddings | **`nomic-embed-text` via Ollama** | Custom `OllamaEmbedFn`; pre-computed before ChromaDB calls on both ingestion and retrieval paths |
 | Vector store (local) | **ChromaDB** | File-backed persistent store |
 | Vector store (cloud) | **pgvector** | Postgres extension (wiring planned) |
 | PDF extraction | **pymupdf4llm** | Tables → GFM Markdown; images → caption fallback |

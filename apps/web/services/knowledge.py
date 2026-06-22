@@ -163,8 +163,8 @@ async def confirm_overwrite(
             scope=scope,
             campaign_id=str(campaign_id).replace("-", "") if campaign_id else None,
         )
-    except Exception:
-        pass
+    except ProviderUnavailableError:
+        raise
 
     asyncio.create_task(_run_pipeline(str(doc_id), file_path, fmt, access_default, scope, campaign_id))
 

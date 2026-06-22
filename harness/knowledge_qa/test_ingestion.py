@@ -83,22 +83,15 @@ class TestEmbeddingModelUnavailable:
     @pytest.mark.asyncio
     async def test_unavailable_embed_model_raises(self) -> None:
         from core.errors import ProviderUnavailableError
-        from rag.knowledge.retriever import ChromaKnowledgeRetriever
+        from rag.knowledge.embedder import OllamaEmbedFn
 
-        retriever = ChromaKnowledgeRetriever()
+        embed_fn = OllamaEmbedFn(
+            model="nonexistent-model-xyz",
+            base_url="http://127.0.0.1:9",
+        )
 
-        with patch.dict(
-            os.environ,
-            {"KNOWLEDGE_EMBED_MODEL": "nonexistent-model-xyz", "OLLAMA_BASE_URL": "http://127.0.0.1:9"},
-        ):
-            with pytest.raises(ProviderUnavailableError):
-                await retriever.add_chunk(
-                    chunk_id="test_0000",
-                    text="Some text.",
-                    metadata={"doc_id": "test", "doc_title": "Test"},
-                    scope="global",
-                    campaign_id=None,
-                )
+        with pytest.raises(ProviderUnavailableError):
+            await embed_fn.embed(["Some text."])
 
 
 # ── Eval 3: Stale processing detection ────────────────────────────────────────
