@@ -1,5 +1,5 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at specs/005-rag-qa-system/plan.md
+at specs/006-rag-eval-qa-ux/plan.md
 <!-- SPECKIT END -->
