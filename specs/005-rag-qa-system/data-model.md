@@ -47,6 +47,8 @@ class KnowledgeDocument(Base):
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     chunk_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Incremented per enrichment batch during ingestion — used by the UI progress indicator.
+    chunks_processed: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now

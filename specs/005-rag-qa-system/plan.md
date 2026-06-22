@@ -101,9 +101,54 @@ class ChunkEnrichment(BaseModel):
     topic: str                                       # e.g. "combat/initiative"
     access_level: Literal["gm_only", "player_visible"]
 
+class BatchEnrichment(BaseModel):
+    chunks: list[ChunkEnrichment]                    # N enrichments in a single LLM call
+
 class QueryExpansion(BaseModel):
     alternatives: list[str]                          # exactly 3 items
+
+class RankOrder(BaseModel):
+    order: list[int]                                 # 1-based chunk indices, most → least relevant
 ```
+
+**Batch enrichment**: Instead of one LLM call per chunk (`enrich_chunk`), `ChunkEnricher.enrich_batch(texts)` sends up to `KNOWLEDGE_ENRICH_BATCH_SIZE` chunks (default 5, env-configurable) in a single LLM call returning a `BatchEnrichment` JSON response. Falls back to per-chunk enrichment if the batch response fails validation. This saves N−1 LLM round-trips per document.
+
+**LLM re-ranking**: After RRF produces a candidate pool of `top_k × 2` chunks, `ChunkEnricher.rerank(question, chunks)` calls the LLM to produce a `RankOrder` — chunk indices sorted by relevance to the question. The re-ranked list is trimmed to `top_k`. Falls back to RRF order on `ProviderUnavailableError` or `ValidationError`. This adds one LLM call per Q&A query; the 30 s SC-001 budget includes this call.
+
+## Ingestion Pipeline Design
+
+See **[ADR-007](../../docs/adr/ADR-007-incremental-batch-ingestion-pipeline.md)** for the full decision record.
+
+The pipeline processes each document in a single incremental loop. All chunks are extracted upfront (to establish the total count for the progress indicator), then processed batch-by-batch:
+
+```
+Phase 1 — Extract (once):  file → all raw text chunks
+
+For each batch of KNOWLEDGE_ENRICH_BATCH_SIZE chunks:
+  Phase 2 — Enrich:  batch → LLM → ChunkEnrichment objects
+  Phase 3 — Embed:   compound texts → OllamaEmbedFn → float vectors
+  Phase 4 — Store:   upsert batch to ChromaDB immediately
+  → persist chunks_processed to SQLite
+```
+
+**Why incremental**: a single all-at-once `/api/embed` request for a 100-chunk document exceeds Ollama's payload/context limits and returns HTTP 400. Incremental batching keeps each embed request to `KNOWLEDGE_ENRICH_BATCH_SIZE` texts (default 5), well within limits. As a side effect, chunks become queryable batch-by-batch during ingestion rather than only after the entire document is stored.
+
+**Chunk ID determinism**: `{doc_id_hex}_{global_idx:04d}` where `global_idx = batch_offset + local_batch_position`. Changing batch size does not alter chunk IDs; confirmed-overwrite re-ingestion targets the same IDs.
+
+**Failure resilience**: if ingestion fails mid-document, batches already stored remain in ChromaDB and are queryable. The document is marked `"failed"` with a descriptive `error_message`; a confirmed-overwrite re-ingestion overwrites all chunks by ID.
+
+## Embedding Architecture
+
+ChromaDB's built-in `OllamaEmbeddingFunction` has moved across package versions and requires an explicit sub-package install in `chromadb >= 0.5`. To avoid a brittle transitive dependency, the implementation uses a custom `OllamaEmbedFn` in `packages/rag/rag/knowledge/embedder.py` that calls Ollama's `/api/embed` endpoint directly via `urllib.request` (stdlib-only, no extra install).
+
+**Split-embed strategy** — ingestion and retrieval use the same `OllamaEmbedFn` but wire it differently:
+
+| Path | Embedding | ChromaDB call |
+|---|---|---|
+| **Ingestion (write)** | Pre-computed by `OllamaEmbedFn.embed(texts)` before upsert | `col.upsert(embeddings=[...])` — no embedding function on the collection |
+| **Retrieval (read)** | `OllamaEmbedFn` passed as `embedding_function=` to `get_or_create_collection` | ChromaDB embeds query texts at search time |
+
+Both paths must use the same `KNOWLEDGE_EMBED_MODEL` and `OLLAMA_BASE_URL` or retrieval quality degrades silently. `ChromaVectorStore` (`vector_store.py`) centralises client initialisation and `upsert`/`delete_by_doc` async helpers shared by `pipeline.py` and future collection-management utilities.
 
 ## Project Structure
 
@@ -128,12 +173,14 @@ packages/rag/
 └── rag/
     └── knowledge/
         ├── __init__.py
-        ├── interface.py             # KnowledgeRetriever ABC, KnowledgeChunk dataclass
-        ├── enricher.py              # LLM chunk enrichment (headline/summary/topic/access_level)
+        ├── interface.py             # KnowledgeRetriever ABC, KnowledgeChunk dataclass, ChunkEnrichment, QueryExpansion, BatchEnrichment, RankOrder
+        ├── enricher.py              # LLM chunk enrichment (single + batch), LLM re-ranking, query expansion
         ├── chunker.py               # Heading-based MD splitter, table-atomic + image inline
         ├── ingestor.py              # Ingestor ABC + PdfIngestor + MarkdownIngestor
-        ├── pipeline.py              # Orchestrator: convert → chunk → enrich → index
-        └── retriever.py             # ChromaDB KnowledgeRetriever with RRF + access filter
+        ├── embedder.py              # Custom OllamaEmbedFn (replaces ChromaDB built-in; see §Embedding Architecture)
+        ├── pipeline.py              # Orchestrator: extract all → (enrich → embed → store) per batch; incremental SQLite status tracking (see ADR-007)
+        ├── retriever.py             # ChromaDB KnowledgeRetriever with multi-query, RRF, LLM re-ranking, access filter
+        └── vector_store.py          # ChromaVectorStore wrapper (shared by pipeline write path and retriever read path)
 
 packages/core/
 └── core/

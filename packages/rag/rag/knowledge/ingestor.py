@@ -37,7 +37,6 @@ class PdfIngestor(Ingestor):
     def ingest(self, file_path: str) -> list[str]:
         try:
             import pymupdf4llm  # type: ignore[import-untyped]
-            import fitz  # type: ignore[import-untyped]  # PyMuPDF
         except ImportError as exc:
             raise ImportError(
                 "pymupdf4llm is required for PDF ingestion. "

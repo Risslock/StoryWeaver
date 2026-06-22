@@ -110,14 +110,19 @@ Merge all results by chunk_id → RRF → top-K for answer synthesis
 
 ## 7. Re-ranking Strategy
 
-**Decision**: Reciprocal Rank Fusion (RRF) across all multi-query × multi-collection result sets
+**Decision**: RRF for initial candidate scoring, followed by LLM re-ranking on the candidate pool
 
-**Formula**: `score(chunk) = Σ 1 / (k + rank_i)` where k=60, `rank_i` is chunk's rank in result list i.
+**Formula (RRF)**: `score(chunk) = Σ 1 / (k + rank_i)` where k=60, `rank_i` is chunk's rank in result list i.
+
+**Two-pass re-ranking**:
+1. RRF merges all multi-query × multi-collection result sets into a candidate pool of `top_k × 2` chunks, scored by combined rank signal.
+2. `ChunkEnricher.rerank(question, candidate_texts)` sends the candidates to the LLM, which returns a `RankOrder` JSON object — chunk indices (1-based) ordered most to least relevant to the question. The list is then trimmed to `top_k`.
+3. Falls back to RRF order on `ProviderUnavailableError` or `ValidationError` — retrieval degrades gracefully without error.
 
 **Rationale**:
-- No additional model download or added latency. Works directly with ChromaDB cosine distance ranks.
-- Naturally handles the two-tier collection merge: results from `knowledge_global` and campaign collection are ranked together.
-- Cross-encoder re-rankers improve relevance but require a separate model (~80 MB) and add ~200-500ms per query. Deferred as an optional `KnowledgeRetriever` variant.
+- RRF is fast and requires no extra model. LLM re-ranking on top adds query-aware relevance judgment beyond embedding similarity.
+- The extra LLM round-trip (~1–3 s for a local llama3 model) is within the 30 s SC-001 budget for typical questions.
+- Cross-encoder re-rankers (~80 MB model, ~200–500 ms) remain deferred as an optional `KnowledgeRetriever` variant — they offer higher precision but add a non-trivial download and latency.
 
 ---
 
@@ -157,3 +162,31 @@ Merge all results by chunk_id → RRF → top-K for answer synthesis
 3. Dispatch new ingestion task.
 
 File-hash uniqueness was rejected: users may upload revised versions of a same-named document.
+
+---
+
+## 11. Incremental Batch Ingestion (ADR-007)
+
+**Problem observed**: Ollama's `/api/embed` endpoint returns `HTTP 400: Bad Request` when sent the compound texts for an entire document in a single request. A 100-chunk PDF produces a request body of several MB whose total token count across all texts exceeds the embedding model's context window limit.
+
+**Decision**: Incremental batch loop — see [ADR-007](../../docs/adr/ADR-007-incremental-batch-ingestion-pipeline.md) for the full analysis and alternatives considered.
+
+**Summary**: each `/api/embed` call now carries at most `KNOWLEDGE_ENRICH_BATCH_SIZE` texts (default 5). The same batch boundary is used for enrichment, embedding, and ChromaDB upsert, so the document is partially queryable after each batch rather than only after the entire document is processed.
+
+---
+
+## 12. Custom Embedding Function (`embedder.py`)
+
+**Decision**: Custom `OllamaEmbedFn` class instead of ChromaDB's built-in `OllamaEmbeddingFunction`
+
+**Rationale**:
+- ChromaDB's built-in `OllamaEmbeddingFunction` moved from `chromadb.utils.embedding_functions` to a separate `chromadb[ollama]` optional extra between versions 0.4 and 0.5. Depending on it creates a brittle transitive dependency that breaks silently on version bumps.
+- `OllamaEmbedFn` in `packages/rag/rag/knowledge/embedder.py` calls Ollama's `/api/embed` endpoint directly via `urllib.request` (Python stdlib — no extra install required).
+- It implements `__call__(input: list[str]) -> list[list[float]]` matching ChromaDB's embedding function protocol, so it is passed as `embedding_function=` to `get_or_create_collection` for the retrieval (read) path.
+- For the ingestion (write) path, `OllamaEmbedFn.embed(texts)` pre-computes vectors before calling `col.upsert(embeddings=[...])` — ChromaDB receives pre-computed vectors and does not embed again.
+
+**Split-embed consistency**: Both paths use the same `KNOWLEDGE_EMBED_MODEL` env var (default `nomic-embed-text`) and `OLLAMA_BASE_URL`. Changing the model invalidates the existing vector store (embeddings are not cross-model compatible) — this is an operator responsibility documented in quickstart.md.
+
+**Alternatives rejected**:
+- `chromadb[ollama]` optional extra: requires declaring an optional dependency and breaks if `chromadb` drops or renames the extra.
+- `sentence-transformers` local embedding: adds ~500 MB model download; overkill for MVP.

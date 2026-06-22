@@ -186,3 +186,5 @@ These evals must pass before the milestone is considered complete (constitution 
 | `KNOWLEDGE_TOP_K` | `8` | Chunks retrieved per sub-query before RRF |
 | `KNOWLEDGE_RRF_K` | `60` | RRF rank constant |
 | `KNOWLEDGE_EXPANSION_COUNT` | `3` | Number of alternative query phrasings to generate |
+| `KNOWLEDGE_ENRICH_MODEL` | `llama3.2` | Ollama model used for chunk enrichment (fast, small model — separate from the answer synthesis model) |
+| `KNOWLEDGE_ENRICH_BATCH_SIZE` | `5` | Number of chunks sent to the enrichment LLM in a single call. Reduce if local Ollama runs out of context; increase if using a model with a large context window. |

@@ -139,6 +139,34 @@ description: "Task list for 005-rag-qa-system: Game Knowledge Q&A (RAG)"
 
 ---
 
+---
+
+## Phase 9: Bug Fixes & Documentation Sync
+
+**Purpose**: Fix two CRITICAL bugs discovered during `/speckit-analyze` (pipeline enrichment overloading Ollama, and silent DB status failures masking errors), enforce Principle VII on all error paths, and sync plan/research/data-model/quickstart docs to reflect the actual implementation (embedder.py, vector_store.py, LLM re-ranking, batch enrichment, chunks_processed column).
+
+**⚠️ CRITICAL**: T030–T032 fix active bugs that cause PDF ingestion to appear broken. Resolve before any further feature work.
+
+### Code Fixes
+
+- [X] T030 Fix concurrent enrichment overloading Ollama in `packages/rag/rag/knowledge/pipeline.py` — in `_enrich_with_progress`, replace `asyncio.gather(*[_run_batch(b) for b in batches])` with a sequential loop: `for batch in batches: results.extend(await _run_batch(batch))`. This prevents all enrichment batches from firing simultaneously against a single Ollama instance, which causes timeouts and "unknown error" failures for large PDFs.
+
+- [X] T031 *(Verified — no fix needed)* `async with await _backend.get_session()` pattern audited: `SQLiteBackend.get_session()` is `async def` returning `AsyncSession`; `AsyncSession` implements `__aenter__`/`__aexit__`, so the double-await pattern is correct. No code change required.
+
+- [X] T032 [P] Fix error opacity in `packages/rag/rag/knowledge/pipeline.py` — replaced bare `str(exc)` with `f"{type(exc).__name__}: {exc}"` in both exception handlers. Replaced `except Exception: pass` in `_set_status` and `_set_progress` with `except Exception as _e: _log.warning(...)`. Added `import logging` and `_log = logging.getLogger(__name__)`. Also removed dead `import fitz` from `PdfIngestor.ingest()` (it was imported but only used inside `_inline_image_captions`).
+
+### Documentation Sync
+
+- [X] T033 [P] Updated `specs/005-rag-qa-system/research.md` — §7 now documents two-pass re-ranking (RRF → LLM re-rank via `ChunkEnricher.rerank()`); cross-encoder re-rankers remain deferred. New §11 documents `OllamaEmbedFn` decision (ChromaDB API instability rationale, urllib.request approach, split-embed consistency requirement).
+
+- [X] T034 [P] Updated `specs/005-rag-qa-system/data-model.md` — added `chunks_processed` column to `KnowledgeDocument` schema. Migration gap confirmed and already resolved: `packages/core/core/migrations/versions/0006_knowledge_progress.py` adds the column via `batch_alter_table` (correct for SQLite).
+
+- [X] T035 [P] Updated `specs/005-rag-qa-system/quickstart.md` — added `KNOWLEDGE_ENRICH_MODEL` (default `llama3.2`) and `KNOWLEDGE_ENRICH_BATCH_SIZE` (default `5`) to the Environment Variables table.
+
+- [X] T036 Rewrite `packages/rag/rag/knowledge/pipeline.py` — replace the four sequential phases (extract ALL → enrich ALL → embed ALL → store ALL) with an incremental batch loop: extract all chunks once, then for each batch of `KNOWLEDGE_ENRICH_BATCH_SIZE` chunks run enrich → embed → upsert → persist progress. Fixes HTTP 400 from Ollama's `/api/embed` on large payloads (each embed request now carries ≤5 texts). Adds `chunk_offset` parameter to `_build_records` to keep chunk IDs globally deterministic across batches. Removes `_enrich_with_progress` (now inline). Decision documented in `docs/adr/ADR-007-incremental-batch-ingestion-pipeline.md`. Updated `plan.md §Ingestion Pipeline Design` to describe the new loop structure and reference ADR-007.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
