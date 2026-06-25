@@ -31,8 +31,14 @@
 
 ## Notes
 
-- All items pass. Ready for `/speckit-plan`.
+- All items pass. Ready for `/speckit-tasks`.
 - Gold standard file (`rag_gold_standard.jsonl`, 118 questions) has been copied to
   `harness/knowledge_qa/rag_gold_standard.jsonl` as part of this spec.
 - Baseline benchmark (current heading-based chunker) must be recorded in `research.md`
   before implementing either new strategy.
+- Clarified 2026-06-24: adoption threshold is aspirational (not a hard gate); best-scoring
+  strategy wins regardless of gap size; MRR beats Recall@10 if metrics disagree.
+- Clarified 2026-06-24: `tests.jsonl` (CI) and `rag_gold_standard.jsonl` (deep benchmark)
+  coexist with distinct roles; neither replaces the other.
+- Clarified 2026-06-24: gold standard benchmark always calls retriever with scope="global",
+  role="gm"; no campaign-scoped or access-filtered retrieval in benchmark runs.

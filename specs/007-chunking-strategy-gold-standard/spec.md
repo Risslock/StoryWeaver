@@ -119,7 +119,9 @@ with benchmark scores for both strategies and a recommendation with rationale.
   repository so any developer or CI run can execute the gold standard benchmark without
   obtaining the file from an external location.
 - **FR-002**: The evaluation harness MUST accept a configurable path to a gold standard JSONL
-  file; `rag_gold_standard.jsonl` MUST be the default path for all benchmark runs.
+  file; `rag_gold_standard.jsonl` MUST be the default path for all benchmark runs. The new
+  `test_gold_standard.py` harness module is separate from the existing lightweight CI harness
+  that uses `tests.jsonl`; neither replaces the other.
 - **FR-003**: The chunking strategy MUST be selectable via an environment variable or
   configuration file with no code changes required to switch between strategies (Principle II).
 - **FR-004**: Both Semantic and Agentic chunking strategies MUST be implemented as discrete,
@@ -145,6 +147,10 @@ with benchmark scores for both strategies and a recommendation with rationale.
   ingestion run starts (Principle VIII).
 - **FR-012**: All chunking errors MUST be caught and surfaced to the user with a descriptive
   message in the Gradio UI; no silent partial ingestion (Principles VII, VIII).
+- **FR-013**: The gold standard benchmark MUST call the retriever with `scope="global"` and
+  `role="gm"` so that all globally ingested chunks are eligible for retrieval without
+  access-level filtering. Campaign-scoped or player-filtered retrieval MUST NOT be used
+  in benchmark runs.
 
 ### Key Entities
 
@@ -167,10 +173,14 @@ with benchmark scores for both strategies and a recommendation with rationale.
   by the developer.
 - **SC-002**: The gold standard benchmark run completes without error against a populated
   knowledge base; all 118 questions are scored (no silent skips).
-- **SC-003**: The winning chunking strategy achieves a mean MRR ≥ 10% higher than the baseline
-  heading-based chunker score, measured against the gold standard.
-- **SC-004**: The winning chunking strategy achieves a mean Recall@10 ≥ 10% higher than the
-  baseline heading-based chunker score, measured against the gold standard.
+- **SC-003**: The strategy with the highest mean MRR against the gold standard is adopted as the
+  default, even if the improvement over baseline is below 10%; the actual improvement (positive
+  or negative) MUST be recorded in `research.md` with rationale. The ≥10% figure is a target,
+  not a hard gate that blocks adoption.
+- **SC-004**: The strategy with the highest mean Recall@10 against the gold standard is adopted
+  as the default under the same rule as SC-003. If MRR and Recall@10 point to different
+  winners, MRR takes precedence (finding the right chunk ranks above finding it somewhere in
+  the top-10).
 - **SC-005**: A developer can switch between chunking strategies by changing a single
   environment variable and re-running ingestion — no code edits required.
 - **SC-006**: Large PDFs (≥ 100 pages) ingest without crashing under either new strategy;
@@ -180,6 +190,14 @@ with benchmark scores for both strategies and a recommendation with rationale.
 - **SC-008**: The chunking strategy applies only to how documents are split for storage in the
   vector database. The LLM synthesis context (what gets sent to the language model for answer
   generation) is unchanged by this feature.
+
+## Clarifications
+
+### Session 2026-06-24
+
+- Q: If neither Semantic nor Agentic chunking achieves ≥10% improvement over the heading baseline, what is the fallback decision rule? → A: Adopt whichever strategy scores highest on the gold standard regardless of gap size; record the actual improvement and rationale in `research.md`. The ≥10% target is aspirational, not a hard adoption gate. MRR takes precedence over Recall@10 if the two metrics disagree on the winner.
+- Q: Should `rag_gold_standard.jsonl` replace the existing `harness/knowledge_qa/tests.jsonl`, or do both files coexist? → A: Both coexist with distinct roles — `tests.jsonl` is the lightweight CI fixture (fast, always-run); `rag_gold_standard.jsonl` is the deep benchmark (118 questions, run on demand or manually). Existing harness tests that reference `tests.jsonl` are not changed.
+- Q: What retrieval scope and role should the gold standard benchmark use when calling the retriever? → A: Always `scope="global"`, `role="gm"` — the gold standard questions cover global Earthdawn rulebook content and GMs see all chunks with no access filter applied.
 
 ## Assumptions
 
