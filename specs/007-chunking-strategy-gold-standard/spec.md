@@ -165,17 +165,21 @@ with benchmark scores for both strategies and a recommendation with rationale.
 - **SC-001**: `harness/knowledge_qa/rag_gold_standard.jsonl` is present in the repository and
   the evaluation harness can load and run all 118 questions without any manual file placement
   by the developer.
-- **SC-002**: The gold standard benchmark run completes in under 5 minutes against a populated
-  knowledge base on typical development hardware.
+- **SC-002**: The gold standard benchmark run completes without error against a populated
+  knowledge base; all 118 questions are scored (no silent skips).
 - **SC-003**: The winning chunking strategy achieves a mean MRR ≥ 10% higher than the baseline
   heading-based chunker score, measured against the gold standard.
 - **SC-004**: The winning chunking strategy achieves a mean Recall@10 ≥ 10% higher than the
   baseline heading-based chunker score, measured against the gold standard.
 - **SC-005**: A developer can switch between chunking strategies by changing a single
   environment variable and re-running ingestion — no code edits required.
-- **SC-006**: Large PDFs (≥ 100 pages) ingest without error or timeout under either new strategy.
+- **SC-006**: Large PDFs (≥ 100 pages) ingest without crashing under either new strategy;
+  ingestion speed is not a gate criterion since ingestion runs in the background.
 - **SC-007**: The research document records all three strategy benchmark scores and a written
   rationale for the final recommendation, verifiable by reading `research.md`.
+- **SC-008**: The chunking strategy applies only to how documents are split for storage in the
+  vector database. The LLM synthesis context (what gets sent to the language model for answer
+  generation) is unchanged by this feature.
 
 ## Assumptions
 
@@ -201,3 +205,12 @@ with benchmark scores for both strategies and a recommendation with rationale.
   the current development stage.
 - Mobile support remains out of scope; the evaluation harness and chunking pipeline are
   server-side concerns.
+- The chunking strategy for **vector DB storage** (what this feature changes) and the context
+  window provided to the **LLM for answer synthesis** are treated as independent concerns.
+  Techniques such as "small-to-big retrieval", "sentence window retrieval", or "parent
+  document retrieval" — where the retrieval granularity differs from the synthesis context
+  size — are explicitly deferred to a follow-up spec. If benchmarks show good Recall@10
+  but poor answer quality, that gap is the trigger for that follow-up.
+- Ingestion latency is not a success criterion. Both new strategies will be slower than
+  the heading-based baseline on local hardware (Semantic adds embedding calls; Agentic adds
+  LLM calls), and that is acceptable since ingestion runs in the background.

@@ -1,0 +1,166 @@
+# Implementation Plan: Smart Chunking Strategy & Gold Standard Eval
+
+**Branch**: `007-chunking-strategy-gold-standard` | **Date**: 2026-06-24 | **Spec**: [spec.md](spec.md)
+
+**Input**: Feature specification from `specs/007-chunking-strategy-gold-standard/spec.md`
+
+## Summary
+
+Extract a `BaseChunker` ABC from the current `MarkdownChunker`, implement `SemanticChunker`
+(embedding-similarity breakpoints) and `AgenticChunker` (LLM proposition splitting) as
+swappable backends behind a factory function, and wire a gold standard benchmark harness
+(118 questions in `harness/knowledge_qa/rag_gold_standard.jsonl`) to produce reproducible
+MRR / nDCG / Recall@10 scores per strategy. The winning strategy — confirmed by benchmark
+scores ≥ 10% above the current heading-based baseline — replaces `MarkdownChunker` as the
+default, selectable via `KNOWLEDGE_CHUNKING_STRATEGY` env var with no code changes required.
+
+**Scope note**: This feature improves *retrieval chunking* — how documents are split before
+being embedded and stored in ChromaDB. The granularity of context returned to the LLM for
+answer synthesis (which could differ from retrieval chunk size) is explicitly out of scope
+and may be addressed separately as a "context expansion" or "parent-chunk retrieval" feature.
+
+## Technical Context
+
+**Language/Version**: Python 3.11+
+
+**Primary Dependencies**: existing `packages/rag` (embedder, enricher, retriever, evaluator);
+existing `packages/llm` (OllamaProvider); `numpy` or built-in `math` for cosine similarity
+(no new heavy deps)
+
+**Storage**: ChromaDB (existing vector store) — re-ingestion required when switching strategy;
+`harness/knowledge_qa/benchmark_results.jsonl` (new append-only file, plain text)
+
+**Testing**: `pytest` for unit tests (stub embeddings / stub LLM); existing harness runner
+for gold standard integration tests (auto-skip when Ollama unavailable)
+
+**Target Platform**: Local development server (same as all other packages)
+
+**Project Type**: Monorepo Python package (`packages/rag/`)
+
+**Performance Goals**: Retrieval quality improvement is the only goal — MRR, nDCG, and
+Recall@10 measured by the gold standard harness. Ingestion speed is explicitly not a gate
+criterion; both new strategies will be slower than `HeadingChunker` on local hardware and
+that is acceptable since ingestion is a background operation.
+
+**Constraints**: No new packages beyond what `packages/rag` already uses; no new DB tables;
+strategy selection via one env var only; existing `ChunkEnricher` interface unchanged.
+**Scope boundary**: This feature improves *retrieval chunking* only (what gets embedded and
+stored in ChromaDB). The context window sent to the LLM for answer synthesis is a separate
+concern not addressed here (see Decision 6 in research.md).
+
+**Scale/Scope**: Single-document ingestion at a time (existing pipeline); 118-question gold
+standard; three strategy implementations
+
+## Constitution Check
+
+| Principle | Check | Status |
+|-----------|-------|--------|
+| I. Spec-Driven | Full spec + plan written before code | ✅ PASS |
+| II. Provider Abstraction | Strategy selectable via `KNOWLEDGE_CHUNKING_STRATEGY`; `SemanticChunker` and `AgenticChunker` inject via existing embedding/LLM provider stack — no new providers | ✅ PASS |
+| III. Package Isolation | All new code lives in `packages/rag/rag/knowledge/`; no cross-package circular deps; `HeadingChunker` replaces `MarkdownChunker` in-place | ✅ PASS |
+| IV. Local-First | `SemanticChunker` uses `nomic-embed-text` via Ollama; `AgenticChunker` uses existing Ollama LLM; no cloud dependency added | ✅ PASS |
+| V. Harness Coverage | New `test_chunkers.py` (unit, stub deps); new `test_gold_standard.py` (integration, auto-skip without Ollama); `benchmark_results.jsonl` provides reproducible regression baseline | ✅ PASS |
+| VI. Product-First | Feature directly improves retrieval quality (the observable GM/player pain: bad answers) | ✅ PASS |
+| VII. Placeholder-First | Not a UI feature; `AgenticChunker.chunk()` raises `NotImplementedError` with clear message directing callers to `async_chunk()` | ✅ PASS |
+| VIII. Structured Logging | `_log.info("Ingestion started — chunking strategy: %s", ...)` in `IngestionPipeline.run()`; section-level `DEBUG` logging in `AgenticChunker` | ✅ PASS |
+
+**Complexity Tracking**: No violations. No new packages, no new DB tables, no new providers.
+
+## Project Structure
+
+### Documentation (this feature)
+
+```text
+specs/007-chunking-strategy-gold-standard/
+├── plan.md              # This file
+├── spec.md              # Feature specification
+├── research.md          # Phase 0 — strategy analysis, algorithm decisions, benchmark table
+├── data-model.md        # Phase 1 — entities, configuration env vars, invariants
+├── quickstart.md        # Phase 1 — how to run baseline + strategy benchmarks
+├── contracts/
+│   └── chunker-strategy.md  # Phase 1 — BaseChunker ABC + factory + ingestor contracts
+└── tasks.md             # Phase 2 — generated by /speckit-tasks
+```
+
+### Source Code
+
+```text
+packages/rag/rag/knowledge/
+├── chunker.py            [MODIFY] Add BaseChunker ABC + HeadingChunker (MarkdownChunker renamed)
+│                                  + create_chunker() factory + MarkdownChunker deprecated alias
+├── chunker_semantic.py   [NEW]    SemanticChunker implementation
+├── chunker_agentic.py    [NEW]    AgenticChunker implementation
+├── ingestor.py           [MODIFY] Type hints MarkdownChunker → BaseChunker
+│                                  Add ingest_async() to PdfIngestor and MarkdownIngestor
+└── pipeline.py           [MODIFY] _extract_chunks() → async; add INFO strategy log at run() start
+
+packages/rag/tests/knowledge/
+└── test_chunkers.py      [NEW]    Unit tests for all three chunkers (stub embed_fn + stub LLM)
+
+harness/knowledge_qa/
+├── rag_gold_standard.jsonl      [ALREADY COMMITTED] 118-question gold standard
+├── test_gold_standard.py        [NEW] Gold standard integration benchmark
+│                                       Auto-skips when Ollama unavailable
+│                                       Appends ChunkBenchmarkResult to benchmark_results.jsonl
+└── benchmark_results.jsonl      [NEW, GITIGNORED] Append-only run history
+```
+
+**Structure Decision**: Monorepo workspace, existing structure. All chunking logic stays in
+`packages/rag/rag/knowledge/`; two new files (`chunker_semantic.py`, `chunker_agentic.py`)
+keep implementations readable without bloating `chunker.py`. The factory is the single
+import point for all callers. Pattern mirrors existing `packages/llm/` provider structure.
+
+## Phase 0: Research Summary
+
+See [research.md](research.md) for full decisions. Key outcomes:
+
+- **Abstraction**: `BaseChunker` ABC with sync `chunk()` + async `async_chunk()` (default = thread pool wrapper)
+- **Semantic algorithm**: Sentence-level embedding similarity with percentile breakpoints; zero new deps; reuses `get_embed_fn()` from existing embedder
+- **Agentic algorithm**: Heading-segmented LLM proposition splitting; ~500 LLM calls for a 300-page PDF; uses existing `OllamaProvider`; `async_chunk()` override required
+- **Benchmark file**: `rag_gold_standard.jsonl` (118 questions, committed to repo)
+- **Preliminary recommendation**: Semantic chunking (faster, no extra LLM cost) — final recommendation confirmed after benchmark scores fill in `research.md` score table
+
+## Phase 1: Design Summary
+
+See [data-model.md](data-model.md) and [contracts/chunker-strategy.md](contracts/chunker-strategy.md).
+
+### Key design decisions
+
+**`chunker.py` (modified)**:
+- `BaseChunker(ABC)` with `chunk()`, `async_chunk()`, `strategy_name` property
+- `HeadingChunker(BaseChunker)` — current `MarkdownChunker` logic verbatim, renamed
+- `MarkdownChunker = HeadingChunker` alias emitting `DeprecationWarning`
+- `create_chunker(embed_fn=None, llm_provider=None) → BaseChunker` factory reads env var
+
+**`chunker_semantic.py` (new)**:
+- `SemanticChunker(BaseChunker)`: sentence split → batch embed → cosine similarity → percentile breakpoints → merge/split to token budget → table atomicity
+- Config: `KNOWLEDGE_SEMANTIC_BREAKPOINT_PERCENTILE` (default 95), `KNOWLEDGE_SEMANTIC_MIN_CHUNK_TOKENS` (default 50)
+
+**`chunker_agentic.py` (new)**:
+- `AgenticChunker(BaseChunker)`: heading split → per-section LLM call → parse split indices → reconstruct chunks
+- `chunk()` raises `NotImplementedError`; `async_chunk()` is the real entry point
+- `ProviderUnavailableError` on LLM failure — caught by pipeline, surfaced to UI
+
+**`ingestor.py` (modified)**:
+- Both ingestors: `chunker: BaseChunker | None = None`; default = `create_chunker()`
+- Add `async def ingest_async(file_path) → list[str]` calling `async_chunk()`
+- Keep `ingest()` for backward compatibility
+
+**`pipeline.py` (modified)**:
+- `_extract_chunks` → `async def _extract_chunks(...)` calling `ingest_async()`
+- Add `_log.info("Ingestion started — chunking strategy: %s, doc_id: %s", ...)` after status set
+
+**`test_gold_standard.py` (new)**:
+- `GOLD_STANDARD_PATH` configurable via env var, defaults to `harness/knowledge_qa/rag_gold_standard.jsonl`
+- `run_gold_standard_benchmark(k=10)`: loads questions → retriever per question → `evaluate_question()` → `aggregate_results()` → append `ChunkBenchmarkResult` to `benchmark_results.jsonl`
+- `test_gold_standard_recall_sanity()`: asserts `mean_recall_at_k >= 0.40` (sanity gate)
+- Auto-skips when Ollama unreachable
+
+### `benchmark_results.jsonl` schema
+
+```json
+{"strategy": "heading", "timestamp": "2026-06-24T10:00:00Z", "gold_standard_path": "harness/knowledge_qa/rag_gold_standard.jsonl", "k": 10, "total_questions": 118, "mean_mrr": 0.412, "mean_ndcg": 0.389, "mean_recall_at_k": 0.534, "notes": ""}
+```
+
+File is appended on every benchmark run and gitignored — developers copy their results into
+`research.md` manually to avoid merge conflicts from personal benchmark runs.
