@@ -84,7 +84,10 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
             except ProviderUnavailableError:
                 raise
 
-            for col_name in [GLOBAL_COLLECTION, campaign_collection(campaign_id)]:
+            collections = [GLOBAL_COLLECTION]
+            if campaign_id:
+                collections.append(campaign_collection(campaign_id))
+            for col_name in collections:
                 try:
                     res = await self._store.query(
                         collection_name=col_name,
