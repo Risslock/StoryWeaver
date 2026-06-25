@@ -1,113 +1,128 @@
-# Implementation Plan: [FEATURE]
+# Implementation Plan: Corpus Pre-Processing & Cleaning
 
-**Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
+**Branch**: `008-corpus-cleaning` | **Date**: 2026-06-25 | **Spec**: [spec.md](spec.md)
 
-**Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
-
-**Note**: This template is filled in by the `/speckit-plan` command. See `.specify/templates/plan-template.md` for the execution workflow.
+**Input**: Feature specification from `specs/008-corpus-cleaning/spec.md`
 
 ## Summary
 
-[Extract from feature spec: primary requirement + technical approach from research]
+Add a `CorpusCleaner` module to `packages/rag/rag/knowledge/` that sits between PDF extraction
+and chunking. The cleaner applies rule profiles per source type (`rulebook`, `supplement`,
+`novel`, `handwritten`): fitz coordinate-based multi-column reconstruction and stat block
+normalisation (rulebook/supplement), de-hyphenation (all), TOC and front matter stripping
+(rulebook/supplement/novel). PDF extraction is upgraded from single-string mode to
+`pymupdf4llm page_chunks=True` for accurate per-page metadata. A source-type dropdown is added
+to the Gradio upload form. The entire cleaning pipeline is bypassable via
+`KNOWLEDGE_CLEANING_ENABLED=false`. Quality is confirmed by re-running the 118-question gold
+standard harness and comparing against the spec 007 agentic-chunker baseline
+(MRR=0.5767, nDCG=0.6413, Recall@10=0.8966).
 
 ## Technical Context
 
-<!--
-  ACTION REQUIRED: Replace the content in this section with the technical details
-  for the project. The structure here is presented in advisory capacity to guide
-  the iteration process.
--->
+**Language/Version**: Python 3.11+
 
-**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]
+**Primary Dependencies**:
+- `pymupdf4llm` (existing) — switching to `page_chunks=True` mode; no version bump required
+- `PyMuPDF` / `fitz` (already a transitive dep of `pymupdf4llm`) — used directly for
+  block bounding-box extraction in multi-column detection
+- `re` (stdlib) — de-hyphenation and pattern matching; no new library deps
+- `chromadb>=0.4`, `pydantic-ai`, `storyweaver-core`, `storyweaver-llm`,
+  `storyweaver-storage` — all existing, unchanged
 
-**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]
+**Storage**:
+- SQLite: new `source_type` column on `knowledge_documents` (migration `0007_…`)
+- ChromaDB: re-ingestion required after deployment; schema unchanged
 
-**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
+**Testing**:
+- `pytest` for unit tests (`packages/rag/tests/knowledge/test_cleaner.py`) — plain
+  Markdown in/out, no Ollama required (FR-012)
+- `/harness/knowledge_qa/test_gold_standard.py` for integration eval (requires Ollama)
+- `ruff` + `pyright` on all changed files
 
-**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]
+**Target Platform**: Local development server (same as all other packages)
 
-**Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
+**Project Type**: Monorepo Python package extension (`packages/rag/`, `apps/web/`,
+`packages/core/`)
 
-**Project Type**: [e.g., library/cli/web-service/mobile-app/compiler/desktop-app or NEEDS CLARIFICATION]
+**Performance Goals**: Ingestion latency increase is acceptable — ingestion runs in the
+background (existing behaviour). No speed gate. Cleaning MUST NOT raise exceptions on
+unrecognised content.
 
-**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]
+**Constraints**:
+- No new top-level packages beyond `packages/rag/` (existing)
+- No new cloud dependencies; `fitz` is already a transitive dep
+- `KNOWLEDGE_CLEANING_ENABLED=false` must bypass all cleaning with no code changes (FR-009)
+- All existing unit tests must continue to pass after the interface change to `ingest_async`
 
-**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]
-
-**Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
+**Scale/Scope**: Single-document ingestion; 118-question gold standard; four source types
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
-
-[Gates determined based on constitution file]
+| Principle | Check | Status |
+|-----------|-------|--------|
+| I. Spec-Driven | Full spec + plan written before any code | ✅ PASS |
+| II. Provider Abstraction | Source type and rule profiles configurable via constructor param + env var; no new provider coupling; `KNOWLEDGE_CLEANING_ENABLED` env var bypasses all cleaning | ✅ PASS |
+| III. Package Isolation | All new code in `packages/rag/rag/knowledge/cleaner.py`; no new package; no circular deps; cleaner independently testable with plain strings (FR-012) | ✅ PASS |
+| IV. Local-First | No new cloud or OS-level deps; `fitz` is already a transitive dep of `pymupdf4llm`; cleaning runs entirely locally | ✅ PASS |
+| V. Harness-Driven | Gold standard re-run after re-ingestion; new cleaner unit tests; acceptance criteria expressed as assertions | ✅ PASS |
+| VI. Product-First | Feature directly improves retrieval quality for GMs and players | ✅ PASS |
+| VII. Placeholder-First | Source-type dropdown visible in UI immediately (placeholder first, then wired); no silent failures — unrecognised content passes through with DEBUG log (FR-011) | ✅ PASS |
+| VIII. Structured Logging | All transformations logged at WARNING (FR-010); passthrough content at DEBUG (FR-011); `logging.getLogger(__name__)` in `cleaner.py`; no bare `print()` | ✅ PASS |
 
 ## Project Structure
 
 ### Documentation (this feature)
 
 ```text
-specs/[###-feature]/
-├── plan.md              # This file (/speckit-plan command output)
-├── research.md          # Phase 0 output (/speckit-plan command)
-├── data-model.md        # Phase 1 output (/speckit-plan command)
-├── quickstart.md        # Phase 1 output (/speckit-plan command)
-├── contracts/           # Phase 1 output (/speckit-plan command)
-└── tasks.md             # Phase 2 output (/speckit-tasks command - NOT created by /speckit-plan)
+specs/008-corpus-cleaning/
+├── plan.md              # This file
+├── research.md          # Phase 0: extraction strategy, algorithm decisions, baseline scores
+├── data-model.md        # Phase 1: CorpusCleaner types, DB change, pipeline interface changes
+├── contracts/
+│   └── cleaner-api.md   # Phase 1: CorpusCleaner public API, rule profiles, logging contract
+├── quickstart.md        # Phase 1: validation scenarios (unit tests → UI → retrieval → harness)
+└── tasks.md             # Phase 2 output (/speckit-tasks — NOT created by /speckit-plan)
 ```
 
-### Source Code (repository root)
-<!--
-  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
-  for this feature. Delete unused options and expand the chosen structure with
-  real paths (e.g., apps/admin, packages/something). The delivered plan must
-  not include Option labels.
--->
+### Source Code Changes
 
 ```text
-# [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
-src/
-├── models/
-├── services/
-├── cli/
-└── lib/
+packages/rag/rag/knowledge/
+├── cleaner.py           # NEW — CorpusCleaner, PageText, CleanedDocument, CleaningReport,
+│                        #        CleaningRuleProfile, _PROFILES mapping
+├── ingestor.py          # UPDATED — page_chunks=True; call CorpusCleaner; source_type param;
+│                        #            fitz multi-column block extraction
+├── pipeline.py          # UPDATED — source_type param propagated to _extract_chunks
+└── [all others]         # UNCHANGED
 
-tests/
-├── contract/
-├── integration/
-└── unit/
+packages/rag/tests/knowledge/
+├── test_cleaner.py      # NEW — unit tests per rule; source type gating; bypass; edge cases
+└── [existing tests]     # UNCHANGED
 
-# [REMOVE IF UNUSED] Option 2: Web application (when "frontend" + "backend" detected)
-backend/
-├── src/
-│   ├── models/
-│   ├── services/
-│   └── api/
-└── tests/
+packages/core/core/
+└── models.py            # UPDATED — KnowledgeDocument.source_type field (String(20))
 
-frontend/
-├── src/
-│   ├── components/
-│   ├── pages/
-│   └── services/
-└── tests/
+packages/core/core/migrations/versions/
+└── 0007_add_source_type_to_knowledge_documents.py  # NEW Alembic migration
 
-# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
-api/
-└── [same as backend above]
+apps/web/
+├── services/knowledge.py     # UPDATED — source_type param in submit_document,
+│                             #            confirm_overwrite, _run_pipeline
+├── pages/gm/knowledge_qa.py  # UPDATED — source_type dropdown; "Source" column in doc table
+└── pages/player/knowledge_qa.py  # CHECK — upload form here too if present; same dropdown
 
-ios/ or android/
-└── [platform-specific structure: feature modules, UI flows, platform tests]
+harness/knowledge_qa/
+├── benchmark_results.jsonl   # UPDATED — new row after re-ingestion with cleaning
+└── test_gold_standard.py     # UNCHANGED — re-run as-is; scores compared to baseline
 ```
 
-**Structure Decision**: [Document the selected structure and reference the real
-directories captured above]
+**Structure Decision**: Single package extension — all new logic in `packages/rag/rag/knowledge/`.
+The cleaner is a new module within the existing package boundary. No new package is introduced
+because the cleaning domain is specific to knowledge ingestion and has no cross-package consumers.
 
 ## Complexity Tracking
 
-> **Fill ONLY if Constitution Check has violations that must be justified**
-
-| Violation | Why Needed | Simpler Alternative Rejected Because |
-|-----------|------------|-------------------------------------|
-| [e.g., 4th project] | [current need] | [why 3 projects insufficient] |
-| [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient] |
+No constitution violations. No new packages. `fitz` is a transitive dep (not a new dependency).
+The only notable complexity is the interface change from `str` to `list[PageText]` in
+`PdfIngestor._convert_to_markdown()` — justified by the significant accuracy gain for front
+matter detection and multi-column layout reconstruction (Decision 1 in research.md).
