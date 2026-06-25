@@ -206,7 +206,7 @@ def create_chunker(
     embed_fn: object = None,
     llm_provider: object = None,
 ) -> BaseChunker:
-    """Instantiate the chunker selected by KNOWLEDGE_CHUNKING_STRATEGY (default: 'heading').
+    """Instantiate the chunker selected by KNOWLEDGE_CHUNKING_STRATEGY (default: 'agentic').
 
     Args:
         embed_fn: Embedding function passed to SemanticChunker (fetched lazily if None).
@@ -215,7 +215,7 @@ def create_chunker(
     Raises:
         ValueError: If the env var is set to an unrecognised strategy name.
     """
-    strategy = os.environ.get("KNOWLEDGE_CHUNKING_STRATEGY", "heading").strip().lower()
+    strategy = os.environ.get("KNOWLEDGE_CHUNKING_STRATEGY", "agentic").strip().lower()
     if strategy == "heading":
         return HeadingChunker()
     if strategy == "semantic":

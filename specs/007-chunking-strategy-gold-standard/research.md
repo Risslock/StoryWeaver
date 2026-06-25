@@ -194,20 +194,46 @@ context-expansion follow-up spec.
 | heading (baseline) | 0.5046 | 0.5890 | 0.8674 | 2026-06-25 |
 | semantic (percentile=80, max=600) | 0.5607 | 0.6186 | 0.8660 | 2026-06-25 |
 | agentic (1 section, max=600) | 0.5625 | 0.6227 | 0.8881 | 2026-06-25 |
-| agentic (3 sections, max=2000) | TBD | TBD | TBD | — |
+| agentic (3 sections, max=2000) | 0.5767 | 0.6413 | 0.8966 | 2026-06-25 |
 
-**Recommendation**: Pending benchmark results. Preliminary assessment favours Semantic chunking
-based on:
-- Reuses existing embedding model — no new LLM calls during ingestion, so no new
-  infrastructure cost or failure mode
-- Literature benchmarks show 10–20% improvement in factual Q&A retrieval over fixed-size
-  chunking on structured knowledge bases
-- Ingestion speed is explicitly not a gate criterion (both new strategies will be slower than
-  `HeadingChunker` on local hardware; that is acceptable); the decision should be made purely
-  on MRR / nDCG / Recall@10 scores from the benchmark table above
-- Agentic chunking may achieve higher per-proposition precision but requires the LLM to be
-  available during every ingestion run — a new failure mode and a meaningful complexity
-  increase vs. Semantic
+**Recommendation**: **`agentic` with `KNOWLEDGE_AGENTIC_BATCH_SECTIONS=3` and
+`KNOWLEDGE_MAX_CHUNK_TOKENS=2000` is the winning strategy** and should become the new default.
 
-Final recommendation MUST be confirmed by the benchmark scores in the table above before
-`FR-010` (replace default chunker) is implemented.
+**Quality signal**: Agentic (3 sections) achieved MRR 0.5767 — a **+14.3% improvement over the
+heading baseline** (0.5046) and +2.8% over semantic (0.5607). It also leads on nDCG (+8.9% vs
+heading) and Recall@10 (+3.4% vs heading). All three metrics point to the same winner. The
+primary driver is cross-section merging: by giving the LLM visibility across 3 consecutive
+heading sections at once, it can recognise when an "Overview" section and its adjacent "Rules"
+and "Example" sections together describe a single mechanic — and keep them as one chunk. Embedding
+similarity alone (semantic) cannot detect this because the transition between related sections
+can be lexically smooth while still representing a meaningful boundary or non-boundary in RPG
+rule structure.
+
+**Ingestion cost**: Agentic requires the LLM to be available at ingestion time — one LLM call
+per batch of 3 heading sections. For the Earthdawn PDF (~300 pages → ~500 heading sections →
+~170 batches), ingestion takes 60–120 minutes with `llama3.1` on local hardware. This is
+acceptable given that ingestion is a background, user-triggered operation (spec FR-015), and
+the knowledge base is not expected to change frequently. If the LLM is unavailable, the chunker
+falls back to one chunk per section (heading-chunker quality) and logs a WARNING — no data loss,
+no silent degradation.
+
+**Edge cases observed**: The fallback to one-chunk-per-section on LLM parse failure performed
+correctly during testing. Table atomicity (heading + table rows stay together) was preserved
+across all runs. The larger `max_tokens=2000` cap allows cross-section merged chunks to remain
+intact without the `_split_large` path fragmenting them unnecessarily.
+
+**Why not semantic**: Semantic chunking achieved MRR 0.5607 (+11.1% vs heading) and is a strong
+second. Its main advantage — no LLM dependency at ingestion time — is outweighed by a 2.8%
+MRR gap versus agentic. Recall@10 for semantic (0.8660) actually regressed slightly vs heading
+(0.8674), suggesting that embedding-similarity breakpoints occasionally split related content
+that the heading splitter kept together. For a future deployment where Ollama is unavailable,
+`semantic` is the recommended fallback.
+
+**Configuration to adopt** (already set in `.env`):
+
+```
+KNOWLEDGE_CHUNKING_STRATEGY=agentic
+KNOWLEDGE_AGENTIC_BATCH_SECTIONS=3
+KNOWLEDGE_MAX_CHUNK_TOKENS=2000
+KNOWLEDGE_ENRICH_MODEL=llama3.1
+```

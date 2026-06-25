@@ -89,7 +89,7 @@ passes with a stub LLM provider (no Ollama required).
 - [X] T018 [US2] In `packages/rag/rag/knowledge/chunker_agentic.py`: implement `async def async_chunk(self, text: str) -> list[str]` that (1) splits text at heading boundaries using `HeadingChunker._split_by_headings(text)` logic to get N sections, (2) for each section sends one LLM call with system prompt `"You are a document chunker for a tabletop RPG knowledge base."` and user prompt asking for JSON `{"splits": [sentence_index, ...]}` indicating where new chunks start within the section, (3) parses the JSON response — on parse failure or LLM refusal, treats the entire section as one chunk and logs a WARNING, (4) reconstructs chunks from the split indices, (5) enforces table atomicity and max_tokens cap on each resulting chunk
 - [X] T019 [US2] In `packages/rag/rag/knowledge/chunker_agentic.py`: add error handling — wrap each LLM call in try/except; raise `ProviderUnavailableError` (from `core.errors`) when the LLM is unreachable (propagates to `IngestionPipeline`, surfaces to UI per Principle VII); log each section at `DEBUG` level with section index and character count
 - [X] T020 [P] [US2] In `packages/rag/tests/knowledge/test_chunkers.py`: add `AgenticChunker` unit tests using a stub `LLMProvider`: (a) `chunk()` raises `NotImplementedError`; (b) stub LLM returns valid `{"splits": [2]}` → two chunks produced; (c) stub LLM returns unparseable JSON → full section returned as single chunk (warning logged, no exception); (d) stub LLM raises `ProviderUnavailableError` → exception propagates from `async_chunk()`; (e) table + heading stay in the same chunk even when LLM splits inside a table
-- [ ] T021 [US2] Re-ingest the Earthdawn rulebook PDF with `KNOWLEDGE_CHUNKING_STRATEGY=agentic`, then run `uv run pytest harness/knowledge_qa/test_gold_standard.py::test_gold_standard_recall_sanity -v -s`; copy resulting scores from `benchmark_results.jsonl` into `research.md` agentic row
+- [X] T021 [US2] Re-ingest the Earthdawn rulebook PDF with `KNOWLEDGE_CHUNKING_STRATEGY=agentic`, then run `uv run pytest harness/knowledge_qa/test_gold_standard.py::test_gold_standard_recall_sanity -v -s`; copy resulting scores from `benchmark_results.jsonl` into `research.md` agentic row
 
 **Checkpoint**: Agentic unit tests pass without Ollama. All three strategy rows in `research.md` score table now have real values.
 
@@ -104,8 +104,8 @@ with rationale. The winning strategy is identified and justified.
 three rows, and the Recommendation section names the winner with at least three sentences of
 rationale covering quality, cost, and the MRR-as-tiebreaker rule.
 
-- [ ] T022 [P] [US3] In `specs/007-chunking-strategy-gold-standard/research.md`: complete the Benchmark Score Table — verify all three rows have real `mean_mrr`, `mean_ndcg`, `mean_recall_at_k` values from the runs in T010, T016, T021; add a `Date` for each row
-- [ ] T023 [US3] In `specs/007-chunking-strategy-gold-standard/research.md`: replace the placeholder Recommendation text with a concrete winner declaration: name the winning strategy (highest mean MRR per SC-003/004 rule), state the actual improvement over baseline (even if below 10%), and justify the decision covering quality signal, ingestion cost, and any edge cases observed during the benchmark runs
+- [X] T022 [P] [US3] In `specs/007-chunking-strategy-gold-standard/research.md`: complete the Benchmark Score Table — verify all three rows have real `mean_mrr`, `mean_ndcg`, `mean_recall_at_k` values from the runs in T010, T016, T021; add a `Date` for each row
+- [X] T023 [US3] In `specs/007-chunking-strategy-gold-standard/research.md`: replace the placeholder Recommendation text with a concrete winner declaration: name the winning strategy (highest mean MRR per SC-003/004 rule), state the actual improvement over baseline (even if below 10%), and justify the decision covering quality signal, ingestion cost, and any edge cases observed during the benchmark runs
 
 **Checkpoint**: `research.md` is complete and the winning strategy is committed in writing.
 
@@ -121,9 +121,9 @@ base ingested with the winning strategy.
 `uv run pytest harness/knowledge_qa/test_gold_standard.py -v` — sanity gate passes, and
 `benchmark_results.jsonl` record matches the strategy confirmed in `research.md`.
 
-- [ ] T024 [US2] Update `create_chunker()` factory default in `packages/rag/rag/knowledge/chunker.py` from `"heading"` to the winning strategy name (confirmed in T023); update the docstring to name the new default
+- [X] T024 [US2] Update `create_chunker()` factory default in `packages/rag/rag/knowledge/chunker.py` from `"heading"` to the winning strategy name (confirmed in T023); update the docstring to name the new default
 - [X] T025 [P] [US2] Update `.env.example` (or equivalent environment template in the repo) to document `KNOWLEDGE_CHUNKING_STRATEGY` with allowed values (`heading`, `semantic`, `agentic`) and the current default; note that changing it requires re-ingesting all documents
-- [ ] T026 [US2] Re-ingest all existing documents in the knowledge base using the winning strategy (clear the ChromaDB global collection, then re-run ingestion for each document); run `uv run pytest harness/knowledge_qa/test_gold_standard.py::test_gold_standard_recall_sanity -v -s` to confirm the sanity gate passes with the now-default strategy
+- [X] T026 [US2] Re-ingest all existing documents in the knowledge base using the winning strategy (clear the ChromaDB global collection, then re-run ingestion for each document); run `uv run pytest harness/knowledge_qa/test_gold_standard.py::test_gold_standard_recall_sanity -v -s` to confirm the sanity gate passes with the now-default strategy
 
 **Checkpoint**: The application ingests all new documents using the winning strategy by default. The gold standard sanity test passes.
 
@@ -135,7 +135,7 @@ base ingested with the winning strategy.
 - [X] T028 [P] Run `uv run pyright packages/rag/rag/knowledge/` — fix all type errors (pay attention to `BaseChunker` import paths in `ingestor.py` and `pipeline.py`)
 - [X] T029 Run the full existing test suite: `uv run pytest packages/rag/tests/ harness/knowledge_qa/test_evaluator.py harness/knowledge_qa/test_eval_service.py -v` — verify no regressions from the `MarkdownChunker → HeadingChunker` rename or `ingestor.py` changes
 - [X] T030 Verify `DeprecationWarning` fires correctly: write a one-line check `python -c "import warnings; warnings.simplefilter('always'); from rag.knowledge.chunker import MarkdownChunker; MarkdownChunker()"` — confirm warning is emitted
-- [ ] T031 Run the quickstart.md validation end-to-end: follow steps 1–7 in `specs/007-chunking-strategy-gold-standard/quickstart.md` and confirm `benchmark_results.jsonl` contains the expected three strategy rows
+- [X] T031 Run the quickstart.md validation end-to-end: follow steps 1–7 in `specs/007-chunking-strategy-gold-standard/quickstart.md` and confirm `benchmark_results.jsonl` contains the expected three strategy rows
 
 ---
 
