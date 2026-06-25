@@ -193,7 +193,8 @@ context-expansion follow-up spec.
 |----------|----------|-----------|----------------|------|
 | heading (baseline) | 0.5046 | 0.5890 | 0.8674 | 2026-06-25 |
 | semantic (percentile=80, max=600) | 0.5607 | 0.6186 | 0.8660 | 2026-06-25 |
-| agentic | TBD | TBD | TBD | — |
+| agentic (1 section, max=600) | 0.5625 | 0.6227 | 0.8881 | 2026-06-25 |
+| agentic (3 sections, max=2000) | TBD | TBD | TBD | — |
 
 **Recommendation**: Pending benchmark results. Preliminary assessment favours Semantic chunking
 based on:
