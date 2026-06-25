@@ -226,6 +226,7 @@ class KnowledgeDocument(Base):
     original_filename: Mapped[str] = mapped_column(String(512), nullable=False)
     format: Mapped[str] = mapped_column(String(8), nullable=False)
     access_level_default: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    source_type: Mapped[str] = mapped_column(String(20), nullable=False, server_default="rulebook")
     ingestion_status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     chunk_count: Mapped[int | None] = mapped_column(Integer, nullable=True)

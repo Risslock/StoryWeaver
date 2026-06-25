@@ -191,7 +191,18 @@ class AgenticChunker(BaseChunker):
             return list(sections)
 
         try:
-            data = json.loads(response)
+            cleaned = response.strip()
+            # Strip markdown code fences that Ollama and other local models add
+            if cleaned.startswith("```"):
+                lines = cleaned.splitlines()
+                end_fence = len(lines) - 1 if lines[-1].strip() == "```" else len(lines)
+                cleaned = "\n".join(lines[1:end_fence])
+            # Extract JSON object in case of leading/trailing prose
+            start = cleaned.find("{")
+            end = cleaned.rfind("}")
+            if start != -1 and end > start:
+                cleaned = cleaned[start : end + 1]
+            data = json.loads(cleaned)
             raw_entries = data.get("chunks", [])
             if not isinstance(raw_entries, list):
                 raise ValueError("'chunks' is not a list")

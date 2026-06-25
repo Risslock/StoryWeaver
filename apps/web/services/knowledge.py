@@ -125,6 +125,7 @@ async def submit_document(
     campaign_id: uuid.UUID | None,
     access_level_default: str | None,
     format: str,
+    source_type: str = "rulebook",
 ) -> KnowledgeDocument:
     """Register document with pending status and fire background ingestion task."""
     async with await _backend.get_session() as db:
@@ -135,6 +136,7 @@ async def submit_document(
             title=title,
             original_filename=filename,
             format=format,
+            source_type=source_type,
             access_level_default=access_level_default,
             ingestion_status="processing",
             created_at=datetime.now(UTC),
@@ -147,7 +149,8 @@ async def submit_document(
 
     asyncio.create_task(
         _run_pipeline(
-            str(doc_id), file_path, format, access_level_default, scope, campaign_id
+            str(doc_id), file_path, format, access_level_default, scope, campaign_id,
+            source_type=source_type,
         )
     )
     return doc
@@ -156,6 +159,7 @@ async def submit_document(
 async def confirm_overwrite(
     doc_id: uuid.UUID,
     file_path: str,
+    source_type: str = "rulebook",
 ) -> None:
     """Delete existing chunks, reset status to processing, and re-ingest."""
     async with await _backend.get_session() as db:
@@ -168,6 +172,7 @@ async def confirm_overwrite(
         doc.ingestion_status = "processing"
         doc.error_message = None
         doc.chunk_count = None
+        doc.source_type = source_type
         doc.updated_at = datetime.now(UTC)
         scope = doc.scope
         campaign_id = doc.campaign_id
@@ -188,7 +193,8 @@ async def confirm_overwrite(
         raise
 
     asyncio.create_task(
-        _run_pipeline(str(doc_id), file_path, fmt, access_default, scope, campaign_id)
+        _run_pipeline(str(doc_id), file_path, fmt, access_default, scope, campaign_id,
+                      source_type=source_type)
     )
 
 
@@ -199,6 +205,7 @@ async def _run_pipeline(
     access_level_default: str | None,
     scope: str,
     campaign_id: uuid.UUID | None,
+    source_type: str = "rulebook",
 ) -> None:
     from rag.knowledge.pipeline import IngestionPipeline
 
@@ -210,4 +217,5 @@ async def _run_pipeline(
         access_level_default=access_level_default,
         scope=scope,
         campaign_id=str(campaign_id).replace("-", "") if campaign_id else None,
+        source_type=source_type,
     )
