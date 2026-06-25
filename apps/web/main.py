@@ -12,6 +12,16 @@ Usage:
 
 from __future__ import annotations
 
+import warnings
+
+# Gradio 6.x references the old Starlette constant name; suppress until Gradio ships a fix.
+warnings.filterwarnings(
+    "ignore",
+    message=".*HTTP_422_UNPROCESSABLE_ENTITY.*",
+    category=DeprecationWarning,
+    module="starlette.*",
+)
+
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 

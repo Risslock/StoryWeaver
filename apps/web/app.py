@@ -1,3 +1,4 @@
+# ruff: noqa: E402 — warnings filter must run before gradio/starlette is imported
 """Gradio app factory for StoryWeaver.
 
 Multi-user session isolation model
@@ -19,6 +20,15 @@ Multi-user session isolation model
 """
 
 from __future__ import annotations
+
+import warnings
+
+warnings.filterwarnings(  # must run before gradio imports starlette
+    "ignore",
+    message=".*HTTP_422_UNPROCESSABLE_ENTITY.*",
+    category=DeprecationWarning,
+    module="starlette.*",
+)
 
 from typing import Any
 
