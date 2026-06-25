@@ -192,7 +192,7 @@ context-expansion follow-up spec.
 | Strategy | Mean MRR | Mean nDCG | Mean Recall@10 | Date |
 |----------|----------|-----------|----------------|------|
 | heading (baseline) | 0.5046 | 0.5890 | 0.8674 | 2026-06-25 |
-| semantic | TBD | TBD | TBD | — |
+| semantic (percentile=80, max=600) | 0.5607 | 0.6186 | 0.8660 | 2026-06-25 |
 | agentic | TBD | TBD | TBD | — |
 
 **Recommendation**: Pending benchmark results. Preliminary assessment favours Semantic chunking
