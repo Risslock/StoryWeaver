@@ -26,6 +26,8 @@ standard harness and comparing against the spec 007 agentic-chunker baseline
 - `PyMuPDF` / `fitz` (already a transitive dep of `pymupdf4llm`) — used directly for
   block bounding-box extraction in multi-column detection
 - `re` (stdlib) — de-hyphenation and pattern matching; no new library deps
+- `pydantic>=2.0` (existing via `storyweaver-core`) — `BaseModel` used for structured
+  chunker output types (`_ChunkBoundary`, `_ChunkBoundaryResponse`)
 - `chromadb>=0.4`, `pydantic-ai`, `storyweaver-core`, `storyweaver-llm`,
   `storyweaver-storage` — all existing, unchanged
 
@@ -87,9 +89,19 @@ specs/008-corpus-cleaning/
 ### Source Code Changes
 
 ```text
+packages/llm/llm/
+├── interface.py         # UPDATED — add generate_structured[T: BaseModel]() with default
+│                        #            fallback implementation (calls generate() + model_validate_json)
+└── providers/
+    └── ollama.py        # UPDATED — override generate_structured() with response_format:
+                         #            json_object; eliminates empty/truncated/malformed JSON
+
 packages/rag/rag/knowledge/
 ├── cleaner.py           # NEW — CorpusCleaner, PageText, CleanedDocument, CleaningReport,
 │                        #        CleaningRuleProfile, _PROFILES mapping
+├── chunker_agentic.py   # UPDATED — define _ChunkBoundary, _ChunkBoundaryResponse (BaseModel);
+│                        #            replace manual JSON parse block with generate_structured();
+│                        #            downgrade parse failure log from WARNING to DEBUG
 ├── ingestor.py          # UPDATED — page_chunks=True; call CorpusCleaner; source_type param;
 │                        #            fitz multi-column block extraction
 ├── pipeline.py          # UPDATED — source_type param propagated to _extract_chunks
@@ -123,6 +135,20 @@ because the cleaning domain is specific to knowledge ingestion and has no cross-
 ## Complexity Tracking
 
 No constitution violations. No new packages. `fitz` is a transitive dep (not a new dependency).
-The only notable complexity is the interface change from `str` to `list[PageText]` in
-`PdfIngestor._convert_to_markdown()` — justified by the significant accuracy gain for front
-matter detection and multi-column layout reconstruction (Decision 1 in research.md).
+
+Notable complexity:
+
+1. **`PdfIngestor._convert_to_markdown()` interface change** — `str` → `list[PageText]`.
+   Justified by the significant accuracy gain for front matter detection and multi-column layout
+   reconstruction (Decision 1 in research.md).
+
+2. **`LLMProvider.generate_structured()` addition** — Extends the ABC with a non-abstract method,
+   preserving backward compatibility for all existing providers. `OllamaProvider` overrides it to
+   add `response_format: json_object`. The `TypeVar[T: BaseModel]` signature requires Python 3.12+
+   syntax; use `TypeVar("T", bound=BaseModel)` for Python 3.11 compatibility (Decision 10 in
+   research.md).
+
+3. **`chunker_agentic.py` parse replacement** — The manual JSON extraction block (~20 lines,
+   including code-fence stripping and `{...}` boundary search) is replaced by a single
+   `generate_structured()` call. The `json` stdlib import is no longer needed in this module.
+   Fallback log level changes from WARNING to DEBUG for single-section schema mismatches.

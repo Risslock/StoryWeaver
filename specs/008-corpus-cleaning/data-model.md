@@ -248,5 +248,168 @@ The document table gains a "Source" column displaying the stored `source_type` v
 - `ChromaDB` vector store schema: unchanged. `source_type` is not stored as chunk metadata
   (retrieval does not filter by source type in this spec).
 - `ChunkEnricher`, `ChunkEnrichment`, `RetrievedChunk`: unchanged.
-- All existing chunker classes (`HeadingChunker`, `AgenticChunker`, `SemanticChunker`): unchanged.
+- `HeadingChunker`, `SemanticChunker`: unchanged.
 - Gold standard harness (`rag_gold_standard.jsonl`): unchanged. Re-run post-ingestion as-is.
+
+---
+
+## Structured Output Types (`packages/rag/rag/knowledge/chunker_agentic.py`)
+
+These are **private implementation types** (module-level, prefixed `_`) used only within
+`AgenticChunker`. They define the JSON schema the LLM must conform to and are the parse target
+for `OllamaProvider.generate_structured()`. (Decision 10)
+
+### `_ChunkBoundary`
+
+```python
+from pydantic import BaseModel
+
+class _ChunkBoundary(BaseModel):
+    section: int        # 0-based index into the batch of sections
+    start_sentence: int # 0-based sentence index within that section
+```
+
+One entry in the `chunks` list. Marks where a new chunk starts. `(0, 0)` is never emitted —
+the first chunk always starts at the implicit beginning.
+
+### `_ChunkBoundaryResponse`
+
+```python
+class _ChunkBoundaryResponse(BaseModel):
+    chunks: list[_ChunkBoundary]
+```
+
+Top-level response schema. `chunks` is an empty list when no splits are needed (the entire
+batch is one chunk). pydantic validates field presence and types; a model returning `{}` or
+wrong field names raises `ValidationError`, which is caught in `_chunk_batch`.
+
+---
+
+## Updated `LLMProvider` Interface (`packages/llm/llm/interface.py`)
+
+### `generate_structured` — new optional method
+
+```python
+from typing import TypeVar
+from pydantic import BaseModel
+
+T = TypeVar("T", bound=BaseModel)
+
+class LLMProvider(ABC):
+    @abstractmethod
+    async def generate(self, prompt: str, system: str = "") -> str: ...
+
+    async def generate_structured(
+        self,
+        prompt: str,
+        response_type: type[T],
+        system: str = "",
+    ) -> T:
+        """Return a Pydantic model instance parsed from the LLM response.
+
+        Default implementation calls generate() and parses with model_validate_json().
+        Providers that support native structured output (response_format) SHOULD override
+        this method to constrain the model's sampler.
+
+        Raises:
+            pydantic.ValidationError: if the response cannot be parsed into response_type.
+            ProviderUnavailableError: if the underlying generate() call fails.
+        """
+        raw = await self.generate(prompt=prompt, system=system)
+        return response_type.model_validate_json(raw)
+```
+
+**Not abstract** — providers that don't override get the default parse-from-text behaviour.
+This preserves backward compatibility for `AnthropicProvider`, `OpenAIProvider`,
+`HuggingFaceProvider` — they work unchanged and gain the typed interface automatically.
+
+---
+
+## Updated `OllamaProvider` (`packages/llm/llm/providers/ollama.py`)
+
+### `generate_structured` — override with JSON mode
+
+```python
+async def generate_structured(
+    self,
+    prompt: str,
+    response_type: type[T],
+    system: str = "",
+) -> T:
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+
+    payload = {
+        "model": self._model,
+        "messages": messages,
+        "stream": False,
+        "response_format": {"type": "json_object"},  # forces valid JSON output
+    }
+    # ... same httpx call as generate() ...
+    raw = str(data["choices"][0]["message"]["content"])
+    return response_type.model_validate_json(raw)
+```
+
+`response_format: {"type": "json_object"}` is supported by Ollama v0.1.14+ on the
+`/v1/chat/completions` endpoint. The model's sampler is constrained to produce syntactically
+valid JSON — empty strings, truncated tokens, and missing commas are not possible.
+`model_validate_json()` then handles field-level validation against `response_type`'s schema.
+
+---
+
+## Updated `AgenticChunker._chunk_batch` (logic change, not interface change)
+
+`AgenticChunker` public interface (`async_chunk`) is **unchanged**. Only the internal
+`_chunk_batch` implementation changes.
+
+### Replace manual parse block
+
+**Remove** (~20 lines, current `chunker_agentic.py` lines 193–218):
+```python
+try:
+    cleaned = response.strip()
+    if cleaned.startswith("```"):
+        ...
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    ...
+    data = json.loads(cleaned)
+    ...
+except (json.JSONDecodeError, ValueError, ...) as exc:
+    _log.warning("Failed to parse LLM batch response ...")
+    return list(sections)
+```
+
+**Replace with**:
+```python
+from pydantic import ValidationError
+
+try:
+    result: _ChunkBoundaryResponse = await llm.generate_structured(
+        prompt=prompt,
+        response_type=_ChunkBoundaryResponse,
+        system=_SYSTEM_PROMPT,
+    )
+except ValidationError as exc:
+    _log.debug(
+        "Structured response did not match schema (sections=%d): %s — one chunk per section",
+        len(sections), exc,
+    )
+    return list(sections)
+
+boundary_set: set[tuple[int, int]] = {
+    (e.section, e.start_sentence) for e in result.chunks
+}
+```
+
+**Key behaviour changes**:
+
+| Before | After |
+|--------|-------|
+| `json.JSONDecodeError` → WARNING log | `ValidationError` → DEBUG log |
+| Empty model response → WARNING | Impossible with `json_object` mode; `{}` → ValidationError → DEBUG |
+| Malformed JSON → WARNING | Impossible with `json_object` mode |
+| `{"chunks": []}` → WARNING (parse succeeds, empty set) | `{"chunks": []}` → no log, correct passthrough |
+| `json` import required | `json` import no longer needed in chunker |

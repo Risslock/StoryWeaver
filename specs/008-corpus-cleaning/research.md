@@ -252,6 +252,95 @@ single INFO log message. No code changes required to toggle.
 
 ---
 
+## Decision 10 — Structured Output for AgenticChunker (Pydantic BaseModel + `response_format`)
+
+### Problem
+
+`AgenticChunker._chunk_batch()` calls `LLMProvider.generate()` (plain text output) and manually
+extracts JSON from the free-form response. Three recurring failure patterns are observed in
+production logs:
+
+| Error | Root cause |
+|-------|-----------|
+| `Expecting value: line 1 column 1 (char 0)` | Model returned an **empty string** — happens with trivially short single-sentence sections |
+| `Expecting value: line 4 column 42 (char 98)` | **Truncated JSON** — model hit its generation token budget mid-response |
+| `Expecting ',' delimiter: line 9 column 28 (char 128)` | **Malformed JSON** — model produced almost-valid JSON with a missing comma |
+
+All three fall into the `except json.JSONDecodeError` branch and log at WARNING, triggering the
+"one chunk per section" fallback. The fallback is correct behaviour, but the WARNING level is
+misleading for single-section batches where "one chunk per section" is often the right answer.
+
+### Decision
+
+**Extend `LLMProvider` with `generate_structured[T: BaseModel]()` and override it in
+`OllamaProvider` to use `response_format: {"type": "json_object"}`.**
+
+This constrains the Ollama sampler to produce syntactically valid JSON at the token level —
+preventing empty, truncated, and malformed responses. The response is then validated and
+deserialized via `response_type.model_validate_json()`.
+
+Define `_ChunkBoundary(pydantic.BaseModel)` and `_ChunkBoundaryResponse(pydantic.BaseModel)`
+as private types in `chunker_agentic.py`. These serve as the schema contract between the prompt
+and the parser.
+
+**Call site in `_chunk_batch` becomes**:
+```python
+result = await llm.generate_structured(
+    prompt, _ChunkBoundaryResponse, system=_SYSTEM_PROMPT
+)
+boundary_set = {(e.section, e.start_sentence) for e in result.chunks}
+```
+
+No manual JSON extraction, no code fence stripping, no `{...}` boundary search.
+
+### Why not pydantic-ai `Agent`
+
+pydantic-ai's `Agent` class is a full multi-step orchestration layer that maintains its own
+provider registry, bypassing `LLMProvider` (Principle II violation). For a single structured
+call, the `Agent` brings unnecessary overhead. The schema definition and validation benefits of
+pydantic-ai are available directly through `pydantic.BaseModel` — pydantic-ai builds on pydantic
+and exposes the same `BaseModel` class. Keeping `generate_structured()` on `LLMProvider` means
+all providers can benefit: OpenAI also supports `response_format: {"type": "json_object"}`.
+
+### Why `json_object` and not `json_schema`
+
+Ollama supports `response_format: {"type": "json_object"}` from v0.1.14 (basic JSON mode) and
+`response_format: {"type": "json_schema", "json_schema": {...}}` from v0.5+ (full
+grammar-constrained output using the Pydantic schema). JSON object mode is chosen for maximum
+compatibility — the Pydantic model handles field-level validation after parsing, catching
+field-name or type mismatches even without grammar constraints.
+
+### Fallback behaviour (provider-level and call-level)
+
+| Scenario | Handling |
+|---------|---------|
+| `LLMProvider` subclass does not override `generate_structured()` | Default impl calls `generate()` and attempts `model_validate_json()` — same reliability as today, but all providers get the typed interface |
+| `generate_structured()` raises `pydantic.ValidationError` (field mismatch) | `_chunk_batch` catches, logs at **DEBUG** (not WARNING), returns `list(sections)` |
+| `generate_structured()` raises `ProviderUnavailableError` | Propagates unchanged — same as current behaviour |
+| Model returns `{"chunks": []}` (no splits needed) | Parsed successfully; `boundary_set` is empty; entire section becomes one chunk — **no log emitted**, which is correct |
+
+### Empty-response silent treatment
+
+The `char 0` failure currently logs a WARNING. With JSON mode enabled, the model cannot return
+an empty string — it must produce at least `{}`. If `{}` is returned (missing the `chunks` key),
+`model_validate_json()` raises `ValidationError` and the fallback fires at **DEBUG** level. This
+eliminates the spurious WARNING for trivially short sections.
+
+### Files changed
+
+- `packages/llm/llm/interface.py` — add `generate_structured[T: BaseModel]()` with default fallback
+- `packages/llm/llm/providers/ollama.py` — override `generate_structured()` with `response_format: json_object`
+- `packages/rag/rag/knowledge/chunker_agentic.py` — define `_ChunkBoundary`, `_ChunkBoundaryResponse`; replace manual parse block with `generate_structured()` call
+
+### Alternatives considered
+
+- **JSON repair (regex)**: treats the symptom; doesn't prevent the problem at generation time. Rejected.
+- **Retry with simpler prompt**: doubles latency for a problem solvable at the sampler level. Rejected.
+- **pydantic-ai `Agent`**: Principle II violation; bypasses `LLMProvider`. Rejected.
+- **`json_schema` mode**: stronger constraint but requires Ollama ≥ v0.5. Deferred — upgrade path is `OllamaProvider.generate_structured()` using `response_type.model_json_schema()` once version is pinned.
+
+---
+
 ## Decision 9 — Spec 007 Agentic-Chunker Baseline
 
 The required benchmark baseline for SC-003 and SC-004:
