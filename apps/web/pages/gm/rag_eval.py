@@ -196,14 +196,11 @@ def build_rag_eval_page(session_state: gr.State) -> None:
                 lines.append(f"| {kw} | {rank_str} |\n")
             lines.append("\n**Retrieved chunks:**\n")
             for i, chunk in enumerate(r.retrieved_chunks, start=1):
-                excerpt = chunk.text[:300].rstrip()
-                if len(chunk.text) > 300:
-                    excerpt += "…"
                 title_line = (
                     f"\n**{i}. {chunk.doc_title} — {chunk.headline}**"
                     f" *({chunk.topic})*\n"
                 )
-                lines.append(title_line + f"> {excerpt}\n")
+                lines.append(title_line + f"> {chunk.text}\n")
             return "".join(lines), row_idx
 
         # ── Wire events ───────────────────────────────────────────────────
