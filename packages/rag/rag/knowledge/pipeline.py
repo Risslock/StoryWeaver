@@ -13,17 +13,21 @@ import os
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select, update as sa_update
-
 from core.config import settings
 from core.errors import ProviderUnavailableError
 from core.models import KnowledgeDocument
+from sqlalchemy import select
+from sqlalchemy import update as sa_update
 from storage.sqlite.adapter import SQLiteBackend
 
 from rag.knowledge.embedder import get_embed_fn
 from rag.knowledge.enricher import ChunkEnricher
 from rag.knowledge.interface import ChunkEnrichment
-from rag.knowledge.vector_store import GLOBAL_COLLECTION, ChromaVectorStore, campaign_collection
+from rag.knowledge.vector_store import (
+    GLOBAL_COLLECTION,
+    ChromaVectorStore,
+    campaign_collection,
+)
 
 _log = logging.getLogger(__name__)
 _backend = SQLiteBackend(settings.database_url)
@@ -52,8 +56,14 @@ class IngestionPipeline:
         """
         await self._set_status(doc_id, "processing")
         try:
+            from rag.knowledge.chunker import create_chunker
+            _log.info(
+                "Ingestion started — chunking strategy: %s, doc_id: %s",
+                create_chunker().strategy_name,
+                doc_id,
+            )
             # Phase 1 — Extract: file → raw text chunks (all at once; needed for total count)
-            chunks = self._extract_chunks(file_path, format)
+            chunks = await self._extract_chunks(file_path, format)
             total = len(chunks)
             await self._set_status(doc_id, "processing", chunk_count=total, chunks_processed=0)
 
@@ -102,12 +112,12 @@ class IngestionPipeline:
 
     # ------------------------------------------------------------------ helpers
 
-    def _extract_chunks(self, file_path: str, format: str) -> list[str]:
+    async def _extract_chunks(self, file_path: str, format: str) -> list[str]:
         if format == "pdf":
             from rag.knowledge.ingestor import PdfIngestor
-            return PdfIngestor().ingest(file_path)
+            return await PdfIngestor().ingest_async(file_path)
         from rag.knowledge.ingestor import MarkdownIngestor
-        return MarkdownIngestor().ingest(file_path)
+        return await MarkdownIngestor().ingest_async(file_path)
 
     def _build_records(
         self,

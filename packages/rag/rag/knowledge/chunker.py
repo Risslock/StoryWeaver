@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
+import warnings
+from abc import ABC, abstractmethod
 
 _DEFAULT_MAX_TOKENS = 800
 _DEFAULT_OVERLAP_TOKENS = 50
@@ -13,18 +16,40 @@ _HEADING_RE = re.compile(r"^#{1,3} .+", re.MULTILINE)
 _TABLE_ROW_RE = re.compile(r"^\|.+\|", re.MULTILINE)
 
 
-def _estimate_tokens(text: str) -> int:
+def estimate_tokens(text: str) -> int:
     return max(1, len(text) // _APPROX_CHARS_PER_TOKEN)
 
 
+# Module-private alias kept for backward compatibility within this module.
+_estimate_tokens = estimate_tokens
+
+
 def _is_table_block(text: str) -> bool:
-    lines = [l for l in text.splitlines() if l.strip()]
+    lines = [ln for ln in text.splitlines() if ln.strip()]
     if len(lines) < 2:
         return False
-    return all(_TABLE_ROW_RE.match(l.strip()) for l in lines[:2])
+    return all(_TABLE_ROW_RE.match(ln.strip()) for ln in lines[:2])
 
 
-class MarkdownChunker:
+class BaseChunker(ABC):
+    """Abstract base for all chunking strategies."""
+
+    @property
+    @abstractmethod
+    def strategy_name(self) -> str:
+        """Return the strategy identifier (e.g. 'heading', 'semantic', 'agentic')."""
+
+    @abstractmethod
+    def chunk(self, text: str) -> list[str]:
+        """Synchronously split text into chunks. Must not return empty strings."""
+
+    async def async_chunk(self, text: str) -> list[str]:
+        """Asynchronously split text. Default: runs chunk() in a thread pool."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.chunk, text)
+
+
+class HeadingChunker(BaseChunker):
     """Split Markdown into semantically coherent chunks.
 
     Rules:
@@ -33,6 +58,10 @@ class MarkdownChunker:
     - Max chunk size capped at max_tokens (approximate, 4 chars ≈ 1 token).
     - Adjacent chunks overlap by overlap_tokens characters at chunk boundaries.
     """
+
+    @property
+    def strategy_name(self) -> str:
+        return "heading"
 
     def __init__(
         self,
@@ -59,6 +88,10 @@ class MarkdownChunker:
             raw_chunks.extend(self._enforce_max_size(seg))
 
         return self._apply_overlap(raw_chunks)
+
+    def split_by_headings(self, text: str) -> list[str]:
+        """Split text at ## and ### boundaries, keeping headings with their content."""
+        return self._split_by_headings(text)
 
     def _split_by_headings(self, text: str) -> list[str]:
         """Split text at ## and ### boundaries, keeping headings with their content."""
@@ -152,3 +185,46 @@ class MarkdownChunker:
             tail = chunks[i - 1][-self._overlap_chars :]
             result.append(tail.strip() + "\n\n" + chunks[i])
         return result
+
+
+class _MarkdownChunkerMeta(type):
+    def __call__(cls, *args: object, **kwargs: object) -> HeadingChunker:
+        warnings.warn(
+            "MarkdownChunker is deprecated and will be removed in a future release. "
+            "Use HeadingChunker instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return HeadingChunker(*args, **kwargs)  # type: ignore[arg-type]
+
+
+class MarkdownChunker(metaclass=_MarkdownChunkerMeta):
+    """Deprecated alias for HeadingChunker. Use HeadingChunker instead."""
+
+
+def create_chunker(
+    embed_fn: object = None,
+    llm_provider: object = None,
+) -> BaseChunker:
+    """Instantiate the chunker selected by KNOWLEDGE_CHUNKING_STRATEGY (default: 'heading').
+
+    Args:
+        embed_fn: Embedding function passed to SemanticChunker (fetched lazily if None).
+        llm_provider: LLM provider passed to AgenticChunker (fetched lazily if None).
+
+    Raises:
+        ValueError: If the env var is set to an unrecognised strategy name.
+    """
+    strategy = os.environ.get("KNOWLEDGE_CHUNKING_STRATEGY", "heading").strip().lower()
+    if strategy == "heading":
+        return HeadingChunker()
+    if strategy == "semantic":
+        from rag.knowledge.chunker_semantic import SemanticChunker
+        return SemanticChunker(embed_fn=embed_fn)
+    if strategy == "agentic":
+        from rag.knowledge.chunker_agentic import AgenticChunker
+        return AgenticChunker(llm_provider=llm_provider)
+    raise ValueError(
+        f"Unknown chunking strategy: {strategy!r}. "
+        "Valid values: 'heading', 'semantic', 'agentic'."
+    )

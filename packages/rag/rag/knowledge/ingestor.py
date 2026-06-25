@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Any
 
-from rag.knowledge.chunker import MarkdownChunker
+from rag.knowledge.chunker import BaseChunker, create_chunker
 
 
 class Ingestor(ABC):
@@ -29,12 +28,12 @@ class PdfIngestor(Ingestor):
     def __init__(
         self,
         image_captioner: Callable[[bytes], str] | None = None,
-        chunker: MarkdownChunker | None = None,
+        chunker: BaseChunker | None = None,
     ) -> None:
         self._captioner = image_captioner
-        self._chunker = chunker or MarkdownChunker()
+        self._chunker = chunker or create_chunker()
 
-    def ingest(self, file_path: str) -> list[str]:
+    def _convert_to_markdown(self, file_path: str) -> str:
         try:
             import pymupdf4llm  # type: ignore[import-untyped]
         except ImportError as exc:
@@ -48,7 +47,13 @@ class PdfIngestor(Ingestor):
         if self._captioner is not None:
             md_text = self._inline_image_captions(file_path, md_text)
 
-        return self._chunker.chunk(md_text)
+        return md_text
+
+    def ingest(self, file_path: str) -> list[str]:
+        return self._chunker.chunk(self._convert_to_markdown(file_path))
+
+    async def ingest_async(self, file_path: str) -> list[str]:
+        return await self._chunker.async_chunk(self._convert_to_markdown(file_path))
 
     def _inline_image_captions(self, file_path: str, md_text: str) -> str:
         """Insert image captions as Markdown paragraphs.
@@ -90,10 +95,18 @@ class MarkdownIngestor(Ingestor):
     No PDF conversion step — chunks go straight into the RAG pipeline.
     """
 
-    def __init__(self, chunker: MarkdownChunker | None = None) -> None:
-        self._chunker = chunker or MarkdownChunker()
+    def __init__(self, chunker: BaseChunker | None = None) -> None:
+        self._chunker = chunker or create_chunker()
 
     def ingest(self, file_path: str) -> list[str]:
+        content = self._read(file_path)
+        return self._chunker.chunk(content)
+
+    async def ingest_async(self, file_path: str) -> list[str]:
+        content = self._read(file_path)
+        return await self._chunker.async_chunk(content)
+
+    def _read(self, file_path: str) -> str:
         try:
             with open(file_path, encoding="utf-8") as f:
                 content = f.read()
@@ -103,4 +116,4 @@ class MarkdownIngestor(Ingestor):
         if not content.strip():
             raise ValueError(f"Markdown file '{file_path}' is empty or contains only whitespace.")
 
-        return self._chunker.chunk(content)
+        return content

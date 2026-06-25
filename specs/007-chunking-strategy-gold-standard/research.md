@@ -191,7 +191,7 @@ context-expansion follow-up spec.
 
 | Strategy | Mean MRR | Mean nDCG | Mean Recall@10 | Date |
 |----------|----------|-----------|----------------|------|
-| heading (baseline) | TBD | TBD | TBD | — |
+| heading (baseline) | 0.5046 | 0.5890 | 0.8674 | 2026-06-25 |
 | semantic | TBD | TBD | TBD | — |
 | agentic | TBD | TBD | TBD | — |
 
