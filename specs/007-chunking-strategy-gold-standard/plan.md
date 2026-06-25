@@ -137,9 +137,13 @@ See [data-model.md](data-model.md) and [contracts/chunker-strategy.md](contracts
 - Config: `KNOWLEDGE_SEMANTIC_BREAKPOINT_PERCENTILE` (default 95), `KNOWLEDGE_SEMANTIC_MIN_CHUNK_TOKENS` (default 50)
 
 **`chunker_agentic.py` (new)**:
-- `AgenticChunker(BaseChunker)`: heading split → per-section LLM call → parse split indices → reconstruct chunks
+- `AgenticChunker(BaseChunker)`: heading split → batched LLM call (N sections per call) → parse cross-section boundaries → reconstruct chunks
 - `chunk()` raises `NotImplementedError`; `async_chunk()` is the real entry point
 - `ProviderUnavailableError` on LLM failure — caught by pipeline, surfaced to UI
+- **Corrected batch design** (replaces per-section approach):
+  - `KNOWLEDGE_AGENTIC_BATCH_SECTIONS` (default 1) controls how many consecutive heading sections are packed into a single LLM call. Setting it to e.g. 3 reduces call count by 3× at the cost of larger prompts.
+  - The LLM receives a numbered list of sections and returns boundaries in 2D space: `{"chunks": [{"section": 0, "start_sentence": 0}, ...]}` where each entry is the start of a new chunk. This allows the LLM to **merge adjacent sections** (e.g., a short "Overview" followed by "Details") by not inserting a boundary between them, which is critical for RPG rulebooks where multi-section dynamics are the norm.
+  - On parse failure the entire batch is returned as one chunk per section (safe fallback, WARNING logged).
 
 **`ingestor.py` (modified)**:
 - Both ingestors: `chunker: BaseChunker | None = None`; default = `create_chunker()`

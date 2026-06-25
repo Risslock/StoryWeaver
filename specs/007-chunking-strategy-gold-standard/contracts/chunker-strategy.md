@@ -110,15 +110,26 @@ class AgenticChunker(BaseChunker):
     chunk() raises NotImplementedError — always call async_chunk().
     async_chunk() overrides BaseChunker default; calls llm_provider directly.
 
-    LLM prompt contract:
+    LLM prompt contract (multi-section batch):
         System: "You are a document chunker for a tabletop RPG knowledge base."
-        User: "Split the following section into self-contained propositions. Return a JSON
-               object: {\"splits\": [<sentence_index_int>, ...]} where each index starts a
-               new chunk. Do not include index 0 (the start is always a new chunk)."
-        Expected response: {"splits": [3, 7, 11]}  (sentence indices that begin new chunks)
+        User:   N sections are presented as numbered blocks [Section 0], [Section 1], ...
+                The LLM returns chunk start positions in 2D space:
+                {"chunks": [{"section": <int>, "start_sentence": <int>}, ...]}
+                Position (section=0, start_sentence=0) is implicit — do not include it.
+                Omitting a section's start merges it with the prior chunk (cross-section
+                merge), enabling adjacent RPG rulebook sections describing the same
+                mechanic to be kept together.
+        Expected response: {"chunks": [{"section": 0, "start_sentence": 3},
+                                       {"section": 1, "start_sentence": 0}]}
+        No splits needed:  {"chunks": []}
 
-    On LLM failure or unparseable response: raises ProviderUnavailableError (caught by
-    IngestionPipeline and surfaced as UI error per Principle VII).
+    KNOWLEDGE_AGENTIC_BATCH_SECTIONS controls how many consecutive heading sections are
+    packed into one LLM call (default 1). Higher values reduce call count at the cost of
+    larger prompts.
+
+    On parse failure: returns one chunk per section in the batch (WARNING logged).
+    On LLM failure (ProviderUnavailableError): propagates to IngestionPipeline,
+    surfaced as UI error per Principle VII.
     """
     strategy_name = "agentic"
 ```

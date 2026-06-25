@@ -15,11 +15,22 @@ _DEFAULT_MAX_TOKENS = 800
 _DEFAULT_BATCH_SECTIONS = 1
 
 _SYSTEM_PROMPT = "You are a document chunker for a tabletop RPG knowledge base."
-_USER_PROMPT_TEMPLATE = (
-    "Given the following section of a rulebook, identify where it should be split into "
-    "self-contained propositions. Return ONLY a JSON object with a single key 'splits' "
-    "containing a list of sentence indices (0-based) where new chunks should start. "
-    'If the section should not be split, return {{"splits": []}}.\n\nSection:\n{section}'
+
+# Multi-section prompt: the LLM sees N sections at once and decides both where to split
+# within sections and whether adjacent sections should be merged into a single chunk.
+# Returning no boundary between section k and section k+1 merges them — critical for RPG
+# rulebooks where two short adjacent sections often describe a single mechanic together.
+_BATCH_USER_PROMPT_TEMPLATE = (
+    "Given the following sections from a tabletop RPG rulebook, identify where new chunks "
+    "should begin. Sections that together describe a single mechanic or rule should be "
+    "merged — do not place a boundary between them. Return ONLY a JSON object with a "
+    "single key 'chunks' containing a list of chunk start positions. Each position is an "
+    "object with 'section' (0-based section index) and 'start_sentence' (0-based sentence "
+    "index within that section). Do not include position section=0 / start_sentence=0 — "
+    "the first chunk always starts there implicitly. If a section continues the prior "
+    "topic, omit its start position so it merges with the previous chunk. "
+    'If no splits are needed return {{"chunks": []}}.\n\n'
+    "{sections_text}"
 )
 
 
@@ -77,7 +88,12 @@ def _split_large(chunk: str, max_tokens: int) -> list[str]:
 
 
 class AgenticChunker(BaseChunker):
-    """Split Markdown using LLM proposition-boundary detection per heading section.
+    """Split Markdown using LLM proposition-boundary detection, batching N sections per call.
+
+    KNOWLEDGE_AGENTIC_BATCH_SECTIONS controls how many consecutive heading sections are
+    packed into a single LLM call. The LLM may merge adjacent sections into one chunk by
+    omitting a boundary between them — essential for RPG rulebooks where multi-section
+    sequences describe a single mechanic.
 
     chunk() raises NotImplementedError — always call async_chunk() instead.
     ProviderUnavailableError propagates on LLM failure.
@@ -119,62 +135,85 @@ class AgenticChunker(BaseChunker):
         llm = self._llm_provider or self._get_default_llm()
 
         all_chunks: list[str] = []
-        for idx, section in enumerate(sections):
+        batch_size = self._batch_sections
+        for batch_start in range(0, len(sections), batch_size):
+            batch = sections[batch_start : batch_start + batch_size]
             _log.debug(
-                "AgenticChunker section %d/%d (%d chars)",
-                idx + 1,
+                "AgenticChunker batch sections %d-%d/%d",
+                batch_start + 1,
+                batch_start + len(batch),
                 len(sections),
-                len(section),
             )
-            section_chunks = await self._chunk_section(llm, section)
-            all_chunks.extend(section_chunks)
+            batch_chunks = await self._chunk_batch(llm, batch)
+            all_chunks.extend(batch_chunks)
 
         final = _enforce_table_atomicity(all_chunks)
         return [c for c in final if c.strip()]
 
-    async def _chunk_section(self, llm: object, section: str) -> list[str]:
+    async def _chunk_batch(self, llm: object, sections: list[str]) -> list[str]:
+        """Send N sections to the LLM in one call and reconstruct chunks from 2D boundaries.
+
+        The LLM returns {"chunks": [{"section": i, "start_sentence": j}, ...]} where each
+        entry marks the start of a new chunk. Adjacent sections with no boundary between
+        them are concatenated into a single chunk (cross-section merge). On any parse
+        failure, one chunk per section is returned as a safe fallback.
+        """
         from core.errors import ProviderUnavailableError
 
-        sentences = _split_into_sentences(section)
-        if len(sentences) <= 1:
-            return [section] if section.strip() else []
+        if not sections:
+            return []
+
+        sections_sentences: list[list[str]] = [
+            _split_into_sentences(sec) or [sec] for sec in sections
+        ]
+        total_sentences = sum(len(s) for s in sections_sentences)
+        if total_sentences <= 1:
+            return [s for s in sections if s.strip()]
+
+        sections_text = "\n\n".join(
+            f"[Section {i}]\n{sec}" for i, sec in enumerate(sections)
+        )
+        prompt = _BATCH_USER_PROMPT_TEMPLATE.format(sections_text=sections_text)
 
         try:
             response: str = await llm.generate(  # type: ignore[union-attr]
-                prompt=_USER_PROMPT_TEMPLATE.format(section=section),
+                prompt=prompt,
                 system=_SYSTEM_PROMPT,
             )
         except ProviderUnavailableError:
             raise
         except Exception as exc:
-            _log.warning("LLM call failed for section (len=%d): %s", len(section), exc)
-            return [section]
+            _log.warning(
+                "LLM call failed for batch (sections=%d): %s — one chunk per section",
+                len(sections),
+                exc,
+            )
+            return list(sections)
 
         try:
             data = json.loads(response)
-            raw_splits = data.get("splits", [])
-            if not isinstance(raw_splits, list):
-                raise ValueError("splits is not a list")
-            split_indices: list[int] = [int(v) for v in raw_splits]
-        except (json.JSONDecodeError, ValueError, AttributeError, TypeError) as exc:
+            raw_entries = data.get("chunks", [])
+            if not isinstance(raw_entries, list):
+                raise ValueError("'chunks' is not a list")
+            boundary_set: set[tuple[int, int]] = {
+                (int(e["section"]), int(e["start_sentence"])) for e in raw_entries
+            }
+        except (json.JSONDecodeError, ValueError, AttributeError, TypeError, KeyError) as exc:
             _log.warning(
-                "Failed to parse LLM split response (len=%d): %s — using full section",
-                len(section),
+                "Failed to parse LLM batch response (sections=%d): %s — one chunk per section",
+                len(sections),
                 exc,
             )
-            return [section]
+            return list(sections)
 
-        if not split_indices:
-            return [section]
-
-        chunks: list[str] = []
-        split_set = set(split_indices)
         current: list[str] = []
-        for i, sent in enumerate(sentences):
-            if i in split_set and current:
-                chunks.append(" ".join(current))
-                current = []
-            current.append(sent)
+        chunks: list[str] = []
+        for sec_idx, sentences in enumerate(sections_sentences):
+            for sent_idx, sent in enumerate(sentences):
+                if (sec_idx, sent_idx) in boundary_set and current:
+                    chunks.append(" ".join(current))
+                    current = []
+                current.append(sent)
         if current:
             chunks.append(" ".join(current))
 
@@ -182,7 +221,7 @@ class AgenticChunker(BaseChunker):
         for chunk in chunks:
             expanded.extend(_split_large(chunk, self._max_tokens))
 
-        return expanded or [section]
+        return expanded or list(sections)
 
     def _get_default_llm(self) -> object:
         from core.config import settings

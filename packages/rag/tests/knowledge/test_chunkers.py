@@ -158,10 +158,24 @@ class TestSemanticChunker:
 
 
 class _StubLLMProvider:
-    """Returns a canned JSON response with a split at sentence index 2."""
+    """Returns a canned JSON response splitting section 0 at sentence index 2."""
 
     async def generate(self, prompt: str, system: str = "", **kwargs: object) -> str:
-        return '{"splits": [2]}'
+        return '{"chunks": [{"section": 0, "start_sentence": 2}]}'
+
+
+class _NoSplitBatchProvider:
+    """Returns no boundaries — all sections in the batch merge into one chunk."""
+
+    async def generate(self, prompt: str, system: str = "", **kwargs: object) -> str:
+        return '{"chunks": []}'
+
+
+class _Section1SplitProvider:
+    """Returns a boundary at section 1 sentence 0 — two chunks, no cross-section merge."""
+
+    async def generate(self, prompt: str, system: str = "", **kwargs: object) -> str:
+        return '{"chunks": [{"section": 1, "start_sentence": 0}]}'
 
 
 class _UnparsableLLMProvider:
@@ -248,3 +262,47 @@ class TestAgenticChunker:
             if "Difficulty Numbers" in chunk:
                 assert "DN" in chunk, "Heading and table must be in the same chunk"
                 break
+
+
+# ── AgenticChunker — batch behavior ───────────────────────────────────────────
+
+
+class TestAgenticChunkerBatch:
+    """Tests for batch_sections > 1 behavior: cross-section merging and fallback."""
+
+    _TWO_SECTION_TEXT = (
+        "## Overview\n\nCombat is turn-based. Each combatant acts in initiative order.\n\n"
+        "## Turn Order\n\nInitiative determines who acts first. Roll your Dexterity step."
+    )
+
+    def _get_chunker(self, llm_provider: object, batch_sections: int = 2) -> "Any":
+        from rag.knowledge.chunker_agentic import AgenticChunker
+        return AgenticChunker(llm_provider=llm_provider, batch_sections=batch_sections)
+
+    @pytest.mark.asyncio
+    async def test_no_boundary_merges_adjacent_sections(self) -> None:
+        """LLM returns no boundaries → both sections merge into a single chunk."""
+        chunker = self._get_chunker(_NoSplitBatchProvider(), batch_sections=2)
+        chunks = await chunker.async_chunk(self._TWO_SECTION_TEXT)
+        assert len(chunks) == 1, f"Expected 1 merged chunk, got {len(chunks)}: {chunks}"
+        assert "Overview" in chunks[0] or "Turn Order" in chunks[0]
+
+    @pytest.mark.asyncio
+    async def test_section_boundary_keeps_sections_separate(self) -> None:
+        """LLM returns boundary at section 1 sentence 0 → two separate chunks."""
+        chunker = self._get_chunker(_Section1SplitProvider(), batch_sections=2)
+        chunks = await chunker.async_chunk(self._TWO_SECTION_TEXT)
+        assert len(chunks) >= 2, f"Expected at least 2 chunks, got {len(chunks)}: {chunks}"
+
+    @pytest.mark.asyncio
+    async def test_parse_failure_returns_one_chunk_per_section(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """On unparseable LLM response for a batch of 2, fallback yields one chunk per section."""
+        chunker = self._get_chunker(_UnparsableLLMProvider(), batch_sections=2)
+        with caplog.at_level(logging.WARNING, logger="rag.knowledge.chunker_agentic"):
+            chunks = await chunker.async_chunk(self._TWO_SECTION_TEXT)
+        assert len(chunks) == 2, (
+            f"Batch fallback should yield one chunk per section, got {len(chunks)}"
+        )
+        assert any(r.levelno >= logging.WARNING for r in caplog.records)

@@ -208,3 +208,18 @@ Phase 8 (within):   T027 ∥ T028 ∥ T030
 - The `MarkdownChunker` alias (T003) must remain functional throughout this feature; it is removed in a future cleanup spec
 - The `benchmark_results.jsonl` file is gitignored (T001) — developers manually copy scores into `research.md`
 - `ingest()` sync paths (T005, T006) must not be removed — the existing unit tests in `packages/rag/tests/` use them directly
+
+---
+
+## Phase 9: Convergence — AgenticChunker Batch + Cross-Section Merge
+
+**Purpose**: Close the gap between the `KNOWLEDGE_AGENTIC_BATCH_SECTIONS` env-var contract and
+its actual effect. The field is stored but never read; this phase wires it up and adds the
+cross-section merging capability that makes it valuable for RPG rulebooks where adjacent
+sections frequently describe a single mechanic.
+
+- [X] T032 Fix `async_chunk()` in `packages/rag/rag/knowledge/chunker_agentic.py` to actually use `self._batch_sections` — replace the one-at-a-time `for idx, section in enumerate(sections)` loop with a grouping loop that collects consecutive sections into batches of `self._batch_sections` size and passes each batch to a new `_chunk_batch()` method; remove the now-unused `_chunk_section()` call per plan: corrected batch design (partial)
+- [X] T033 Implement `async def _chunk_batch(self, llm, sections: list[str]) -> list[str]` in `packages/rag/rag/knowledge/chunker_agentic.py` — replace `_chunk_section()` and `_USER_PROMPT_TEMPLATE`; new prompt presents sections as a numbered list (`[Section 0]\n...\n[Section 1]\n...`) and requests `{"chunks": [{"section": <int>, "start_sentence": <int>}, ...]}` where each entry marks the start of a new chunk; adjacent sections with no boundary entry between them are concatenated into a single chunk, enabling cross-section merging for RPG multi-section dynamics per plan: corrected batch design (missing)
+- [X] T034 In `_chunk_batch()`, implement safe fallback — on `json.JSONDecodeError`, missing `"chunks"` key, or any `ValueError` during reconstruction, log `WARNING` with batch size and section lengths and return one chunk per section in the batch (not one monolithic block); `ProviderUnavailableError` from the LLM MUST still propagate uncaught per existing contract per plan: corrected batch design (missing)
+- [X] T035 [P] Add `AgenticChunker` batch unit tests in `packages/rag/tests/knowledge/test_chunkers.py`: (a) `batch_sections=2`, stub LLM returns no boundary between section 0 and 1 → single merged chunk produced; (b) `batch_sections=2`, stub LLM places a boundary at `{"section": 1, "start_sentence": 0}` → two chunks; (c) stub LLM returns unparseable JSON for a batch of 2 sections → WARNING logged, 2 fallback chunks returned (one per section) per T020 (missing)
+- [X] T036 [P] Update `specs/007-chunking-strategy-gold-standard/contracts/chunker-strategy.md` LLM prompt contract section (lines ~113–119) to document the multi-section prompt format and `{"chunks": [{"section": int, "start_sentence": int}]}` response schema; remove the old `{"splits": [...]}` example per plan: corrected batch design (partial)
