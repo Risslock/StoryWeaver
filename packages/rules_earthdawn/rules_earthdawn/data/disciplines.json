@@ -1,0 +1,92 @@
+[
+  {
+    "name": "Air Sailor",
+    "tier": "novice",
+    "key_attributes": ["dex", "str", "per"],
+    "description": "Masters of airship travel and sky combat"
+  },
+  {
+    "name": "Archer",
+    "tier": "novice",
+    "key_attributes": ["dex", "per"],
+    "description": "Ranged combat specialists with exceptional precision"
+  },
+  {
+    "name": "Beastmaster",
+    "tier": "novice",
+    "key_attributes": ["per", "cha", "wil"],
+    "description": "Bonded with animals and nature, commanding beasts in battle"
+  },
+  {
+    "name": "Cavalryman",
+    "tier": "novice",
+    "key_attributes": ["str", "dex", "per"],
+    "description": "Elite mounted warriors bonded with their steeds"
+  },
+  {
+    "name": "Elementalist",
+    "tier": "novice",
+    "key_attributes": ["per", "wil"],
+    "description": "Spellcasters who channel the four primal elements"
+  },
+  {
+    "name": "Illusionist",
+    "tier": "novice",
+    "key_attributes": ["per", "cha"],
+    "description": "Weavers of mist and shadow who bend perception"
+  },
+  {
+    "name": "Nethermancer",
+    "tier": "novice",
+    "key_attributes": ["per", "wil"],
+    "description": "Scholars of death and undead lore"
+  },
+  {
+    "name": "Scout",
+    "tier": "novice",
+    "key_attributes": ["dex", "per"],
+    "description": "Stealthy wilderness experts and information gatherers"
+  },
+  {
+    "name": "Sky Raider",
+    "tier": "novice",
+    "key_attributes": ["str", "dex", "cha"],
+    "description": "Fierce aerial raiders who seek glory in battle"
+  },
+  {
+    "name": "Swordmaster",
+    "tier": "novice",
+    "key_attributes": ["dex", "str"],
+    "description": "Elegant melee fighters with masterful weapon technique"
+  },
+  {
+    "name": "Thief",
+    "tier": "novice",
+    "key_attributes": ["dex", "per", "cha"],
+    "description": "Cunning rogues skilled in larceny and deception"
+  },
+  {
+    "name": "Troubadour",
+    "tier": "novice",
+    "key_attributes": ["cha", "per"],
+    "description": "Performers whose art channels the magic of Name"
+  },
+  {
+    "name": "Warrior",
+    "tier": "novice",
+    "key_attributes": ["str", "tou"],
+    "description": "Stalwart frontline fighters forged in the fires of battle"
+  },
+  {
+    "name": "Weaponsmith",
+    "tier": "novice",
+    "key_attributes": ["str", "per"],
+    "description": "Artisans who imbue weapons with thread-magic"
+  },
+  {
+    "name": "Wizard",
+    "tier": "novice",
+    "key_attributes": ["per", "wil"],
+    "description": "Scholarly spellcasters who command the patterns of magic"
+  }
+]

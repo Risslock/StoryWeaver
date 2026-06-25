@@ -27,7 +27,8 @@ StoryWeaver helps players and gamemasters run richer tabletop RPG campaigns. Sta
 - **AI digital twins** — each character and NPC gets its own persistent agent with in-character memory
 - **Scene and portrait generation** via local (ComfyUI) or cloud (HuggingFace FLUX.1) image models
 - A **living story history** with role-scoped access (GMs see everything, players see public events)
-- A **Game Knowledge Q&A** system — ask natural-language questions about rules or campaign lore, get cited answers
+- A **Game Knowledge Q&A** system — ask natural-language questions about rules or campaign lore; cited sources surface in a collapsible accordion
+- A **GM-only RAG Evaluation tab** — upload a JSONL test file, run MRR/nDCG/Recall@k retrieval evaluation with live progress, and drill into per-question chunk details
 
 ### 2. An engineering portfolio
 
@@ -175,7 +176,7 @@ flowchart TD
         RRF["Reciprocal Rank Fusion\nRe-ranking across result sets"] -->
         FILTER["Access-Level Filtering\nGM sees all · Player sees public only"] -->
         SYNTH["LLM Answer Synthesis\nCited passages · source references"] -->
-        ANS["Answer + Citations\nRendered in Gradio chat"]
+        ANS["Answer + Sources accordion\nClean answer in chat · citations on demand"]
     end
 
     STORE_VEC --> GLOBAL & CAMPAIGN
@@ -295,6 +296,7 @@ StoryWeaver is an **unofficial, fan-made companion tool**. *Earthdawn* is a trad
 | M6 — Auth & Admin UI | ✅ Complete | GM registration/login, campaign dashboard, join codes, player rejoin |
 | M7 — Auth Reboot | ✅ Complete | Auth-first for all users, post-login hub, `user_id`-linked player records |
 | M8 — Game Knowledge Q&A | ✅ Complete | Two-tier RAG, PDF→Markdown ingestion, LLM enrichment, RRF ranking, access filtering |
+| M9 — RAG Evaluation & Q&A UX | ✅ Complete | GM-only evaluation tab (MRR/nDCG/Recall@k), live progress, drill-down detail; sources accordion in Q&A |
 
 ---
 
@@ -332,10 +334,12 @@ StoryWeaver/
 │       ├── pages/
 │       │   ├── auth.py             # Sign In / Create Account tabs
 │       │   ├── player/             # Player views: join, character, twin chat, history
-│       │   └── gm/                 # GM views: campaigns, NPCs, history, world notes, plans
+│       │   └── gm/                 # GM views: campaigns, NPCs, history, world notes, plans, RAG eval
 │       ├── services/
 │       │   ├── auth.py             # SHA-256 hashing, validate_user, register_user
-│       │   └── db.py               # SQLiteBackend singleton
+│       │   ├── db.py               # SQLiteBackend singleton
+│       │   ├── eval.py             # run_evaluation() — JSONL → retrieval metrics
+│       │   └── knowledge.py        # ask_question(), submit_document(), check_duplicate()
 │       └── components/             # Shared Gradio components
 ├── packages/
 │   ├── core/                       # Shared ORM models, Pydantic schemas, config, errors
@@ -360,6 +364,7 @@ StoryWeaver/
 ├── harness/                        # Deterministic agent/tool eval suites
 │   ├── scenarios/                  # YAML fixtures per tool/agent
 │   ├── scoring/                    # rubrics.py — composite 0–10 scoring
+│   ├── knowledge_qa/               # RAG retrieval metric tests (test_evaluator.py, test_eval_service.py)
 │   └── runner.py                   # Dispatch runner
 ├── tests/
 │   └── integration/                # pytest integration tests (per user story)
@@ -368,7 +373,8 @@ StoryWeaver/
 │   ├── 002-auth-admin-ui/
 │   ├── 003-demo-readiness-polish/
 │   ├── 004-auth-admin-reboot/
-│   └── 005-rag-qa-system/
+│   ├── 005-rag-qa-system/
+│   └── 006-rag-eval-qa-ux/
 ├── docs/adr/                       # Architecture Decision Records
 ├── deploy/
 │   ├── docker/                     # Dockerfile.web, Dockerfile.ollama
@@ -451,6 +457,9 @@ DATABASE_URL=sqlite+aiosqlite:///./data/storyweaver.db
 # DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/storyweaver
 
 MAX_TWIN_TURNS=20
+
+# Logging level (DEBUG surfaces RAG eval run start/end and per-question errors)
+LOG_LEVEL=INFO
 ```
 
 ---
@@ -490,6 +499,7 @@ uv run pyright
 - [x] M6 — Auth & campaign admin UI
 - [x] M7 — Auth-first for all users (no anonymous access)
 - [x] M8 — Game Knowledge Q&A (two-tier RAG, PDF ingestion, LLM enrichment, RRF)
+- [x] M9 — RAG Evaluation tab + Q&A sources accordion (MRR/nDCG/Recall@k, drill-down, GM-only)
 
 ### Planned
 - [ ] **System-agnostic core** — second rule system beyond Earthdawn

@@ -38,6 +38,7 @@ from pages.gm.npcs import build_npc_page
 from pages.gm.players import build_players_page
 from pages.gm.session_plan import build_session_plan_page
 from pages.gm.knowledge_qa import build_knowledge_qa_page as build_gm_knowledge_qa_page
+from pages.gm.rag_eval import build_rag_eval_page
 from pages.gm.world_notes import build_world_notes_page
 from pages.player.character import build_character_page
 from pages.player.history import build_player_history_page
@@ -136,6 +137,7 @@ def create_app() -> gr.Blocks:
                 build_session_plan_page(session_state)
                 build_players_page(session_state)
                 build_gm_knowledge_qa_page(session_state)
+                build_rag_eval_page(session_state)
 
         # ── Navigation ────────────────────────────────────────────────────────
         def _navigate(

@@ -88,6 +88,8 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
                     min_width=80,
                     elem_id="gm-knowledge-ask-btn",
                 )
+            with gr.Accordion("Show sources", open=False):
+                sources_md = gr.Markdown("", elem_id="gm-knowledge-sources")
 
         # ── Knowledge Base management ─────────────────────────────────────
         with gr.Group():
@@ -171,11 +173,11 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
             state: CampaignSession | None,
             history: list[dict[str, Any]],
             question: str,
-        ) -> tuple[list[dict[str, Any]], str]:
+        ) -> tuple[list[dict[str, Any]], str, str]:
             if state is None:
-                return history, question
+                return history, question, ""
             if not question.strip():
-                return history, ""
+                return history, "", ""
             try:
                 from services.knowledge import ask_question
                 answer, chunks = await ask_question(
@@ -193,26 +195,28 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
                     {"role": "user", "content": question.strip()},
                     {"role": "assistant", "content": msg},
                 ]
-                return history, ""
+                return history, "", ""
 
             if not chunks:
-                full = "I couldn't find relevant information for your question in the current knowledge base."
+                answer_text = "I couldn't find relevant information for your question in the current knowledge base."
+                citations_md = ""
             else:
-                citation_lines = ["\n\n**Sources:**"]
+                answer_text = answer
+                citation_lines = []
                 for c in chunks[:5]:
                     excerpt = c.text[:200].rstrip()
                     if len(c.text) > 200:
                         excerpt += "…"
                     citation_lines.append(
-                        f"\n> **{c.doc_title} — {c.headline}** *({c.topic})*\n> {excerpt}"
+                        f"> **{c.doc_title} — {c.headline}** *({c.topic})*\n> {excerpt}"
                     )
-                full = answer + "".join(citation_lines)
+                citations_md = "\n\n".join(citation_lines)
 
             history = list(history) + [
                 {"role": "user", "content": question.strip()},
-                {"role": "assistant", "content": full},
+                {"role": "assistant", "content": answer_text},
             ]
-            return history, ""
+            return history, "", citations_md
 
         # ── Event: file selected ──────────────────────────────────────────
 
@@ -317,12 +321,12 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
         ask_btn.click(
             on_ask,
             inputs=[session_state, chatbot, ask_input],
-            outputs=[chatbot, ask_input],
+            outputs=[chatbot, ask_input, sources_md],
         )
         ask_input.submit(
             on_ask,
             inputs=[session_state, chatbot, ask_input],
-            outputs=[chatbot, ask_input],
+            outputs=[chatbot, ask_input, sources_md],
         )
 
         file_upload.change(on_file_change, inputs=[file_upload], outputs=[upload_btn])
@@ -347,9 +351,9 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
         timer.tick(on_refresh, inputs=[session_state], outputs=[doc_table])
 
         session_state.change(
-            lambda s: ([], []),
+            lambda s: ([], [], ""),
             inputs=[session_state],
-            outputs=[chatbot, doc_table],
+            outputs=[chatbot, doc_table, sources_md],
         )
         session_state.change(
             on_refresh,

@@ -1,0 +1,41 @@
+{
+  "tiers": [
+    {
+      "name": "Novice",
+      "circles": [1, 2, 3, 4],
+      "description": "Newly awakened adepts mastering the foundations of their Discipline"
+    },
+    {
+      "name": "Journeyman",
+      "circles": [5, 6, 7, 8],
+      "description": "Experienced adepts who have proven themselves and expanded their abilities"
+    },
+    {
+      "name": "Warden",
+      "circles": [9, 10, 11, 12],
+      "description": "Powerful adepts who have mastered core talents and begun to shape the world"
+    },
+    {
+      "name": "Master",
+      "circles": [13, 14, 15],
+      "description": "Legendary adepts whose deeds and Names echo across generations"
+    }
+  ],
+  "circle_breakpoints": {
+    "1":  {"tier": "Novice",     "karma_modifier": 4,  "talents": 4},
+    "2":  {"tier": "Novice",     "karma_modifier": 4,  "talents": 5},
+    "3":  {"tier": "Novice",     "karma_modifier": 4,  "talents": 6},
+    "4":  {"tier": "Novice",     "karma_modifier": 4,  "talents": 7},
+    "5":  {"tier": "Journeyman", "karma_modifier": 5,  "talents": 8},
+    "6":  {"tier": "Journeyman", "karma_modifier": 5,  "talents": 9},
+    "7":  {"tier": "Journeyman", "karma_modifier": 5,  "talents": 10},
+    "8":  {"tier": "Journeyman", "karma_modifier": 5,  "talents": 11},
+    "9":  {"tier": "Warden",     "karma_modifier": 6,  "talents": 12},
+    "10": {"tier": "Warden",     "karma_modifier": 6,  "talents": 13},
+    "11": {"tier": "Warden",     "karma_modifier": 6,  "talents": 14},
+    "12": {"tier": "Warden",     "karma_modifier": 6,  "talents": 15},
+    "13": {"tier": "Master",     "karma_modifier": 7,  "talents": 16},
+    "14": {"tier": "Master",     "karma_modifier": 7,  "talents": 17},
+    "15": {"tier": "Master",     "karma_modifier": 7,  "talents": 18}
+  }
+}

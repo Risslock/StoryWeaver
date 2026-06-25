@@ -1,0 +1,34 @@
+[
+  {
+    "name": "Dwarf",
+    "description": "Compact and powerfully built, standing 4–4.5 feet tall with broad shoulders, dense muscle, and weathered skin ranging from tan to ruddy brown. Both males and females grow impressive beards. Their eyes are often dark and sharp, accustomed to underground work. Stalwart and resilient masters of craft and endurance, dwarfs are renowned engineers, miners, and merchants who prize skill, loyalty, and the keeping of oaths."
+  },
+  {
+    "name": "Elf",
+    "description": "Tall and willowy, standing 5.5–6.5 feet with angular features, slightly pointed ears, and luminous skin that can carry faint bioluminescent patterns in moonlight. Hair ranges from silver-white to deep auburn; eyes are often unusually colored — violet, amber, or pale blue. They move with an innate grace and rarely show visible aging. Touched by long memory and raw pattern-magic, elves are perceptive and disciplined, though sometimes perceived as aloof or inscrutable."
+  },
+  {
+    "name": "Human",
+    "description": "The most physically varied of the Namegivers, humans range from 5 to 6.5 feet tall with body types, skin tones, hair, and eye colors spanning every natural hue. They are distinguished not by unique physical traits but by sheer adaptability — human societies span every climate and culture across Barsaive. Their unmatched drive and resilience make them the most numerous of the Namegivers."
+  },
+  {
+    "name": "Obsidiman",
+    "description": "Massive beings of living stone, standing 7–8 feet tall and weighing over 600 pounds. Their bodies are composed of dense black or grey volcanic rock shot through with veins of crystal that glow faintly when they channel karma. Movement is deliberate and ground-shaking. Their faces are broad with deep-set eyes that burn like embers. Ancient and almost ageless, obsidimen commune with the deep-earth liferock they are born from, and feel its absence keenly when far from home."
+  },
+  {
+    "name": "Ork",
+    "description": "Powerfully muscled and standing 5.5–6.5 feet, orks have prominent lower tusks, broad flat noses, and rough greenish-grey to olive-tan skin. Their hair grows thick and coarse; eyes tend toward yellow, red, or dark brown. Orks mature rapidly and live short but intensely vivid lives, rarely exceeding 40 years. Fierce and passionate, they are natural warriors who prize personal strength, direct confrontation, and the bonds of their warclan."
+  },
+  {
+    "name": "T'skrang",
+    "description": "Lithe and quick-moving reptilian folk standing 5–6 feet tall, with sinuous prehensile tails nearly as long as their bodies. Scales range from vivid greens and blues to deep crimsons and purples, often with iridescent sheen. Their eyes are slit-pupiled and gold or amber. T'skrang express emotion through subtle tail movements and crest-fans around the neck. Born merchants, adventurers, and storytellers, they value flair, wit, and personal reputation above nearly all else."
+  },
+  {
+    "name": "Troll",
+    "description": "Enormous and intimidating, trolls stand 7.5–9 feet tall with thick limbs and a natural armor of bony crystalline growths called 'crystal spines' that protrude from shoulders, forearms, and spine. Skin ranges from blue-grey to dark slate. Faces are broad, heavy-browed, and crowned with curved horns. Despite their fearsome appearance, troll culture values honor, sky-clan loyalty, and the passing of oral traditions through song. They are among the most feared and respected warriors in Barsaive."
+  },
+  {
+    "name": "Windling",
+    "description": "Tiny winged Namegivers standing only 1–1.5 feet tall, with insect-like transparent wings, pointed ears, and vibrant skin tones often matching natural environments — bark-brown, leaf-green, flower-pink. Their features are delicate but expressive, and their eyes are large relative to their face, often shimmering with an astral glow. Windlings are naturally astral-sighted and can perceive magic others cannot. They are spirited, mischievous, and intensely curious — prone to grand adventures and passionate opinions."
+  }
+]

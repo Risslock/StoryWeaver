@@ -18,6 +18,7 @@ _backend = SQLiteBackend(settings.database_url)
 
 # ── Q&A ──────────────────────────────────────────────────────────────────────
 
+
 async def ask_question(
     question: str,
     campaign_id: uuid.UUID,
@@ -43,21 +44,33 @@ async def ask_question(
 
     context_parts = []
     for i, c in enumerate(chunks, 1):
-        context_parts.append(
-            f"[{i}] {c.doc_title} — {c.headline}\n{c.text}"
-        )
+        context_parts.append(f"[{i}] {c.doc_title} — {c.headline}\n{c.text}")
     context = "\n\n".join(context_parts)
 
-    system = (
-        "You are a knowledgeable assistant for a tabletop RPG game. "
-        "Answer the question using only the provided context. "
-        "If the context does not contain enough information, say so clearly. "
-        "Do not invent facts not present in the context."
-    )
+    system = """You are StoryWeaver's Earthdawn 4E rules reference assistant. Answer questions
+about the game's rules, races, disciplines, talents, magic, and lore — as a
+reference tool, not a character or GM.
+
+Each retrieved chunk has a `title` (topic), a `headline` (one-line summary, use
+for relevance only), and `body` (the source of truth). Answer ONLY from the
+body text. Never use outside knowledge of Earthdawn or other systems. If body
+and headline disagree, trust the body.
+
+Rules:
+- Reproduce numbers, dice expressions, and thresholds exactly from the body.
+- Don't merge facts across different entities (e.g. one race's stats onto
+  another).
+- Never invent page numbers, values, or rules not in the context.
+- If the context can't answer (fully or in part), say what's missing in one
+  line and set gap_detected — don't guess.
+  Respond with:
+- answer: the fact first, concise. Match the user's language.
+
+"""
     prompt = (
         f"Context from the knowledge base:\n\n{context}\n\n"
         f"Question: {question}\n\n"
-        "Provide a clear, concise answer based on the context above."
+        "Provide a clear, detailed answer based on the context above."
     )
 
     llm = OllamaProvider(model=llm_model)
@@ -66,6 +79,7 @@ async def ask_question(
 
 
 # ── Document management ───────────────────────────────────────────────────────
+
 
 async def list_documents(
     campaign_id: uuid.UUID,
@@ -131,7 +145,11 @@ async def submit_document(
         await db.refresh(doc)
         doc_id = doc.id
 
-    asyncio.create_task(_run_pipeline(str(doc_id), file_path, format, access_level_default, scope, campaign_id))
+    asyncio.create_task(
+        _run_pipeline(
+            str(doc_id), file_path, format, access_level_default, scope, campaign_id
+        )
+    )
     return doc
 
 
@@ -141,7 +159,9 @@ async def confirm_overwrite(
 ) -> None:
     """Delete existing chunks, reset status to processing, and re-ingest."""
     async with await _backend.get_session() as db:
-        result = await db.execute(select(KnowledgeDocument).where(KnowledgeDocument.id == doc_id))
+        result = await db.execute(
+            select(KnowledgeDocument).where(KnowledgeDocument.id == doc_id)
+        )
         doc = result.scalar_one_or_none()
         if doc is None:
             return
@@ -156,6 +176,7 @@ async def confirm_overwrite(
         await db.commit()
 
     from rag.knowledge.retriever import ChromaKnowledgeRetriever
+
     retriever = ChromaKnowledgeRetriever()
     try:
         await retriever.delete_chunks_by_doc(
@@ -166,7 +187,9 @@ async def confirm_overwrite(
     except ProviderUnavailableError:
         raise
 
-    asyncio.create_task(_run_pipeline(str(doc_id), file_path, fmt, access_default, scope, campaign_id))
+    asyncio.create_task(
+        _run_pipeline(str(doc_id), file_path, fmt, access_default, scope, campaign_id)
+    )
 
 
 async def _run_pipeline(
@@ -178,6 +201,7 @@ async def _run_pipeline(
     campaign_id: uuid.UUID | None,
 ) -> None:
     from rag.knowledge.pipeline import IngestionPipeline
+
     pipeline = IngestionPipeline()
     await pipeline.run(
         doc_id=doc_id,
