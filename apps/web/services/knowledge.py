@@ -208,15 +208,19 @@ async def _run_pipeline(
     campaign_id: uuid.UUID | None,
     source_type: str = "rulebook",
 ) -> None:
+    from rag.knowledge.interface import IngestionConfig
     from rag.knowledge.pipeline import IngestionPipeline
 
     pipeline = IngestionPipeline()
+    config = IngestionConfig(
+        source_type=source_type,  # type: ignore[arg-type]
+        access_level_default=access_level_default,
+    )
     await pipeline.run(
         doc_id=doc_id,
         file_path=file_path,
         format=format,
-        access_level_default=access_level_default,
         scope=scope,
         campaign_id=str(campaign_id).replace("-", "") if campaign_id else None,
-        source_type=source_type,
+        config=config,
     )

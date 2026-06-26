@@ -18,6 +18,17 @@ class Ingestor(ABC):
     def ingest(self, file_path: str) -> list[str]:
         """Return text chunks extracted from the file at file_path."""
 
+    async def extract_with_context(
+        self,
+        file_path: str,
+        config: object,
+    ) -> tuple[str, list[str]]:
+        """Return (full_cleaned_markdown_text, chunks).
+
+        Subclasses override this to expose the full text for breadcrumb extraction.
+        """
+        raise NotImplementedError
+
 
 class PdfIngestor(Ingestor):
     """Convert a PDF to Markdown via pymupdf4llm then chunk the result.
@@ -260,6 +271,55 @@ class PdfIngestor(Ingestor):
 
         return await self._chunker.async_chunk(text)
 
+    async def extract_with_context(
+        self,
+        file_path: str,
+        config: object,
+    ) -> tuple[str, list[str]]:
+        """Return (full_cleaned_markdown_text, chunks) for breadcrumb extraction."""
+        from rag.knowledge.interface import IngestionConfig
+        cfg: IngestionConfig = config  # type: ignore[assignment]
+        from rag.knowledge.cleaner import CorpusCleaner, PageText
+
+        multicolumn_count = 0
+        fitz_doc = None
+        if cfg.cleaning and cfg.source_type in ("rulebook", "supplement"):
+            try:
+                import fitz  # type: ignore[import-untyped]
+                fitz_doc = fitz.open(file_path)
+            except Exception:
+                fitz_doc = None
+
+        if fitz_doc is not None:
+            try:
+                import pymupdf4llm  # type: ignore[import-untyped]
+                page_chunks = pymupdf4llm.to_markdown(fitz_doc, page_chunks=True)
+            except Exception:
+                page_chunks = self._convert_to_markdown(file_path)
+            page_chunks, multicolumn_count = self._apply_multicolumn_from_doc(fitz_doc, page_chunks)
+        else:
+            page_chunks = self._convert_to_markdown(file_path)
+
+        if cfg.cleaning:
+            pages = [
+                PageText(page_num=c["metadata"].get("page_number", 1) - 1, text=c["text"])
+                for c in page_chunks
+            ]
+            doc_name = file_path.split("/")[-1].split("\\")[-1].rsplit(".", 1)[0]
+            cleaned = CorpusCleaner().clean_pages(
+                pages, cfg.source_type, doc_name=doc_name  # type: ignore[arg-type]
+            )
+            cleaned.report.multicolumn_pages_reconstructed = multicolumn_count
+            full_text = cleaned.text
+        else:
+            full_text = "\n\n".join(c["text"] for c in page_chunks)
+
+        if fitz_doc is not None:
+            fitz_doc.close()
+
+        chunks = await self._chunker.async_chunk(full_text)
+        return full_text, chunks
+
     def _apply_multicolumn(
         self,
         file_path: str,
@@ -394,6 +454,25 @@ class MarkdownIngestor(Ingestor):
             )
             content = cleaned.text
         return await self._chunker.async_chunk(content)
+
+    async def extract_with_context(
+        self,
+        file_path: str,
+        config: object,
+    ) -> tuple[str, list[str]]:
+        """Return (full_markdown_text, chunks) for breadcrumb extraction."""
+        from rag.knowledge.cleaner import CorpusCleaner
+        from rag.knowledge.interface import IngestionConfig
+        cfg: IngestionConfig = config  # type: ignore[assignment]
+        content = self._read(file_path)
+        if cfg.cleaning:
+            doc_name = file_path.split("/")[-1].split("\\")[-1].rsplit(".", 1)[0]
+            cleaned = CorpusCleaner().clean_text(
+                content, cfg.source_type, doc_name=doc_name  # type: ignore[arg-type]
+            )
+            content = cleaned.text
+        chunks = await self._chunker.async_chunk(content)
+        return content, chunks
 
     def _read(self, file_path: str) -> str:
         try:
