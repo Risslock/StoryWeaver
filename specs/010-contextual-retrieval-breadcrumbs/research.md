@@ -137,6 +137,143 @@ The document context uses `doc_title` + `breadcrumb` rather than the full docume
 
 ---
 
+## 8. Empirical Chunk Quality Analysis — ED4_Players_Guide Corpus
+
+**Date**: 2026-06-26 | **Collection**: `knowledge_global` | **Total chunks**: 1206 | **Source**: single PDF (`ED4_Players_Guide`), all `source_type=rulebook`
+
+### Length distribution
+
+| Range | Count | % |
+|---|---|---|
+| 0–100 chars | 5 | 0.4% |
+| 100–300 chars | 213 | 17.7% |
+| 300–1000 chars | 555 | 46.0% |
+| 1000–3000 chars | 388 | 32.2% |
+| 3000–10000 chars | 38 | 3.2% |
+| >10000 chars | 7 | 0.6% |
+| **avg** | **1032 chars** | max: 34066, min: 37 |
+
+### Problem categories (with concrete examples)
+
+**P1 — Encoding artifacts / mojibake** (pervasive, high severity)
+Windows-1252 → UTF-8 mismatch leaves `�` replacement characters throughout.
+```
+"Player�s Guide"   → Player's Guide
+"subtracts �2"     → subtracts −2 (minus sign)
+"T￼lanthyn"        → T'lanthyn (curly apostrophe)
+"adds +3 to his Attack�increasing"  → em-dash
+```
+Affects curly quotes, apostrophes, em-dashes, minus signs, and special characters everywhere.
+
+**P2 — Drop-cap OCR failures** (every chapter opening, high severity)
+PDF drop caps (oversized first letter in a separate text box) are extracted as isolated characters and dropped, breaking the first sentence of every chapter.
+```
+"nce, long ago, the land grew lush..."    → "Once, long ago..."
+"avon woke to the smell of smoke..."      → "Davon woke to..."
+"his chapter introduces you to..."        → "This chapter..."
+```
+
+**P3 — Giant unsplit chunks** (7 chunks > 10k chars, high severity)
+- chunk_index=9: **34,066 chars** — entire "TO THE SADDLE BORN" narrative chapter as one vector
+- chunk_index=1: **18,684 chars** — Credits + Kickstarter backer list
+- chunk_index=1203–1205: 12–13k chars — full A–Z book index tables
+These chunks are practically unembeddable as semantic units and will never match a player query.
+
+**P4 — TOC / Credits / Index pages not filtered** (high severity)
+Table of Contents (10k chars) contains only dot leaders `CREDITS ................................2`. Full index tables. Kickstarter backer name lists. These should be detected and skipped during ingestion. The LLM enricher labeled the TOC chunk "Introduction and Game Basics" — a hallucination caused by noisy input.
+
+**P5 — Stub/fragment chunks** (5 chunks < 100 chars, medium severity)
+```
+chunk_index=640: "265)."                                     (37 chars)
+chunk_index=107: "## **8."                                   (56 chars)
+chunk_index=546: "Everything has a pattern."                 (77 chars)
+```
+Orphaned cross-reference numbers, heading fragments, or single-sentence stubs from page-split overflow.
+
+**P6 — Mid-word / mid-sentence splits** (medium severity)
+Chunker split at a PDF hard line-wrap, then the broken line propagated as the breadcrumb.
+```
+breadcrumb: "animal husbandry and first aid. Beast-"
+text:       "masters may use half-magic when recognizing..."
+
+text: "**Novice Talent Options:** Acro-\nbatic Defense..."
+```
+
+**P7 — Image placeholder markup left in text** (medium severity)
+```
+"**==> picture [360 x 287] intentionally omitted <==**"
+"**----- Start of picture text -----**<br>Ulm wants to retrieve a key..."
+```
+The picture caption text (rendered alt-text inside the image box) also leaks through in some chunks.
+
+**P8 — Stranded page numbers** (medium severity)
+PDF page footer numbers appear as standalone lines inside chunks:
+```
+"...Tail Attack!\n\n66"
+"...warm place.\n\n14\n\n\n**==> picture ..."
+```
+
+**P9 — Broken table structure** (medium severity)
+Tables from multi-column PDF layouts have duplicated/misaligned headers:
+```
+"||||**Namegiver**|**Namegiver**|**Races**|**Summary**|**Summary**|||"
+"|---|---|---|---|---|---|---|---|---|---|"
+"|Dwarf|Dex|9|Str 10|Tou 12|Per 11|Wil 11|Cha 10|10|4|"
+```
+
+**P10 — Breadcrumb quality issues** (medium severity)
+- Decorative / meaningless: `ED4_Players_Guide > **K**` (cover art letter K)
+- Mid-sentence: `ED4_Players_Guide > animal husbandry and first aid. Beast-`
+- Bold/italic markers inside breadcrumb: `> _**Versatility**_`, `> **Important Attributes:** Charisma…`
+- Collision: 4+ chunks share `ED4_Players_Guide > INTRODUCTION` with no sub-heading differentiation
+- Every breadcrumb starts with `ED4_Players_Guide >` — first segment adds no retrieval discrimination within a single-doc corpus
+
+**P11 — LLM enricher hallucinations on garbage input** (compounding)
+When P1/P2/P4 produce noisy input, the enricher generates plausible-sounding but wrong metadata:
+```
+chunk_index=0  (OCR garbage: "a", "I I", "II", "III"...)
+  headline: "Session Preparation"
+  topic:    "gm_only/sessions/storylines"
+  access_level: player_visible  (should be filtered out entirely)
+```
+
+### Good chunk baseline (what correct output looks like)
+
+**chunk_index=97** (887 chars) — self-contained rule, clean boundaries:
+```
+breadcrumb: ED4_Players_Guide > _**Versatility**_
+headline:   Human Adepts and Versatility
+summary:    Human adepts can acquire talents from other Disciplines with Versatility, but may advance Circles slower.
+text:       [complete explanation of Versatility talent with cross-reference]
+```
+
+**chunk_index=14** (492 chars) — focused rule with example:
+```
+breadcrumb: ED4_Players_Guide > Bonuses and Penalties
+headline:   Bonuses and Penalties
+summary:    Explanation of how bonuses and penalties modify test results in Earthdawn.
+text:       [explains modifier to Step, includes worked example]
+```
+
+### Prioritised improvement areas for future specs
+
+| # | Area | Issue | Severity |
+|---|---|---|---|
+| 1 | **Cleaning** | Windows-1252 → UTF-8 encoding fix (re-extract or chardet) | High |
+| 2 | **Cleaning** | Drop-cap sentence-start repair (detect isolated uppercase chars at start of text blocks) | High |
+| 3 | **Chunking** | Filter / skip structural-noise pages: TOC, Credits, Index, backer lists | High |
+| 4 | **Chunking** | Giant narrative chapter re-split (detect > N tokens, force semantic re-chunk) | High |
+| 5 | **Cleaning** | Strip image placeholder markup (`==> picture … <==`, picture text fences) | Medium |
+| 6 | **Cleaning** | Strip stranded page-number lines (bare integer on its own line) | Medium |
+| 7 | **Chunking** | Merge stub chunks (< ~150 chars after breadcrumb) with next sibling | Medium |
+| 8 | **Chunking** | Detect + rejoin mid-word PDF line-wrap breaks (`Word-\nbreak` pattern) | Medium |
+| 9 | **Markdown extraction** | Normalise broken table headers from multi-column PDF layout | Medium |
+| 10 | **Breadcrumbs** | Strip bold/italic markdown from breadcrumb path segments | Low |
+| 11 | **Breadcrumbs** | Deduplicate colliding breadcrumbs (append sub-heading counter or paragraph index) | Medium |
+| 12 | **Retrieval** | Omit `doc_title` prefix from the embedded compound text when corpus is single-doc | Low |
+
+---
+
 ## 7. ChromaDB Metadata Field: `source_type`
 
 **Question**: `pipeline.py._build_records()` currently receives `source_type` via `run()` but does not write it into the ChromaDB metadata dict. Is this intentional?
