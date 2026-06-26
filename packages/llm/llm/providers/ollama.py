@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import logging
 from typing import TypeVar
 
 import httpx
@@ -9,7 +11,9 @@ from core.config import settings
 from core.errors import ProviderUnavailableError
 from pydantic import BaseModel
 
-from llm.interface import LLMProvider
+from llm.interface import LLMProvider, VisionLLMProvider
+
+_log = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -86,3 +90,47 @@ class OllamaProvider(LLMProvider):
                 return resp.status_code == 200
         except Exception:
             return False
+
+
+class OllamaVisionProvider(VisionLLMProvider):
+    """Ollama vision provider — uses POST /api/generate with base64-encoded images."""
+
+    def __init__(
+        self,
+        model: str,
+        base_url: str | None = None,
+        timeout_secs: int = 120,
+    ) -> None:
+        self._model = model
+        self._base_url = (base_url or settings.ollama_base_url).rstrip("/")
+        self._timeout_secs = timeout_secs
+
+    async def extract_page(self, image_bytes: bytes, prompt: str) -> str:
+        b64 = base64.b64encode(image_bytes).decode("ascii")
+        payload = {
+            "model": self._model,
+            "prompt": prompt,
+            "images": [b64],
+            "stream": False,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=float(self._timeout_secs)) as client:
+                response = await client.post(
+                    f"{self._base_url}/api/generate",
+                    json=payload,
+                )
+                response.raise_for_status()
+                data = response.json()
+                result = str(data.get("response", ""))
+                _log.debug("Vision extraction succeeded (model=%s, chars=%d)", self._model, len(result))
+                return result
+        except httpx.TimeoutException as exc:
+            _log.warning("Vision extraction timed out after %ds (model=%s)", self._timeout_secs, self._model)
+            raise RuntimeError(f"Vision extraction timed out after {self._timeout_secs}s") from exc
+        except httpx.HTTPStatusError as exc:
+            _log.error("Vision extraction HTTP %d (model=%s)", exc.response.status_code, self._model)
+            raise RuntimeError(
+                f"Ollama vision returned HTTP {exc.response.status_code}"
+            ) from exc
+        except httpx.ConnectError as exc:
+            raise RuntimeError(f"Cannot reach Ollama at {self._base_url}") from exc

@@ -103,6 +103,104 @@ async def run_gold_standard_benchmark(k: int = 10) -> EvalSummary:
     return summary
 
 
+def _load_benchmark_records(jsonl_path: str | None = None) -> list[dict]:
+    """Load all benchmark records from the JSONL file."""
+    path = Path(jsonl_path) if jsonl_path else BENCHMARK_RESULTS_PATH
+    if not path.exists():
+        return []
+    records: list[dict] = []
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if line:
+                records.append(json.loads(line))
+    return records
+
+
+def _resolve_selector(records: list[dict], selector: int | str) -> dict:
+    """Resolve a selector (integer index or timestamp prefix) to a benchmark record."""
+    if not records:
+        raise ValueError("No benchmark records found")
+    if isinstance(selector, int):
+        try:
+            return records[selector]
+        except IndexError:
+            available = [r.get("timestamp", "?") for r in records]
+            raise ValueError(
+                f"Selector {selector} out of range. Available records: {available}"
+            )
+    # String: match timestamp prefix
+    for record in records:
+        if record.get("timestamp", "").startswith(selector):
+            return record
+    available = [r.get("timestamp", "?") for r in records]
+    raise ValueError(
+        f"Selector '{selector}' did not match any record timestamp. Available records: {available}"
+    )
+
+
+def compare_benchmark_runs(
+    selector_a: int | str,
+    selector_b: int | str,
+    jsonl_path: str | None = None,
+) -> None:
+    """Print a per-category diff table comparing two benchmark runs.
+
+    Selectors can be integer indices (negative supported) or timestamp prefix strings.
+    """
+    records = _load_benchmark_records(jsonl_path)
+    rec_a = _resolve_selector(records, selector_a)
+    rec_b = _resolve_selector(records, selector_b)
+
+    cats_a: dict = rec_a.get("category_scores", {})
+    cats_b: dict = rec_b.get("category_scores", {})
+    all_cats = sorted(set(cats_a) | set(cats_b))
+
+    def _fmt(val: object) -> str:
+        return f"{val:.4f}" if isinstance(val, float | int) else "N/A"
+
+    def _delta(a: object, b: object) -> str:
+        if not isinstance(a, float | int) or not isinstance(b, float | int):
+            return "N/A"
+        d = b - a
+        return f"+{d:.4f}" if d >= 0 else f"{d:.4f}"
+
+    header = (
+        f"{'Category':<16} {'MRR-A':>7} {'MRR-B':>7} {'ΔMRR':>8}"
+        f" {'nDCG-A':>7} {'nDCG-B':>7} {'ΔnDCG':>8}"
+        f" {'Rcl-A':>7} {'Rcl-B':>7} {'ΔRecall':>8}"
+    )
+    separator = "-" * len(header)
+    print(f"\nRun A: {rec_a.get('timestamp', '?')}  |  Run B: {rec_b.get('timestamp', '?')}")
+    print(separator)
+    print(header)
+    print(separator)
+
+    def _row(label: str, a_scores: dict, b_scores: dict) -> None:
+        mrr_a = a_scores.get("mean_mrr", "N/A")
+        mrr_b = b_scores.get("mean_mrr", "N/A")
+        ndcg_a = a_scores.get("mean_ndcg", "N/A")
+        ndcg_b = b_scores.get("mean_ndcg", "N/A")
+        rcl_a = a_scores.get("mean_recall_at_k", "N/A")
+        rcl_b = b_scores.get("mean_recall_at_k", "N/A")
+        print(
+            f"{label:<16} {_fmt(mrr_a):>7} {_fmt(mrr_b):>7} {_delta(mrr_a, mrr_b):>8}"
+            f" {_fmt(ndcg_a):>7} {_fmt(ndcg_b):>7} {_delta(ndcg_a, ndcg_b):>8}"
+            f" {_fmt(rcl_a):>7} {_fmt(rcl_b):>7} {_delta(rcl_a, rcl_b):>8}"
+        )
+
+    for cat in all_cats:
+        _row(cat, cats_a.get(cat, {}), cats_b.get(cat, {}))
+
+    print(separator)
+    _row(
+        "global",
+        {"mean_mrr": rec_a.get("mean_mrr"), "mean_ndcg": rec_a.get("mean_ndcg"), "mean_recall_at_k": rec_a.get("mean_recall_at_k")},
+        {"mean_mrr": rec_b.get("mean_mrr"), "mean_ndcg": rec_b.get("mean_ndcg"), "mean_recall_at_k": rec_b.get("mean_recall_at_k")},
+    )
+    print(separator)
+
+
 @pytest.mark.asyncio
 async def test_gold_standard_recall_sanity() -> None:
     """Sanity gate: Recall@10 must be ≥ 0.40 (corpus populated, retriever working)."""

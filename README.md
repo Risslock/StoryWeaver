@@ -195,6 +195,8 @@ flowchart TD
 - **Multi-query expansion**: the user's question is rewritten into 3 alternative phrasings to improve recall across different terminology.
 - **Reciprocal Rank Fusion**: merges results from multiple queries into a single ranked list without requiring score normalization.
 - **Access-level filtering**: enforced at retrieval time, not just UI level — player queries never surface GM-only chunks.
+- **Dual extraction paths**: `extraction_mode="text"` (default) uses pymupdf4llm with corpus cleaning rules for encoding repair, drop-cap rejoining, image-placeholder stripping, and structural noise detection. `extraction_mode="vision"` renders each PDF page at 144 DPI and passes it to a local Ollama vision model (set `KNOWLEDGE_VISION_MODEL`). Switching extraction mode requires full re-ingestion; `extraction_mode` is stored per-chunk in metadata.
+- **Quality gate**: after chunking, stubs < `KNOWLEDGE_MIN_CHUNK_CHARS` (default 150) are merged into adjacent chunks, and giants > `KNOWLEDGE_MAX_CHUNK_CHARS` (default 15 000) are re-split. This runs on both text and vision paths.
 
 ---
 
@@ -463,6 +465,19 @@ MAX_TWIN_TURNS=20
 # Agentic chunker: sections below this prose fraction are merged into the preceding section
 # so stat blocks retain entity context (race name + attributes in the same chunk)
 KNOWLEDGE_AGENTIC_PROSE_THRESHOLD=0.3
+
+# Extraction mode: "text" (default, pymupdf4llm) or "vision" (local Ollama vision model).
+# Changing this requires a full re-ingestion — existing chunks retain their original extraction_mode.
+# KNOWLEDGE_EXTRACTION_MODE=text
+
+# Vision extraction (only used when extraction_mode="vision"):
+KNOWLEDGE_VISION_MODEL=minicpm-v            # required when using vision path
+KNOWLEDGE_VISION_TIMEOUT_SECS=120          # per-page HTTP timeout
+KNOWLEDGE_VISION_MAX_RETRIES=1             # retry attempts before IngestionAbortError
+
+# Quality gate (chunk size bounds, applied after chunking):
+KNOWLEDGE_MIN_CHUNK_CHARS=150              # stubs below this are merged into adjacent chunk
+KNOWLEDGE_MAX_CHUNK_CHARS=15000            # giants above this are re-split via the active chunker
 
 # Logging level (DEBUG surfaces RAG eval run start/end and per-question errors)
 LOG_LEVEL=INFO

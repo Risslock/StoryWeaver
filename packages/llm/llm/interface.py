@@ -37,3 +37,18 @@ class LLMProvider(ABC):
         """
         raw = await self.generate(prompt=prompt, system=system)
         return response_type.model_validate_json(raw)
+
+
+class VisionLLMProvider(ABC):
+    """ABC for vision-capable LLM adapters that extract text from page images."""
+
+    @abstractmethod
+    async def extract_page(self, image_bytes: bytes, prompt: str) -> str:
+        """Extract text from a rendered page image.
+
+        Returns:
+            Markdown string (never None; may be empty if the page has no text).
+
+        Raises:
+            RuntimeError: on provider call failure (HTTP error, timeout, bad response).
+        """

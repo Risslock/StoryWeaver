@@ -90,8 +90,8 @@ Returns `response_json["response"]`.
 |-----------|-----------|
 | HTTP status != 200 | Raise `RuntimeError(f"Vision model returned {status}: {body[:200]}")` |
 | Request timeout | Raise `RuntimeError(f"Vision model timed out after {timeout_secs}s")` |
-| `response` field missing | Raise `RuntimeError("Vision model response missing 'response' field")` |
-| `response` is empty string | Return `""` (caller handles fallback) |
+| `response` field missing | Return `""` (treated same as empty response; caller retries) |
+| `response` is empty string | Return `""` (caller retries up to KNOWLEDGE_VISION_MAX_RETRIES times) |
 
 ### Logging
 
@@ -111,13 +111,17 @@ All log calls use the module-level logger `_log = logging.getLogger(__name__)`.
 # In IngestionPipeline._extract() when config.extraction_mode == "vision":
 vision_model = os.getenv("KNOWLEDGE_VISION_MODEL")
 if not vision_model:
-    _log.warning("KNOWLEDGE_VISION_MODEL not set; falling back to text extraction")
-    return text_ingestor.extract(file_path, config)
+    raise IngestionAbortError(
+        "KNOWLEDGE_VISION_MODEL env var is required for extraction_mode='vision' but is not set"
+    )
 
-provider = OllamaVisionProvider(model=vision_model)
+timeout_secs = int(os.getenv("KNOWLEDGE_VISION_TIMEOUT_SECS", "120"))
+provider = OllamaVisionProvider(model=vision_model, timeout_secs=timeout_secs)
 ingestor = VisionPdfIngestor(vision_provider=provider)
 return await ingestor.extract(file_path, config)
 ```
+
+> **Note**: The `KNOWLEDGE_VISION_MODEL` guard lives in `IngestionPipeline._extract()` (pipeline.py), not inside `VisionPdfIngestor`. This keeps the ingestor pure — it only accepts an already-configured provider.
 
 ---
 
