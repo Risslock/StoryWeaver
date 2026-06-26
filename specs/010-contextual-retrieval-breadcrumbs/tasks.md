@@ -170,3 +170,11 @@ Task: T017 (prompt constants) in parallel with reviewing T016 output
 - Re-ingestion is required to observe US2/US3 effects on retrieval quality
 - Do not add test tasks â€” the spec does not request TDD; the existing harness in `harness/knowledge_qa/` serves as the acceptance test suite
 
+---
+
+## Phase 7: Convergence
+
+- [ ] T023 Move `import logging` and `_log = logging.getLogger(__name__)` to module level in `packages/rag/rag/knowledge/enricher.py` — currently both are declared inside `generate_contextual_summaries()` at lines 237–238; hoist them to the top of the file alongside the other module-level constants per Constitution VIII (partial)
+- [ ] T024 Update `spec.md` FR-012 and US4/AC3 to reflect the deliberate plan decision recorded in `research.md §6` and `contracts/retriever.md` — that `source_type` is stored as chunk metadata only and retrieval-time filtering is handled in the LLM/prompt layer, not via a `where` clause on `search()`; the current spec text says “MUST support optional filtering” which contradicts the accepted plan decision per FR-012, US4/AC3 (partial)
+- [ ] T025 Fix `Ingestor.extract_with_context()` ABC signature in `packages/rag/rag/knowledge/ingestor.py` — change `config: object` to `config: IngestionConfig` using a `TYPE_CHECKING`-guarded import (`from __future__ import annotations` at top of file + `if TYPE_CHECKING: from rag.knowledge.interface import IngestionConfig`) so the abstract method matches the contract in `contracts/ingestion-pipeline.md` without introducing a runtime circular import (partial)
+
