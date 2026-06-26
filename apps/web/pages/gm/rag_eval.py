@@ -255,11 +255,26 @@ def _results_to_rows(results: list[RetrievalEvalResult]) -> list[list]:  # type:
 
 
 def _format_summary(summary: EvalSummary) -> str:
-    return (
-        f"### Aggregate Summary\n\n"
-        f"| Metric | Score |\n|---|---|\n"
+    lines = [
+        "### Aggregate Summary\n\n"
+        "| Metric | Score |\n|---|---|\n"
         f"| Mean MRR | {summary.mean_mrr:.4f} |\n"
         f"| Mean nDCG | {summary.mean_ndcg:.4f} |\n"
         f"| Mean Recall@{summary.k} | {summary.mean_recall_at_k:.4f} |\n"
         f"| Questions | {summary.total_questions} |\n"
-    )
+    ]
+
+    if summary.category_scores:
+        lines.append(
+            "\n### Per-Category Results\n\n"
+            "| Category | Questions | MRR | nDCG | Recall@"
+            + str(summary.k)
+            + " |\n|---|---|---|---|---|\n"
+        )
+        for cat, m in summary.category_scores.items():
+            lines.append(
+                f"| {cat} | {m.question_count} |"
+                f" {m.mean_mrr:.4f} | {m.mean_ndcg:.4f} | {m.mean_recall_at_k:.4f} |\n"
+            )
+
+    return "".join(lines)
