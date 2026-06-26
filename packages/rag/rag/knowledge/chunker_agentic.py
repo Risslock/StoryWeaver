@@ -54,6 +54,20 @@ def _is_heading_line(line: str) -> bool:
     return line.strip().startswith("#")
 
 
+def _prose_ratio(section: str) -> float:
+    """Return fraction of content lines (non-heading, non-table) with ≥8 tokens."""
+    prose = 0
+    total = 0
+    for line in section.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or stripped.startswith("|"):
+            continue
+        total += 1
+        if len(stripped.split()) >= 8:
+            prose += 1
+    return prose / total if total > 0 else 0.0
+
+
 def _split_into_sentences(text: str) -> list[str]:
     """Split text into sentence units for proposition indexing."""
     import re
@@ -121,6 +135,7 @@ class AgenticChunker(BaseChunker):
         max_tokens: int | None = None,
         batch_sections: int | None = None,
         skip_tokens: int | None = None,
+        prose_threshold: float | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._max_tokens = max_tokens or int(
@@ -132,6 +147,30 @@ class AgenticChunker(BaseChunker):
         self._skip_tokens = skip_tokens or int(
             os.environ.get("KNOWLEDGE_AGENTIC_SKIP_TOKENS", str(_DEFAULT_AGENTIC_SKIP_TOKENS))
         )
+        self._prose_threshold = prose_threshold or float(
+            os.environ.get("KNOWLEDGE_AGENTIC_PROSE_THRESHOLD", "0.3")
+        )
+
+    def _merge_appendage_sections(self, sections: list[str]) -> list[str]:
+        result: list[str] = []
+        for section in sections:
+            ratio = _prose_ratio(section)
+            is_appendage = ratio < self._prose_threshold
+            if is_appendage and result:
+                merged = result[-1] + "\n\n" + section
+                if _estimate_tokens(merged) <= self._max_tokens * 4:
+                    first_line = section.splitlines()[0][:80] if section.strip() else ""
+                    _log.info(
+                        "[agentic-chunker] Merged appendage section into preceding (prose ratio: %.0f%%, first: '%s')",
+                        ratio * 100,
+                        first_line,
+                    )
+                    result[-1] = merged
+                    continue
+                else:
+                    _log.info("[agentic-chunker] Skipping merge — size cap would be exceeded")
+            result.append(section)
+        return result
 
     def chunk(self, text: str) -> list[str]:
         raise NotImplementedError(
@@ -147,6 +186,7 @@ class AgenticChunker(BaseChunker):
         sections = heading_chunker.split_by_headings(text)
         if not sections:
             sections = [text]
+        sections = self._merge_appendage_sections(sections)
 
         llm = self._llm_provider or self._get_default_llm()
 

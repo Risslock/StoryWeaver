@@ -190,6 +190,7 @@ flowchart TD
 **Key engineering choices in this pipeline:**
 
 - **Two-tier collections**: rulebooks are indexed once (`knowledge_global`) and shared across all campaigns — no per-campaign re-ingestion cost.
+- **Appendage section merging**: before LLM batching, the agentic chunker detects stat-block sections (prose density < `KNOWLEDGE_AGENTIC_PROSE_THRESHOLD`, default 30%) and merges them into the preceding section. This ensures retrieved chunks for attribute values (DEX, STR, Movement Rate) always contain the entity name, not just the numbers. No heading-name configuration required — works across any book structure.
 - **LLM enrichment with Pydantic-AI**: every chunk gets structured metadata (headline, summary, topic, access level) validated via a Pydantic model before storage.
 - **Multi-query expansion**: the user's question is rewritten into 3 alternative phrasings to improve recall across different terminology.
 - **Reciprocal Rank Fusion**: merges results from multiple queries into a single ranked list without requiring score normalization.
@@ -457,6 +458,10 @@ DATABASE_URL=sqlite+aiosqlite:///./data/storyweaver.db
 # DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/storyweaver
 
 MAX_TWIN_TURNS=20
+
+# Agentic chunker: sections below this prose fraction are merged into the preceding section
+# so stat blocks retain entity context (race name + attributes in the same chunk)
+KNOWLEDGE_AGENTIC_PROSE_THRESHOLD=0.3
 
 # Logging level (DEBUG surfaces RAG eval run start/end and per-question errors)
 LOG_LEVEL=INFO

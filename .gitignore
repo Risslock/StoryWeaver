@@ -85,8 +85,6 @@ outputs/
 # Harness eval results are transient; scored reports go here
 harness/results/
 harness/outputs/
-# Benchmark run history — append-only; developers copy scores to research.md manually
-harness/knowledge_qa/benchmark_results.jsonl
 
 # --- Docker local overrides ---------------------------------------------------
 # deploy/compose/ base files are committed; personal overrides are not
