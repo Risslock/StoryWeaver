@@ -298,6 +298,7 @@ StoryWeaver is an **unofficial, fan-made companion tool**. *Earthdawn* is a trad
 | M7 — Auth Reboot | ✅ Complete | Auth-first for all users, post-login hub, `user_id`-linked player records |
 | M8 — Game Knowledge Q&A | ✅ Complete | Two-tier RAG, PDF→Markdown ingestion, LLM enrichment, RRF ranking, access filtering |
 | M9 — RAG Evaluation & Q&A UX | ✅ Complete | GM-only evaluation tab (MRR/nDCG/Recall@k), live progress, drill-down detail; sources accordion in Q&A |
+| M10 — Contextual retrieval & breadcrumbs | ✅ Complete | Per-category benchmark output (direct_fact/comparison/holistic/numeric/relationship); breadcrumb-enriched chunks (heading path prefixed to every chunk); opt-in contextual LLM summaries per chunk; `source_type` metadata tag on every stored chunk; `IngestionConfig` as the unified ingestion API. **Note**: enabling breadcrumbs or contextual summaries on an existing index requires full re-ingestion. |
 
 ---
 
@@ -505,6 +506,7 @@ uv run pyright
 - [x] M7 — Auth-first for all users (no anonymous access)
 - [x] M8 — Game Knowledge Q&A (two-tier RAG, PDF ingestion, LLM enrichment, RRF)
 - [x] M9 — RAG Evaluation tab + Q&A sources accordion (MRR/nDCG/Recall@k, drill-down, GM-only)
+- [x] M10 — Contextual retrieval & breadcrumbs (per-category benchmarking, breadcrumb injection, opt-in contextual summaries, `source_type` metadata, `IngestionConfig` API)
 
 ### Planned
 - [ ] **System-agnostic core** — second rule system beyond Earthdawn

@@ -141,6 +141,8 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
                     scope=str(meta.get("scope", "")),
                     text=str(meta.get("original_text", doc)),
                     rrf_score=rrf_scores[chunk_id],
+                    breadcrumb=str(meta.get("breadcrumb", "")),
+                    source_type=str(meta.get("source_type", "rulebook")),
                 )
             )
 

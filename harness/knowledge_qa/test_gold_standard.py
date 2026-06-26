@@ -65,10 +65,29 @@ async def run_gold_standard_benchmark(k: int = 10) -> EvalSummary:
 
     summary = aggregate_results(eval_results)
 
+    print("\n=== Per-Category Results ===")
+    print(f"{'Category':<16}{'Questions':<11}{'MRR':<8}{'nDCG':<8}{'Recall@' + str(k)}")
+    for cat, metrics in summary.category_scores.items():
+        print(
+            f"{cat:<16}{metrics.question_count:<11}"
+            f"{metrics.mean_mrr:<8.3f}{metrics.mean_ndcg:<8.3f}{metrics.mean_recall_at_k:.3f}"
+        )
+    print("=== Global ===")
+    print(
+        f"Total: {summary.total_questions}   "
+        f"MRR: {summary.mean_mrr:.3f}   "
+        f"nDCG: {summary.mean_ndcg:.3f}   "
+        f"Recall@{k}: {summary.mean_recall_at_k:.3f}"
+    )
+
     strategy = create_chunker().strategy_name
+    category_scores_serialized = {
+        cat: metrics.model_dump()
+        for cat, metrics in summary.category_scores.items()
+    }
     record = {
         "strategy": strategy,
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
         "gold_standard_path": GOLD_STANDARD_PATH,
         "k": k,
         "total_questions": summary.total_questions,
@@ -76,6 +95,7 @@ async def run_gold_standard_benchmark(k: int = 10) -> EvalSummary:
         "mean_ndcg": summary.mean_ndcg,
         "mean_recall_at_k": summary.mean_recall_at_k,
         "notes": "",
+        "category_scores": category_scores_serialized,
     }
     with open(BENCHMARK_RESULTS_PATH, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(record) + "\n")

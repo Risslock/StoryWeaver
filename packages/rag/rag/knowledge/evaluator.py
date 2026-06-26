@@ -11,6 +11,15 @@ from rag.knowledge.test_questions import TestQuestion
 
 # ── Result models ─────────────────────────────────────────────────────────────
 
+_STANDARD_CATEGORIES = ("direct_fact", "comparison", "holistic", "numeric", "relationship")
+
+
+class CategoryMetrics(BaseModel):
+    mean_mrr: float
+    mean_ndcg: float
+    mean_recall_at_k: float
+    question_count: int
+
 
 class RetrievalEvalResult(BaseModel):
     question: str
@@ -33,6 +42,7 @@ class EvalSummary(BaseModel):
     mean_recall_at_k: float
     total_questions: int
     k: int
+    category_scores: dict[str, CategoryMetrics] = {}
 
 
 # ── Metric functions ──────────────────────────────────────────────────────────
@@ -135,10 +145,45 @@ def aggregate_results(results: list[RetrievalEvalResult]) -> EvalSummary:
             k=0,
         )
     n = len(results)
+
+    grouped: dict[str, list[RetrievalEvalResult]] = {}
+    for r in results:
+        cat = r.category.strip() if r.category else "uncategorized"
+        if not cat:
+            cat = "uncategorized"
+        grouped.setdefault(cat, []).append(r)
+
+    category_scores: dict[str, CategoryMetrics] = {}
+    for cat in _STANDARD_CATEGORIES:
+        group = grouped.get(cat, [])
+        if group:
+            gn = len(group)
+            category_scores[cat] = CategoryMetrics(
+                mean_mrr=sum(r.mrr for r in group) / gn,
+                mean_ndcg=sum(r.ndcg for r in group) / gn,
+                mean_recall_at_k=sum(r.recall_at_k for r in group) / gn,
+                question_count=gn,
+            )
+        else:
+            category_scores[cat] = CategoryMetrics(
+                mean_mrr=0.0, mean_ndcg=0.0, mean_recall_at_k=0.0, question_count=0
+            )
+
+    uncategorized = grouped.get("uncategorized", [])
+    if uncategorized:
+        gn = len(uncategorized)
+        category_scores["uncategorized"] = CategoryMetrics(
+            mean_mrr=sum(r.mrr for r in uncategorized) / gn,
+            mean_ndcg=sum(r.ndcg for r in uncategorized) / gn,
+            mean_recall_at_k=sum(r.recall_at_k for r in uncategorized) / gn,
+            question_count=gn,
+        )
+
     return EvalSummary(
         mean_mrr=sum(r.mrr for r in results) / n,
         mean_ndcg=sum(r.ndcg for r in results) / n,
         mean_recall_at_k=sum(r.recall_at_k for r in results) / n,
         total_questions=n,
         k=results[0].k,
+        category_scores=category_scores,
     )

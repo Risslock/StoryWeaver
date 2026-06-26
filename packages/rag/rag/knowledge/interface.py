@@ -9,6 +9,19 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+@dataclass
+class IngestionConfig:
+    """All preprocessing options for a single ingestion run.
+
+    Add new ingestion-time options here — never as extra kwargs on pipeline.run().
+    """
+    source_type: Literal["rulebook", "supplement", "handwritten_note", "novel"] = "rulebook"
+    access_level_default: str | None = None
+    enable_breadcrumbs: bool = True
+    enable_contextual_summaries: bool = False
+    cleaning: bool = True
+
+
 class ChunkEnrichment(BaseModel):
     headline: str
     summary: str
@@ -42,6 +55,8 @@ class KnowledgeChunk:
     scope: str
     text: str
     rrf_score: float
+    breadcrumb: str = ""
+    source_type: str = "rulebook"
 
 
 class KnowledgeRetriever(ABC):

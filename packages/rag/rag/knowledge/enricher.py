@@ -119,6 +119,21 @@ Return ONLY a JSON object with one key: "alternatives" — a list of exactly 3 s
 
 Question: {question}"""
 
+_CONTEXTUAL_SUMMARY_SYSTEM = (
+    "You are a retrieval assistant. Your task is to write a one or two sentence description "
+    "that situates a text passage within its source document, for the purpose of improving "
+    "search retrieval. Be factual and concise. Do not repeat the passage text verbatim."
+)
+
+_CONTEXTUAL_SUMMARY_PROMPT = """\
+Document: {doc_title}
+Section: {breadcrumb}
+
+Passage:
+{chunk_text}
+
+Write one or two sentences situating this passage within the document for search retrieval."""
+
 _ENRICH_FALLBACK = ChunkEnrichment(
     headline="Untitled section",
     summary="",
@@ -211,6 +226,40 @@ class ChunkEnricher:
             return result.alternatives[:3]
         except (ValidationError, ValueError, ProviderUnavailableError):
             return []
+
+    async def generate_contextual_summaries(
+        self,
+        texts: list[str],
+        breadcrumbs: list[str],
+        doc_title: str,
+    ) -> list[str]:
+        """Return a 1-2 sentence retrieval context per chunk; falls back to "" on any failure."""
+        import logging
+        _log = logging.getLogger(__name__)
+        results: list[str] = []
+        for text, breadcrumb in zip(texts, breadcrumbs, strict=False):
+            prompt = _CONTEXTUAL_SUMMARY_PROMPT.format(
+                doc_title=doc_title,
+                breadcrumb=breadcrumb or doc_title,
+                chunk_text=text,
+            )
+            try:
+                summary = await self._llm.generate(prompt, system=_CONTEXTUAL_SUMMARY_SYSTEM)
+                _log.info(
+                    "contextual_summary=ok breadcrumb=%r doc=%r",
+                    breadcrumb or doc_title,
+                    doc_title,
+                )
+                results.append(summary.strip())
+            except Exception as exc:
+                _log.warning(
+                    "contextual_summary=fail breadcrumb=%r doc=%r error=%s",
+                    breadcrumb or doc_title,
+                    doc_title,
+                    exc,
+                )
+                results.append("")
+        return results
 
     # ── Private helpers ────────────────────────────────────────────────────────
 
