@@ -15,8 +15,8 @@
 
 **Purpose**: Add environment variable configuration for the new threshold.
 
-- [ ] T001 Add `KNOWLEDGE_AGENTIC_PROSE_THRESHOLD=0.3` to `.env` with comment explaining that sections below this prose ratio are merged into the preceding section
-- [ ] T002 [P] Add `KNOWLEDGE_AGENTIC_PROSE_THRESHOLD=0.3` to `.env.example` with the same comment
+- [X] T001 Add `KNOWLEDGE_AGENTIC_PROSE_THRESHOLD=0.3` to `.env` with comment explaining that sections below this prose ratio are merged into the preceding section
+- [X] T002 [P] Add `KNOWLEDGE_AGENTIC_PROSE_THRESHOLD=0.3` to `.env.example` with the same comment
 
 ---
 
@@ -26,7 +26,7 @@
 
 **⚠️ CRITICAL**: T003 must be complete before Phase 3 can begin.
 
-- [ ] T003 Add module-level pure function `_prose_ratio(section: str) -> float` to `packages/rag/rag/knowledge/chunker_agentic.py` — splits section into lines, filters out heading lines (starting with `#`) and table rows (starting with `|`), counts lines with ≥8 whitespace-separated tokens as prose, returns `prose / total_content` or `0.0` when no content lines exist
+- [X] T003 Add module-level pure function `_prose_ratio(section: str) -> float` to `packages/rag/rag/knowledge/chunker_agentic.py` — splits section into lines, filters out heading lines (starting with `#`) and table rows (starting with `|`), counts lines with ≥8 whitespace-separated tokens as prose, returns `prose / total_content` or `0.0` when no content lines exist
 
 **Checkpoint**: `_prose_ratio` is callable and returns a float for any string input.
 
@@ -40,19 +40,19 @@
 
 ### Implementation
 
-- [ ] T004 [US1] Add `prose_threshold: float | None = None` parameter to `AgenticChunker.__init__()` and store as `self._prose_threshold = prose_threshold or float(os.environ.get("KNOWLEDGE_AGENTIC_PROSE_THRESHOLD", "0.3"))` in `packages/rag/rag/knowledge/chunker_agentic.py`
-- [ ] T005 [US1] Implement `_merge_appendage_sections(self, sections: list[str]) -> list[str]` in `packages/rag/rag/knowledge/chunker_agentic.py` — iterates sections in order; classifies each as appendage when `_prose_ratio(section) < self._prose_threshold` or section has no content lines; merges into preceding section when combined token count ≤ `self._max_tokens * 4`; emits standalone when size cap would be exceeded; logs each merge at INFO with prose ratio and first line (truncated to 80 chars); logs cap-exceeded skip at INFO
-- [ ] T006 [US1] Insert `sections = self._merge_appendage_sections(sections)` in `async_chunk()` immediately after the `if not sections: sections = [text]` guard and before the fast-path/LLM batch loop in `packages/rag/rag/knowledge/chunker_agentic.py`
+- [X] T004 [US1] Add `prose_threshold: float | None = None` parameter to `AgenticChunker.__init__()` and store as `self._prose_threshold = prose_threshold or float(os.environ.get("KNOWLEDGE_AGENTIC_PROSE_THRESHOLD", "0.3"))` in `packages/rag/rag/knowledge/chunker_agentic.py`
+- [X] T005 [US1] Implement `_merge_appendage_sections(self, sections: list[str]) -> list[str]` in `packages/rag/rag/knowledge/chunker_agentic.py` — iterates sections in order; classifies each as appendage when `_prose_ratio(section) < self._prose_threshold` or section has no content lines; merges into preceding section when combined token count ≤ `self._max_tokens * 4`; emits standalone when size cap would be exceeded; logs each merge at INFO with prose ratio and first line (truncated to 80 chars); logs cap-exceeded skip at INFO
+- [X] T006 [US1] Insert `sections = self._merge_appendage_sections(sections)` in `async_chunk()` immediately after the `if not sections: sections = [text]` guard and before the fast-path/LLM batch loop in `packages/rag/rag/knowledge/chunker_agentic.py`
 
 ### Tests for User Story 1
 
-- [ ] T007 [P] [US1] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: `_prose_ratio()` returns 0.0 for a section where all content lines have ≤7 words (e.g. `"## Game Information\nDEX: 11\nSTR: 10\nMovement Rate: 12"`)
-- [ ] T008 [P] [US1] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: `_prose_ratio()` returns a value ≥ 0.5 for a section containing multiple full prose sentences (≥8 words each)
-- [ ] T009 [P] [US1] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: heading-only section (heading line + no content below) is classified as appendage (prose ratio treated as 0.0)
-- [ ] T010 [P] [US1] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: table rows (`| DEX | 11 |`) are excluded from both prose count and denominator so a section of only table rows has prose ratio 0.0
-- [ ] T011 [US1] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: `_merge_appendage_sections()` merges a low-prose stat block section into the preceding prose-heavy race description; the merged result contains both the race name and an attribute keyword
-- [ ] T012 [US1] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: when the first section in the list is an appendage (no preceding section), it is emitted as-is rather than dropped
-- [ ] T013 [US1] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: when merging an appendage would exceed `max_tokens * 4`, the appendage is emitted as a standalone section and the preceding section is unchanged
+- [X] T007 [P] [US1] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: `_prose_ratio()` returns 0.0 for a section where all content lines have ≤7 words (e.g. `"## Game Information\nDEX: 11\nSTR: 10\nMovement Rate: 12"`)
+- [X] T008 [P] [US1] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: `_prose_ratio()` returns a value ≥ 0.5 for a section containing multiple full prose sentences (≥8 words each)
+- [X] T009 [P] [US1] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: heading-only section (heading line + no content below) is classified as appendage (prose ratio treated as 0.0)
+- [X] T010 [P] [US1] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: table rows (`| DEX | 11 |`) are excluded from both prose count and denominator so a section of only table rows has prose ratio 0.0
+- [X] T011 [US1] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: `_merge_appendage_sections()` merges a low-prose stat block section into the preceding prose-heavy race description; the merged result contains both the race name and an attribute keyword
+- [X] T012 [US1] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: when the first section in the list is an appendage (no preceding section), it is emitted as-is rather than dropped
+- [X] T013 [US1] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: when merging an appendage would exceed `max_tokens * 4`, the appendage is emitted as a standalone section and the preceding section is unchanged
 
 **Checkpoint**: `pytest packages/rag/tests/knowledge/test_chunker_agentic.py -k "prose_ratio or merge or appendage or size_cap"` passes. A race description + stat block pair produces a single merged chunk in `async_chunk()` output.
 
@@ -66,9 +66,9 @@
 
 ### Tests for User Story 2
 
-- [ ] T014 [P] [US2] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: a section headed `## Creature Statistics` with only short attribute lines is classified as appendage and merged — verifies no heading-name dependency
-- [ ] T015 [P] [US2] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: a section headed `## Racial Abilities` containing multiple full prose sentences (≥8 words each) is NOT merged — prose ratio is above threshold
-- [ ] T016 [US2] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: two consecutive appendage sections following a single prose section are both merged into the growing preceding section (provided size cap is not hit), preserving all attribute data with the parent context
+- [X] T014 [P] [US2] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: a section headed `## Creature Statistics` with only short attribute lines is classified as appendage and merged — verifies no heading-name dependency
+- [X] T015 [P] [US2] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: a section headed `## Racial Abilities` containing multiple full prose sentences (≥8 words each) is NOT merged — prose ratio is above threshold
+- [X] T016 [US2] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: two consecutive appendage sections following a single prose section are both merged into the growing preceding section (provided size cap is not hit), preserving all attribute data with the parent context
 
 **Checkpoint**: `pytest packages/rag/tests/knowledge/test_chunker_agentic.py -k "generali or book or racial or consecutive"` passes. No heading names appear as string literals in `_merge_appendage_sections()` or `_prose_ratio()`.
 
@@ -82,9 +82,9 @@
 
 ### Tests for User Story 3
 
-- [ ] T017 [P] [US3] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: `AgenticChunker(prose_threshold=0.5)` merges a section with 40% prose lines (prose ratio 0.4 < 0.5)
-- [ ] T018 [P] [US3] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: `AgenticChunker(prose_threshold=0.1)` does NOT merge the same section with 40% prose lines (prose ratio 0.4 > 0.1)
-- [ ] T019 [US3] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: instantiating `AgenticChunker()` with no arguments and no env var set results in `self._prose_threshold == 0.3`
+- [X] T017 [P] [US3] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: `AgenticChunker(prose_threshold=0.5)` merges a section with 40% prose lines (prose ratio 0.4 < 0.5)
+- [X] T018 [P] [US3] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: `AgenticChunker(prose_threshold=0.1)` does NOT merge the same section with 40% prose lines (prose ratio 0.4 > 0.1)
+- [X] T019 [US3] Write unit test in `packages/rag/tests/knowledge/test_chunker_agentic.py`: instantiating `AgenticChunker()` with no arguments and no env var set results in `self._prose_threshold == 0.3`
 
 **Checkpoint**: `pytest packages/rag/tests/knowledge/test_chunker_agentic.py -k "threshold or env"` passes. Threshold change requires no code edit.
 
@@ -94,10 +94,10 @@
 
 **Purpose**: Lint, type safety, and end-to-end validation.
 
-- [ ] T020 Run `pytest packages/rag/tests/knowledge/test_chunker_agentic.py -v` and confirm all tests pass (including existing tests unrelated to this feature)
-- [ ] T021 [P] Run `ruff check packages/rag/rag/knowledge/chunker_agentic.py` and resolve any lint issues
-- [ ] T022 [P] Run `pyright packages/rag/rag/knowledge/chunker_agentic.py` and resolve any type errors (`_prose_ratio` return type, `_merge_appendage_sections` parameter/return types)
-- [ ] T023 Validate quickstart scenarios 1 and 2 from `specs/009-appendage-section-merge/quickstart.md` (unit-level runs)
+- [X] T020 Run `pytest packages/rag/tests/knowledge/test_chunker_agentic.py -v` and confirm all tests pass (including existing tests unrelated to this feature)
+- [X] T021 [P] Run `ruff check packages/rag/rag/knowledge/chunker_agentic.py` and resolve any lint issues
+- [X] T022 [P] Run `pyright packages/rag/rag/knowledge/chunker_agentic.py` and resolve any type errors (`_prose_ratio` return type, `_merge_appendage_sections` parameter/return types)
+- [X] T023 Validate quickstart scenarios 1 and 2 from `specs/009-appendage-section-merge/quickstart.md` (unit-level runs)
 
 ---
 

@@ -38,7 +38,7 @@ A GM ingests a second Earthdawn sourcebook with different heading structures (e.
 
 1. **Given** a section whose heading name does not appear in any configured list, **When** its content is less than 30% prose lines, **Then** it is merged with the preceding section.
 2. **Given** a section with a heading like "Racial Abilities" that contains full prose sentences describing an ability, **When** processed, **Then** it is NOT merged (prose density is above the threshold).
-3. **Given** a heading-only section (heading present, no content below it), **When** processed, **Then** it is always merged with the preceding section.
+3. **Given** a heading-only section (heading present, no content below it), **When** processed, **Then** it is treated as an appendage and merged with the preceding section when one exists; it is emitted as-is when it is the first section in the document.
 
 ---
 
