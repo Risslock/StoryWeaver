@@ -47,6 +47,7 @@ class IngestionPipeline:
         access_level_default: str | None,
         scope: str,
         campaign_id: str | None,
+        source_type: str = "rulebook",
     ) -> None:
         """Run the pipeline and persist status to SQLite throughout.
 
@@ -63,7 +64,7 @@ class IngestionPipeline:
                 doc_id,
             )
             # Phase 1 — Extract: file → raw text chunks (all at once; needed for total count)
-            chunks = await self._extract_chunks(file_path, format)
+            chunks = await self._extract_chunks(file_path, format, source_type)
             total = len(chunks)
             await self._set_status(doc_id, "processing", chunk_count=total, chunks_processed=0)
 
@@ -112,12 +113,14 @@ class IngestionPipeline:
 
     # ------------------------------------------------------------------ helpers
 
-    async def _extract_chunks(self, file_path: str, format: str) -> list[str]:
+    async def _extract_chunks(self, file_path: str, format: str, source_type: str = "rulebook") -> list[str]:
+        import os
+        cleaning = os.environ.get("KNOWLEDGE_CLEANING_ENABLED", "true").lower() != "false"
         if format == "pdf":
             from rag.knowledge.ingestor import PdfIngestor
-            return await PdfIngestor().ingest_async(file_path)
+            return await PdfIngestor().ingest_async(file_path, source_type=source_type, cleaning=cleaning)
         from rag.knowledge.ingestor import MarkdownIngestor
-        return await MarkdownIngestor().ingest_async(file_path)
+        return await MarkdownIngestor().ingest_async(file_path, source_type=source_type, cleaning=cleaning)
 
     def _build_records(
         self,

@@ -51,6 +51,7 @@ def _docs_to_rows(docs: list[KnowledgeDocument]) -> list[list[str]]:
             d.title,
             d.format.upper(),
             d.scope,
+            getattr(d, "source_type", "rulebook"),
             _format_status(d),
             str(d.chunk_count) if d.chunk_count is not None else "—",
             d.created_at.strftime("%Y-%m-%d %H:%M") if d.created_at else "—",
@@ -114,6 +115,12 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
                         label="Access default",
                         elem_id="gm-knowledge-access",
                     )
+                    source_type_dd = gr.Dropdown(
+                        choices=["rulebook", "supplement", "novel", "handwritten"],
+                        value="rulebook",
+                        label="Source type",
+                        elem_id="gm-knowledge-source-type",
+                    )
                 upload_btn = gr.Button(
                     "Upload & Ingest",
                     variant="secondary",
@@ -138,8 +145,8 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
 
             gr.Markdown("#### Ingested Documents")
             doc_table = gr.Dataframe(
-                headers=["Title", "Format", "Scope", "Status", "Chunks", "Uploaded"],
-                datatype=["str", "str", "str", "str", "str", "str"],
+                headers=["Title", "Format", "Scope", "Source", "Status", "Chunks", "Uploaded"],
+                datatype=["str", "str", "str", "str", "str", "str", "str"],
                 value=[],
                 interactive=False,
                 elem_id="gm-knowledge-doc-table",
@@ -238,6 +245,7 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
             f: Any,
             scope_val: str,
             access_val: str,
+            source_type_val: str,
         ) -> tuple[str, Any, Any, Any, Any]:
             hidden_row = gr.update(visible=False)
             if state is None:
@@ -266,7 +274,10 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
                         gr.update(visible=True),
                         gr.update(),
                         gr.update(),
-                        (file_path, filename, title, scope, campaign_id_for_doc, access_default, fmt),
+                        (
+                            file_path, filename, title, scope,
+                            campaign_id_for_doc, access_default, fmt, source_type_val,
+                        ),
                     )
 
                 await submit_document(
@@ -277,6 +288,7 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
                     campaign_id=campaign_id_for_doc,
                     access_level_default=access_default,
                     format=fmt,
+                    source_type=source_type_val,
                 )
                 return "⏳ Ingestion started. Document will appear in the table below.", hidden_row, gr.update(), gr.update(), None
             except Exception as exc:
@@ -288,12 +300,12 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
         ) -> tuple[str, Any]:
             if pf is None or state is None:
                 return "Nothing to confirm.", gr.update(visible=False)
-            file_path, filename, title, scope, campaign_id_for_doc, access_default, fmt = pf
+            file_path, filename, title, scope, campaign_id_for_doc, access_default, fmt, source_type_val = pf  # noqa: E501
             try:
                 from services.knowledge import check_duplicate, confirm_overwrite, submit_document
                 existing = await check_duplicate(title, scope, campaign_id_for_doc)
                 if existing is not None:
-                    await confirm_overwrite(existing.id, file_path)
+                    await confirm_overwrite(existing.id, file_path, source_type=source_type_val)
                 else:
                     await submit_document(
                         file_path=file_path,
@@ -303,6 +315,7 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
                         campaign_id=campaign_id_for_doc,
                         access_level_default=access_default,
                         format=fmt,
+                        source_type=source_type_val,
                     )
                 return "⏳ Re-ingestion started.", gr.update(visible=False)
             except Exception as exc:
@@ -334,7 +347,7 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
 
         upload_btn.click(
             on_upload,
-            inputs=[session_state, file_upload, scope_dd, access_dd],
+            inputs=[session_state, file_upload, scope_dd, access_dd, source_type_dd],
             outputs=[upload_status, overwrite_row, confirm_btn, cancel_btn, pending_file],
         )
         confirm_btn.click(
