@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
+from typing import cast
+
+from pydantic import BaseModel, ValidationError
 
 from rag.knowledge.chunker import BaseChunker, HeadingChunker
 from rag.knowledge.chunker import estimate_tokens as _estimate_tokens
@@ -12,7 +14,8 @@ from rag.knowledge.chunker import estimate_tokens as _estimate_tokens
 _log = logging.getLogger(__name__)
 
 _DEFAULT_MAX_TOKENS = 800
-_DEFAULT_BATCH_SECTIONS = 1
+_DEFAULT_BATCH_SECTIONS = 3
+_DEFAULT_AGENTIC_SKIP_TOKENS = 400
 
 _SYSTEM_PROMPT = "You are a document chunker for a tabletop RPG knowledge base."
 
@@ -32,6 +35,15 @@ _BATCH_USER_PROMPT_TEMPLATE = (
     'If no splits are needed return {{"chunks": []}}.\n\n'
     "{sections_text}"
 )
+
+
+class _ChunkBoundary(BaseModel):
+    section: int
+    start_sentence: int
+
+
+class _ChunkBoundaryResponse(BaseModel):
+    chunks: list[_ChunkBoundary]
 
 
 def _is_table_line(line: str) -> bool:
@@ -108,6 +120,7 @@ class AgenticChunker(BaseChunker):
         llm_provider: object = None,
         max_tokens: int | None = None,
         batch_sections: int | None = None,
+        skip_tokens: int | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._max_tokens = max_tokens or int(
@@ -115,6 +128,9 @@ class AgenticChunker(BaseChunker):
         )
         self._batch_sections = batch_sections or int(
             os.environ.get("KNOWLEDGE_AGENTIC_BATCH_SECTIONS", str(_DEFAULT_BATCH_SECTIONS))
+        )
+        self._skip_tokens = skip_tokens or int(
+            os.environ.get("KNOWLEDGE_AGENTIC_SKIP_TOKENS", str(_DEFAULT_AGENTIC_SKIP_TOKENS))
         )
 
     def chunk(self, text: str) -> list[str]:
@@ -138,8 +154,21 @@ class AgenticChunker(BaseChunker):
         batch_size = self._batch_sections
         for batch_start in range(0, len(sections), batch_size):
             batch = sections[batch_start : batch_start + batch_size]
-            _log.debug(
-                "AgenticChunker batch sections %d-%d/%d",
+            # Fast-path: sections already below KNOWLEDGE_AGENTIC_SKIP_TOKENS are
+            # single cohesive units — splitting them further creates noise, not precision.
+            # Sections above this threshold still go to the LLM so proposition
+            # boundaries can be found within them.
+            if all(_estimate_tokens(sec) <= self._skip_tokens for sec in batch):
+                _log.info(
+                    "[agentic-chunker] Skipping LLM for sections %d-%d of %d (all within token limit)",
+                    batch_start + 1,
+                    batch_start + len(batch),
+                    len(sections),
+                )
+                all_chunks.extend(sec for sec in batch if sec.strip())
+                continue
+            _log.info(
+                "[agentic-chunker] Processing sections %d-%d of %d …",
                 batch_start + 1,
                 batch_start + len(batch),
                 len(sections),
@@ -176,46 +205,27 @@ class AgenticChunker(BaseChunker):
         prompt = _BATCH_USER_PROMPT_TEMPLATE.format(sections_text=sections_text)
 
         try:
-            response: str = await llm.generate(  # type: ignore[union-attr]
-                prompt=prompt,
-                system=_SYSTEM_PROMPT,
+            result = cast(
+                _ChunkBoundaryResponse,
+                await llm.generate_structured(  # type: ignore[union-attr]
+                    prompt=prompt,
+                    response_type=_ChunkBoundaryResponse,
+                    system=_SYSTEM_PROMPT,
+                ),
             )
         except ProviderUnavailableError:
             raise
-        except Exception as exc:
-            _log.warning(
-                "LLM call failed for batch (sections=%d): %s — one chunk per section",
+        except ValidationError as exc:
+            _log.debug(
+                "Structured response did not match schema (sections=%d): %s — one chunk per section",
                 len(sections),
                 exc,
             )
             return list(sections)
 
-        try:
-            cleaned = response.strip()
-            # Strip markdown code fences that Ollama and other local models add
-            if cleaned.startswith("```"):
-                lines = cleaned.splitlines()
-                end_fence = len(lines) - 1 if lines[-1].strip() == "```" else len(lines)
-                cleaned = "\n".join(lines[1:end_fence])
-            # Extract JSON object in case of leading/trailing prose
-            start = cleaned.find("{")
-            end = cleaned.rfind("}")
-            if start != -1 and end > start:
-                cleaned = cleaned[start : end + 1]
-            data = json.loads(cleaned)
-            raw_entries = data.get("chunks", [])
-            if not isinstance(raw_entries, list):
-                raise ValueError("'chunks' is not a list")
-            boundary_set: set[tuple[int, int]] = {
-                (int(e["section"]), int(e["start_sentence"])) for e in raw_entries
-            }
-        except (json.JSONDecodeError, ValueError, AttributeError, TypeError, KeyError) as exc:
-            _log.warning(
-                "Failed to parse LLM batch response (sections=%d): %s — one chunk per section",
-                len(sections),
-                exc,
-            )
-            return list(sections)
+        boundary_set: set[tuple[int, int]] = {
+            (e.section, e.start_sentence) for e in result.chunks
+        }
 
         current: list[str] = []
         chunks: list[str] = []

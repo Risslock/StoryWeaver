@@ -160,6 +160,28 @@ the gold standard harness meets SC-003 and SC-004.
 
 ---
 
+## Phase 7: Decision 10 — Structured Output for AgenticChunker
+
+**Goal**: Eliminate the three `"Failed to parse LLM batch response"` WARNING logs by replacing the
+manual JSON parse block in `AgenticChunker._chunk_batch()` with a typed `generate_structured()`
+call. `OllamaProvider` adds `response_format: json_object` so the sampler cannot produce invalid
+JSON. Parse failures downgrade from WARNING to DEBUG.
+
+**Contracts**: [contracts/llm-structured-output.md](contracts/llm-structured-output.md)
+
+**Independent Test**: Run the app and ingest any document — confirm zero `"Failed to parse LLM batch response"` lines appear in the WARNING log. Run `uv run ruff check` + `uv run pyright` clean on the three changed files.
+
+- [X] T028 [P] Define `_ChunkBoundary(BaseModel)` and `_ChunkBoundaryResponse(BaseModel)` at module level in `packages/rag/rag/knowledge/chunker_agentic.py` (before the `AgenticChunker` class): `_ChunkBoundary` has `section: int` and `start_sentence: int`; `_ChunkBoundaryResponse` has `chunks: list[_ChunkBoundary]`; add `from pydantic import BaseModel, ValidationError` to imports
+- [X] T029 [P] Add non-abstract `generate_structured(self, prompt: str, response_type: type[T], system: str = "") -> T` to `LLMProvider` in `packages/llm/llm/interface.py`: add `from typing import TypeVar` and `from pydantic import BaseModel` imports; add `T = TypeVar("T", bound=BaseModel)` at module level; implement default body: `raw = await self.generate(prompt=prompt, system=system); return response_type.model_validate_json(raw)`
+- [X] T030 [P] Override `generate_structured()` in `OllamaProvider` in `packages/llm/llm/providers/ollama.py`: build `messages` list same as `generate()`; add `"response_format": {"type": "json_object"}` to payload; POST to `/v1/chat/completions`; return `response_type.model_validate_json(raw)`; add `from typing import TypeVar`, `from pydantic import BaseModel` imports and `T = TypeVar("T", bound=BaseModel)` at module level; wrap in same `httpx` error handling as `generate()`
+- [X] T031 Replace the manual JSON parse block in `AgenticChunker._chunk_batch()` in `packages/rag/rag/knowledge/chunker_agentic.py` (lines ~179–218): (1) remove the `llm.generate()` call and its surrounding try/except; (2) remove the `cleaned`/fence-stripping/`json.loads()` block and its `except (json.JSONDecodeError, ...)` WARNING; (3) replace both with a single `try: result = await llm.generate_structured(prompt=prompt, response_type=_ChunkBoundaryResponse, system=_SYSTEM_PROMPT) except ValidationError as exc: _log.debug("Structured response did not match schema (sections=%d): %s — one chunk per section", len(sections), exc); return list(sections)`; (4) update `boundary_set` to `{(e.section, e.start_sentence) for e in result.chunks}`; (5) keep the outer `ProviderUnavailableError` re-raise; (6) remove `import json` from module-level imports
+- [X] T032 [P] Run `uv run ruff check packages/llm/llm/interface.py packages/llm/llm/providers/ollama.py packages/rag/rag/knowledge/chunker_agentic.py` and `uv run pyright` on the same three files; fix all reported errors and warnings
+- [X] T033 Start the app (`uv run python apps/web/app.py`), ingest one document with `source_type="rulebook"`, confirm zero `"Failed to parse LLM batch response"` WARNING lines appear in the log; confirm the chunker still produces chunks (non-empty ingestion)
+
+**Checkpoint**: Three files changed. No WARNING log from `_chunk_batch` during normal ingestion. Ruff + pyright clean. `json` import removed from `chunker_agentic.py`.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -173,6 +195,7 @@ the gold standard harness meets SC-003 and SC-004.
   - T009 requires T008 (calls updated `submit_document(source_type=...)`)
 - **User Story Phases (3â€“5)**: All require Phase 2 complete; can proceed in priority order
 - **Polish (Phase 6)**: Requires all desired user story phases complete
+- **Structured Output (Phase 7)**: Independent of Phases 1–6 — touches only `llm/` and `chunker_agentic.py`; T028–T030 run in parallel; T031 requires T028 + T029 + T030; T032–T033 require T031
 
 ### User Story Dependencies
 
@@ -196,6 +219,7 @@ the gold standard harness meets SC-003 and SC-004.
 | Phase 2 row C | T008, T009 after T007 | T008 first, then T009 |
 | Phase 3 impl | T011 â€– T012 | `ingestor.py` â€– `cleaner.py` |
 | Phase 6 | T023 â€– T024 | lint â€– unit tests â€” different operations |
+| Phase 7 | T028, T029, T030 | different files (chunker_agentic.py, interface.py, ollama.py) |
 
 ---
 
@@ -248,3 +272,4 @@ US1 and US2 are both P1 and deliver the most retrieval-quality impact:
 - If `KNOWLEDGE_CLEANING_ENABLED=false`, the bypass is in `_extract_chunks()` â€” the cleaner is never instantiated
 - fitz is a transitive dep of pymupdf4llm â€” no new dependency is introduced
 - Commit after each task or logical group; each phase checkpoint is a good commit boundary
+- Phase 7 is independent of Phases 1–6 and can be done in any order; T028–T030 run in parallel then T031 wires them together

@@ -21,14 +21,21 @@ Multi-user session isolation model
 
 from __future__ import annotations
 
+import logging
+import os
 import warnings
 
 warnings.filterwarnings(  # must run before gradio imports starlette
     "ignore",
     message=".*HTTP_422_UNPROCESSABLE_ENTITY.*",
-    category=DeprecationWarning,
-    module="starlette.*",
 )
+
+# Configure package loggers from LOG_LEVEL env var so INFO messages from rag.*,
+# llm.*, and core.* are visible regardless of which entry point is used.
+_log_level = getattr(logging, os.environ.get("LOG_LEVEL", "INFO").upper(), logging.INFO)
+for _pkg in ("rag", "llm", "core"):
+    logging.getLogger(_pkg).setLevel(_log_level)
+logging.basicConfig(level=_log_level, format="%(levelname)s:%(name)s:%(message)s")
 
 from typing import Any
 

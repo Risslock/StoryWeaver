@@ -172,6 +172,7 @@ async def confirm_overwrite(
         doc.ingestion_status = "processing"
         doc.error_message = None
         doc.chunk_count = None
+        doc.chunks_processed = None
         doc.source_type = source_type
         doc.updated_at = datetime.now(UTC)
         scope = doc.scope

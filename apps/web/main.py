@@ -12,15 +12,17 @@ Usage:
 
 from __future__ import annotations
 
+import logging
+import os
 import warnings
 
 # Gradio 6.x references the old Starlette constant name; suppress until Gradio ships a fix.
 warnings.filterwarnings(
     "ignore",
     message=".*HTTP_422_UNPROCESSABLE_ENTITY.*",
-    category=DeprecationWarning,
-    module="starlette.*",
 )
+
+_log_level = getattr(logging, os.environ.get("LOG_LEVEL", "INFO").upper(), logging.INFO)
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -33,6 +35,10 @@ from services.db import get_backend
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+    # Re-apply package log levels after uvicorn has configured its own handlers.
+    for _pkg in ("rag", "llm", "core"):
+        logging.getLogger(_pkg).setLevel(_log_level)
+
     # Schema is managed by Alembic — do NOT call initialize_db() here.
     # WAL mode is set via the event listener in SQLiteBackend on every connect.
     db = get_backend()

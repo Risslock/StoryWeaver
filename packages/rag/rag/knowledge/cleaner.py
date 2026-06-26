@@ -24,15 +24,21 @@ SourceType = Literal["rulebook", "supplement", "novel", "handwritten"]
 _VALID_SOURCE_TYPES: frozenset[str] = frozenset({"rulebook", "supplement", "novel", "handwritten"})
 
 # Earthdawn 4E stat block keywords — ≥3 of these in consecutive short lines triggers reconstruction.
+# Require "Keyword:" (colon) so common prose words (Step, Action, Damage) are not false-positives.
 _STAT_KEYWORDS: frozenset[str] = frozenset({
     "DEX", "STR", "TOU", "PER", "WIL", "CHA",
     "Initiative", "Wounds", "Unconsciousness", "Death",
     "Armor", "Mystic", "Physical", "Step",
     "Action", "Attacks", "Damage",
 })
+_STAT_KEYWORD_RE = re.compile(
+    r"\b(?:DEX|STR|TOU|PER|WIL|CHA|Initiative|Wounds|Unconsciousness|Death"
+    r"|Armor|Mystic|Physical|Step|Action|Attacks|Damage)\b\s*:"
+)
 
-# TOC line: text followed by dot-leaders/spaces/tab then a page number.
-_TOC_LINE_RE = re.compile(r"^.{1,100}(?:[.\s]{2,}|\t)\s*\d+\s*$")
+# TOC line: text followed by dot-leaders (2+ dots), wide whitespace gap (3+ spaces), or tab, then
+# a page number. [.\s]{2,} was too broad — two spaces plus a digit matched stat block values.
+_TOC_LINE_RE = re.compile(r"^.{1,100}(?:\.{2,}|\s{3,}|\t)\s*\d+\s*$")
 
 # TOC section heading.
 _TOC_HEADING_RE = re.compile(
@@ -168,6 +174,18 @@ class CorpusCleaner:
         else:
             toc_removed = 0
 
+        # ── Stat block reconstruction (per page, before join, to log page numbers) ──
+        stat_count = 0
+        if profile.stat_block_reconstruction:
+            rebuilt: list[PageText] = []
+            for page in pages:
+                cleaned_text, n = self._reconstruct_stat_blocks(
+                    page.text, doc_name, warnings, page_num=page.page_num
+                )
+                stat_count += n
+                rebuilt.append(PageText(page_num=page.page_num, text=cleaned_text))
+            pages = rebuilt
+
         # ── Join remaining pages ──────────────────────────────────────────
         joined = "\n\n".join(p.text for p in pages)
 
@@ -177,11 +195,8 @@ class CorpusCleaner:
         else:
             hyphens = 0
 
-        if profile.stat_block_reconstruction:
-            joined, stat_count = self._reconstruct_stat_blocks(joined, doc_name, warnings)
+        if profile.stat_block_reconstruction and _log.isEnabledFor(logging.DEBUG):
             self._preserve_creature_blocks(joined)
-        else:
-            stat_count = 0
 
         report = CleaningReport(
             hyphens_rejoined=hyphens,
@@ -255,10 +270,13 @@ class CorpusCleaner:
             if pat.search(text):
                 return label
 
-        # Title-only page: every non-empty line is a Markdown heading (starts with #).
+        # Title-only page: every non-empty line is a Markdown heading AND total word count is
+        # small. Chapter-opener pages can have heading-only content with 20+ words — keep those.
         lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
         if lines and all(ln.startswith("#") for ln in lines):
-            return "title-only page"
+            word_count = sum(len(ln.split()) for ln in lines)
+            if word_count < 20:
+                return "title-only page"
 
         return None
 
@@ -337,6 +355,7 @@ class CorpusCleaner:
         text: str,
         doc_name: str,
         warnings: list[str],
+        page_num: int | None = None,
     ) -> tuple[str, int]:
         """Detect Earthdawn 4E stat blocks (≥3 consecutive keyword lines) and normalise."""
         lines = text.splitlines()
@@ -363,9 +382,11 @@ class CorpusCleaner:
                             table_rows.append(f"| {bl.strip()} | |")
                     out.extend(table_rows)
                     blocks_found += 1
+                    page_tag = f"page {page_num}, " if page_num is not None else ""
                     msg = (
                         f"[corpus-cleaner] Reconstructed stat block "
-                        f"({len(block_lines)} lines) in '{doc_name}'"
+                        f"({len(block_lines)} lines, {page_tag}"
+                        f"first: {block_lines[0]!r}) in '{doc_name}'"
                     )
                     _log.warning(msg)
                     warnings.append(msg)
@@ -378,7 +399,7 @@ class CorpusCleaner:
 
     @staticmethod
     def _has_stat_keyword(line: str) -> bool:
-        return any(kw in line for kw in _STAT_KEYWORDS)
+        return _STAT_KEYWORD_RE.search(line) is not None
 
     def _preserve_creature_blocks(self, text: str) -> str:
         """Log recognised creature example blocks (prose + stat lines); text unchanged."""
