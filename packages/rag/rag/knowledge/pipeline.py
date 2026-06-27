@@ -22,7 +22,7 @@ from storage.sqlite.adapter import SQLiteBackend
 
 from rag.knowledge.embedder import get_embed_fn
 from rag.knowledge.enricher import ChunkEnricher
-from rag.knowledge.interface import ChunkEnrichment, IngestionConfig
+from rag.knowledge.interface import ChunkEnrichment, IngestionAbortError, IngestionConfig
 from rag.knowledge.vector_store import (
     GLOBAL_COLLECTION,
     ChromaVectorStore,
@@ -31,6 +31,66 @@ from rag.knowledge.vector_store import (
 
 _log = logging.getLogger(__name__)
 _backend = SQLiteBackend(settings.database_url)
+
+KNOWLEDGE_MIN_CHUNK_CHARS = int(os.getenv("KNOWLEDGE_MIN_CHUNK_CHARS", "150"))
+KNOWLEDGE_MAX_CHUNK_CHARS = int(os.getenv("KNOWLEDGE_MAX_CHUNK_CHARS", "15000"))
+
+
+async def _apply_quality_gate(
+    chunks: list[str],
+    min_chars: int = KNOWLEDGE_MIN_CHUNK_CHARS,
+    max_chars: int = KNOWLEDGE_MAX_CHUNK_CHARS,
+) -> list[str]:
+    """Three-pass stub-merge / giant-split quality gate (FR-010, FR-011).
+
+    Pass 1: merge stubs < min_chars leftward (rightward for first chunk).
+    Pass 2: split giants > max_chars using the document chunker (async).
+    Pass 3: repeat Pass 1 to absorb any new stubs created by splitting.
+    """
+    from rag.knowledge.chunker import create_chunker
+
+    def _merge_stubs(cs: list[str]) -> tuple[list[str], int]:
+        if not cs:
+            return cs, 0
+        merged: list[str] = [cs[0]]
+        count = 0
+        for chunk in cs[1:]:
+            if len(chunk) < min_chars:
+                merged[-1] = merged[-1] + "\n\n" + chunk
+                count += 1
+            else:
+                merged.append(chunk)
+        # First chunk might itself be a stub — absorb into second
+        if len(merged) >= 2 and len(merged[0]) < min_chars:
+            merged[1] = merged[0] + "\n\n" + merged[1]
+            merged.pop(0)
+            count += 1
+        return merged, count
+
+    async def _split_giants(cs: list[str]) -> tuple[list[str], int]:
+        chunker = create_chunker()
+        result: list[str] = []
+        count = 0
+        for chunk in cs:
+            if len(chunk) > max_chars:
+                sub = await chunker.async_chunk(chunk)
+                result.extend(sub)
+                count += 1
+            else:
+                result.append(chunk)
+        return result, count
+
+    pass1, stubs1 = _merge_stubs(chunks)
+    pass2, giants = await _split_giants(pass1)
+    pass3, stubs2 = _merge_stubs(pass2)
+
+    total_stubs = stubs1 + stubs2
+    if total_stubs or giants:
+        _log.info(
+            "[quality-gate] stubs merged=%d giants split=%d → %d chunks (was %d)",
+            total_stubs, giants, len(pass3), len(chunks),
+        )
+    return pass3
 
 
 class IngestionPipeline:
@@ -66,6 +126,10 @@ class IngestionPipeline:
             )
             # Phase 1 — Extract: file → full text + raw text chunks (all at once)
             full_text, chunks = await self._extract(file_path, format, config)
+
+            # Phase 1b — Quality gate: merge stubs, split giants
+            chunks = await _apply_quality_gate(chunks)
+
             total = len(chunks)
             await self._set_status(doc_id, "processing", chunk_count=total, chunks_processed=0)
 
@@ -124,6 +188,8 @@ class IngestionPipeline:
 
             await self._set_status(doc_id, "ready", chunk_count=stored)
 
+        except IngestionAbortError:
+            raise
         except ProviderUnavailableError as exc:
             await self._set_status(doc_id, "failed", error=f"{type(exc).__name__}: {exc}")
         except Exception as exc:
@@ -132,6 +198,14 @@ class IngestionPipeline:
     # ------------------------------------------------------------------ helpers
 
     async def _extract(self, file_path: str, format: str, config: IngestionConfig) -> tuple[str, list[str]]:
+        if format == "pdf" and config.extraction_mode == "vision":
+            vision_model = os.environ.get("KNOWLEDGE_VISION_MODEL", "blaifa/Nanonets-OCR-s")
+            timeout_secs = int(os.environ.get("KNOWLEDGE_VISION_TIMEOUT_SECS", "120"))
+            from llm.providers.ollama import OllamaVisionProvider
+            from rag.knowledge.ingestor import VisionPdfIngestor
+            provider = OllamaVisionProvider(model=vision_model, timeout_secs=timeout_secs)
+            return await VisionPdfIngestor(provider).extract(file_path, config)
+
         if format == "pdf":
             from rag.knowledge.ingestor import PdfIngestor
             return await PdfIngestor().extract_with_context(file_path, config)
@@ -192,6 +266,7 @@ class IngestionPipeline:
                 "original_text": original_text,
                 "breadcrumb": breadcrumb,
                 "source_type": config.source_type,
+                "extraction_mode": config.extraction_mode,
             })
 
         return ids, compound_texts, metadatas

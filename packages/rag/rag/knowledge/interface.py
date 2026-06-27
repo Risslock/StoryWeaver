@@ -9,6 +9,15 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+class IngestionAbortError(RuntimeError):
+    """Raised when an ingestion run cannot continue and must stop entirely.
+
+    Used by VisionPdfIngestor when vision extraction exhausts all retries,
+    and by the pipeline when a required env var (e.g. KNOWLEDGE_VISION_MODEL)
+    is missing for the requested extraction mode.
+    """
+
+
 @dataclass
 class IngestionConfig:
     """All preprocessing options for a single ingestion run.
@@ -20,6 +29,7 @@ class IngestionConfig:
     enable_breadcrumbs: bool = True
     enable_contextual_summaries: bool = False
     cleaning: bool = True
+    extraction_mode: Literal["text", "vision"] = "text"
 
 
 class ChunkEnrichment(BaseModel):

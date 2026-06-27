@@ -126,6 +126,7 @@ async def submit_document(
     access_level_default: str | None,
     format: str,
     source_type: str = "rulebook",
+    extraction_mode: str = "text",
 ) -> KnowledgeDocument:
     """Register document with pending status and fire background ingestion task."""
     async with await _backend.get_session() as db:
@@ -151,6 +152,7 @@ async def submit_document(
         _run_pipeline(
             str(doc_id), file_path, format, access_level_default, scope, campaign_id,
             source_type=source_type,
+            extraction_mode=extraction_mode,
         )
     )
     return doc
@@ -160,6 +162,7 @@ async def confirm_overwrite(
     doc_id: uuid.UUID,
     file_path: str,
     source_type: str = "rulebook",
+    extraction_mode: str = "text",
 ) -> None:
     """Delete existing chunks, reset status to processing, and re-ingest."""
     async with await _backend.get_session() as db:
@@ -195,7 +198,7 @@ async def confirm_overwrite(
 
     asyncio.create_task(
         _run_pipeline(str(doc_id), file_path, fmt, access_default, scope, campaign_id,
-                      source_type=source_type)
+                      source_type=source_type, extraction_mode=extraction_mode)
     )
 
 
@@ -207,6 +210,7 @@ async def _run_pipeline(
     scope: str,
     campaign_id: uuid.UUID | None,
     source_type: str = "rulebook",
+    extraction_mode: str = "text",
 ) -> None:
     from rag.knowledge.interface import IngestionConfig
     from rag.knowledge.pipeline import IngestionPipeline
@@ -215,6 +219,7 @@ async def _run_pipeline(
     config = IngestionConfig(
         source_type=source_type,  # type: ignore[arg-type]
         access_level_default=access_level_default,
+        extraction_mode=extraction_mode,  # type: ignore[arg-type]
     )
     await pipeline.run(
         doc_id=doc_id,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 _ATX_HEADING = re.compile(r"^(#{1,3})\s+(.*)")
+_MD_NOISE_RE = re.compile(r"[*_`#]")
 
 
 class BreadcrumbExtractor:
@@ -36,7 +37,7 @@ class BreadcrumbExtractor:
             m = _ATX_HEADING.match(line.rstrip("\n").rstrip("\r"))
             if m:
                 depth = len(m.group(1))
-                title = m.group(2).strip()
+                title = _MD_NOISE_RE.sub("", m.group(2).strip())
                 # Pop entries at same or deeper depth before pushing the new heading
                 for d in list(stack.keys()):
                     if d >= depth:

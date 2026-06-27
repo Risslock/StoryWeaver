@@ -1,14 +1,24 @@
-"""Ingestor ABC, PdfIngestor (pymupdf4llm), and MarkdownIngestor."""
+"""Ingestor ABC, PdfIngestor (pymupdf4llm), VisionPdfIngestor, and MarkdownIngestor."""
 
 from __future__ import annotations
 
 import logging
+import os
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
 from rag.knowledge.chunker import BaseChunker, create_chunker
 
 _log = logging.getLogger(__name__)
+
+KNOWLEDGE_VISION_MAX_RETRIES = int(os.getenv("KNOWLEDGE_VISION_MAX_RETRIES", "1"))
+KNOWLEDGE_VISION_TIMEOUT_SECS = int(os.getenv("KNOWLEDGE_VISION_TIMEOUT_SECS", "120"))
+
+_VISION_EXTRACTION_PROMPT = (
+    "Extract all text from this image as structured Markdown. "
+    "Preserve headings (# ## ###), bold (**text**), italic (*text*), and table structure (|col|col|). "
+    "Output only the Markdown text — no explanations, preamble, or code fences."
+)
 
 
 class Ingestor(ABC):
@@ -423,6 +433,74 @@ class PdfIngestor(Ingestor):
             md_text += "\n\n## Image Descriptions\n\n" + "\n\n".join(caption_lines)
 
         return md_text
+
+
+class VisionPdfIngestor:
+    """Extract PDF pages via a vision LLM, one page at a time.
+
+    Retries each page up to KNOWLEDGE_VISION_MAX_RETRIES times on empty response
+    or RuntimeError. Raises IngestionAbortError if all retries are exhausted — no
+    silent fallback to text extraction.
+    """
+
+    def __init__(self, vision_provider: object) -> None:
+        from llm.interface import VisionLLMProvider
+        if not isinstance(vision_provider, VisionLLMProvider):
+            raise TypeError(f"Expected VisionLLMProvider, got {type(vision_provider)}")
+        self._provider = vision_provider
+
+    async def extract(
+        self,
+        file_path: str,
+        config: object,
+    ) -> tuple[str, list[str]]:
+        """Return (full_markdown_text, chunks) extracted via vision LLM."""
+        from rag.knowledge.interface import IngestionAbortError
+        try:
+            import fitz  # type: ignore[import-untyped]
+        except ImportError as exc:
+            raise IngestionAbortError("PyMuPDF (fitz) is required for vision extraction") from exc
+
+        doc = fitz.open(file_path)
+        page_texts: list[str] = []
+
+        try:
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                png_bytes = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0)).tobytes("png")
+
+                last_exc: Exception | None = None
+                result = ""
+                for attempt in range(1, KNOWLEDGE_VISION_MAX_RETRIES + 2):
+                    try:
+                        result = await self._provider.extract_page(png_bytes, _VISION_EXTRACTION_PROMPT)  # type: ignore[attr-defined]
+                        if result.strip():
+                            break
+                        last_exc = RuntimeError("Empty response from vision model")
+                        _log.warning(
+                            "[vision-ingestor] Empty response on page %d, attempt %d/%d",
+                            page_num + 1, attempt, KNOWLEDGE_VISION_MAX_RETRIES + 1,
+                        )
+                    except RuntimeError as exc:
+                        last_exc = exc
+                        _log.warning(
+                            "[vision-ingestor] Vision extraction failed on page %d, attempt %d/%d: %s",
+                            page_num + 1, attempt, KNOWLEDGE_VISION_MAX_RETRIES + 1, exc,
+                        )
+                else:
+                    raise IngestionAbortError(
+                        f"Vision extraction aborted after {KNOWLEDGE_VISION_MAX_RETRIES + 1} attempts"
+                        f" on page {page_num + 1}: {last_exc}"
+                    )
+
+                page_texts.append(result)
+        finally:
+            doc.close()
+
+        full_text = "\n\n".join(page_texts)
+        chunker = create_chunker()
+        chunks = await chunker.async_chunk(full_text)
+        return full_text, chunks
 
 
 class MarkdownIngestor(Ingestor):

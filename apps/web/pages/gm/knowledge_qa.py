@@ -121,6 +121,14 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
                         label="Source type",
                         elem_id="gm-knowledge-source-type",
                     )
+                with gr.Row(visible=False) as extraction_row:
+                    extraction_dd = gr.Dropdown(
+                        choices=["text", "vision"],
+                        value="text",
+                        label="Extraction mode (PDF only)",
+                        info="'vision' uses a local Ollama vision model (blaifa/Nanonets-OCR-s by default) for better layout fidelity.",
+                        elem_id="gm-knowledge-extraction-mode",
+                    )
                 upload_btn = gr.Button(
                     "Upload & Ingest",
                     variant="secondary",
@@ -227,8 +235,11 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
 
         # ── Event: file selected ──────────────────────────────────────────
 
-        def on_file_change(f: Any) -> dict[str, Any]:
-            return gr.update(interactive=f is not None)
+        def on_file_change(f: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+            is_pdf = f is not None and (
+                getattr(f, "name", "") if not isinstance(f, str) else f
+            ).lower().endswith(".pdf")
+            return gr.update(interactive=f is not None), gr.update(visible=is_pdf)
 
         def on_scope_auto(f: Any) -> dict[str, Any]:
             if f is None:
@@ -246,6 +257,7 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
             scope_val: str,
             access_val: str,
             source_type_val: str,
+            extraction_mode_val: str,
         ) -> tuple[str, Any, Any, Any, Any]:
             hidden_row = gr.update(visible=False)
             if state is None:
@@ -266,6 +278,7 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
                 }
                 access_default = access_map.get(access_val)
                 fmt = "pdf" if file_path.lower().endswith(".pdf") else "markdown"
+                extraction_mode = extraction_mode_val if fmt == "pdf" else "text"
 
                 existing = await check_duplicate(title, scope, campaign_id_for_doc)
                 if existing is not None:
@@ -276,7 +289,8 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
                         gr.update(),
                         (
                             file_path, filename, title, scope,
-                            campaign_id_for_doc, access_default, fmt, source_type_val,
+                            campaign_id_for_doc, access_default, fmt,
+                            source_type_val, extraction_mode,
                         ),
                     )
 
@@ -289,6 +303,7 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
                     access_level_default=access_default,
                     format=fmt,
                     source_type=source_type_val,
+                    extraction_mode=extraction_mode,
                 )
                 return "⏳ Ingestion started. Document will appear in the table below.", hidden_row, gr.update(), gr.update(), None
             except Exception as exc:
@@ -300,12 +315,16 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
         ) -> tuple[str, Any]:
             if pf is None or state is None:
                 return "Nothing to confirm.", gr.update(visible=False)
-            file_path, filename, title, scope, campaign_id_for_doc, access_default, fmt, source_type_val = pf  # noqa: E501
+            file_path, filename, title, scope, campaign_id_for_doc, access_default, fmt, source_type_val, extraction_mode = pf  # noqa: E501
             try:
                 from services.knowledge import check_duplicate, confirm_overwrite, submit_document
                 existing = await check_duplicate(title, scope, campaign_id_for_doc)
                 if existing is not None:
-                    await confirm_overwrite(existing.id, file_path, source_type=source_type_val)
+                    await confirm_overwrite(
+                        existing.id, file_path,
+                        source_type=source_type_val,
+                        extraction_mode=extraction_mode,
+                    )
                 else:
                     await submit_document(
                         file_path=file_path,
@@ -316,6 +335,7 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
                         access_level_default=access_default,
                         format=fmt,
                         source_type=source_type_val,
+                        extraction_mode=extraction_mode,
                     )
                 return "⏳ Re-ingestion started.", gr.update(visible=False)
             except Exception as exc:
@@ -342,12 +362,12 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
             outputs=[chatbot, ask_input, sources_md],
         )
 
-        file_upload.change(on_file_change, inputs=[file_upload], outputs=[upload_btn])
+        file_upload.change(on_file_change, inputs=[file_upload], outputs=[upload_btn, extraction_row])
         file_upload.change(on_scope_auto, inputs=[file_upload], outputs=[scope_dd])
 
         upload_btn.click(
             on_upload,
-            inputs=[session_state, file_upload, scope_dd, access_dd, source_type_dd],
+            inputs=[session_state, file_upload, scope_dd, access_dd, source_type_dd, extraction_dd],
             outputs=[upload_status, overwrite_row, confirm_btn, cancel_btn, pending_file],
         )
         confirm_btn.click(

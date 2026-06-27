@@ -50,6 +50,72 @@ _TOC_HEADING_RE = re.compile(
 # Matches both single-\n (within page) and double-\n\n (page-join boundary).
 _DEHYPHEN_RE = re.compile(r"([a-zA-Z])-\n{1,2}([a-zA-Z])")
 
+# ── FR-001: Windows-1252 C1 mojibake → correct Unicode ───────────────────────
+# PDF text layers sometimes store smart-quote bytes (0x80–0x9F in Win-1252) which
+# pymupdf decodes to the matching Latin-1 / Unicode C1 control code points instead
+# of the intended printable character.  The map below corrects all 26 affected
+# positions.  Integer keys are Unicode ordinals (chr(0x91) == U+0091, etc.).
+_WIN1252_MAP = str.maketrans({
+    0x80: "€",  # €
+    0x82: "‚",  # ‚
+    0x83: "ƒ",  # ƒ
+    0x84: "„",  # „
+    0x85: "…",  # …
+    0x86: "†",  # †
+    0x87: "‡",  # ‡
+    0x88: "ˆ",  # ˆ
+    0x89: "‰",  # ‰
+    0x8a: "Š",  # Š
+    0x8b: "‹",  # ‹
+    0x8c: "Œ",  # Œ
+    0x8e: "Ž",  # Ž
+    0x91: "‘",  # '
+    0x92: "’",  # '
+    0x93: "“",  # "
+    0x94: "”",  # "
+    0x95: "•",  # •
+    0x96: "–",  # –
+    0x97: "—",  # —
+    0x98: "˜",  # ˜
+    0x99: "™",  # ™
+    0x9a: "š",  # š
+    0x9b: "›",  # ›
+    0x9c: "œ",  # œ
+    0x9e: "ž",  # ž
+    0x9f: "Ÿ",  # Ÿ
+    0xfffd: "",      # U+FFFD bare replacement char → remove
+})
+
+# ── FR-002: Drop-cap OCR gap ──────────────────────────────────────────────────
+# pymupdf4llm emits a drop-cap letter as an isolated single-char line immediately
+# followed by the lowercase remainder.  Only matches at paragraph start (^) to
+# avoid mis-joining single-letter words mid-sentence.
+_DROPCAP_RE = re.compile(r"(?m)^([A-Z])\n([a-z])")
+
+# ── FR-003: Image placeholder markup ─────────────────────────────────────────
+# Two forms observed in ED4_Players_Guide:
+#   ==> picture [WxH] intentionally omitted <==   (single line)
+#   ----- Start of picture text -----\n...\n----- End of picture text -----
+_IMAGE_PLACEHOLDER_RE = re.compile(
+    r"==>[ \t]*[^\n]*?<=="
+    r"|"
+    r"-{3,}[ \t]*Start of picture text[ \t]*-{3,}.*?-{3,}[ \t]*End of picture text[ \t]*-{3,}",
+    re.DOTALL | re.IGNORECASE,
+)
+
+# ── FR-004: Stranded page-number lines ───────────────────────────────────────
+# PDF footer integers that land as isolated digit-only lines in the extracted text.
+_PAGE_NUMBER_RE = re.compile(r"(?m)^[ \t]*\d{1,4}[ \t]*$")
+
+# ── FR-005: Back-of-book index page detection ─────────────────────────────────
+# A page is classified as an index page when >80% of its non-empty lines match
+# the dot-leader pattern (TOC-style) or pipe-delimited table rows.
+_INDEX_LINE_RE = re.compile(r"^.{1,120}(?:\.{2,}|\|)\s*\d*\s*$")
+
+# ── FR-006: Backer-list page detection ───────────────────────────────────────
+_NAME_TOKEN_RE = re.compile(r"\b[A-Z][a-z]+(?:\s[A-Z][a-z]+){0,2}\b")
+_SENTENCE_END_RE = re.compile(r"[.!?](?:\s|$)", re.MULTILINE)
+
 # Front matter patterns matched against page text.
 _FRONTMATTER_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"©|Copyright\b|All rights reserved", re.IGNORECASE), "copyright block"),
@@ -73,6 +139,7 @@ class CleaningReport:
     frontmatter_pages_removed: int = 0
     stat_blocks_reconstructed: int = 0
     multicolumn_pages_reconstructed: int = 0
+    noise_pages_discarded: int = 0
     warnings: list[str] = field(default_factory=list)
 
 
@@ -126,6 +193,42 @@ _PROFILES: dict[str, CleaningRuleProfile] = {
 }
 
 
+def _repair_encoding(text: str) -> str:
+    """FR-001: Replace Windows-1252 C1 mojibake with correct Unicode characters."""
+    return text.translate(_WIN1252_MAP)
+
+
+def _repair_dropcap(text: str) -> str:
+    """FR-002: Rejoin drop-cap OCR gaps: isolated ^[A-Z]\n[a-z] → concatenated."""
+    return _DROPCAP_RE.sub(r"\1\2", text)
+
+
+def _strip_image_placeholders(text: str) -> str:
+    """FR-003: Remove pymupdf4llm image alt-text markup blocks."""
+    return _IMAGE_PLACEHOLDER_RE.sub("", text)
+
+
+def _strip_page_numbers(text: str) -> str:
+    """FR-004: Remove isolated digit-only lines (PDF footer page numbers)."""
+    return _PAGE_NUMBER_RE.sub("", text)
+
+
+def _is_index_page(page: str) -> bool:
+    """FR-005: Return True when >80% of non-empty lines look like index/TOC rows."""
+    lines = [ln for ln in page.splitlines() if ln.strip()]
+    if len(lines) < 5:
+        return False
+    matches = sum(1 for ln in lines if _INDEX_LINE_RE.match(ln.strip()))
+    return matches / len(lines) > 0.80
+
+
+def _is_backer_page(page: str) -> bool:
+    """FR-006: Return True when page has dense proper-name tokens and no sentence structure."""
+    names = _NAME_TOKEN_RE.findall(page)
+    sentences = _SENTENCE_END_RE.findall(page)
+    return len(names) > 40 and len(sentences) < 5
+
+
 class CorpusCleaner:
     """Pure text → text transformer; stateless and thread-safe."""
 
@@ -174,6 +277,9 @@ class CorpusCleaner:
         else:
             toc_removed = 0
 
+        # ── Structural noise detection: back-of-book index & backer-list pages ──
+        pages, noise_count = self._strip_noise_pages(pages, doc_name, warnings)
+
         # ── Stat block reconstruction (per page, before join, to log page numbers) ──
         stat_count = 0
         if profile.stat_block_reconstruction:
@@ -198,12 +304,19 @@ class CorpusCleaner:
         if profile.stat_block_reconstruction and _log.isEnabledFor(logging.DEBUG):
             self._preserve_creature_blocks(joined)
 
+        # ── Text-level passes (FR-001..FR-004, applied on joined text) ───────
+        joined = _repair_encoding(joined)
+        joined = _repair_dropcap(joined)
+        joined = _strip_image_placeholders(joined)
+        joined = _strip_page_numbers(joined)
+
         report = CleaningReport(
             hyphens_rejoined=hyphens,
             toc_lines_removed=toc_removed,
             frontmatter_pages_removed=fm_removed,
             stat_blocks_reconstructed=stat_count,
             multicolumn_pages_reconstructed=0,  # set by ingestor before calling cleaner
+            noise_pages_discarded=noise_count,
             warnings=warnings,
         )
         return CleanedDocument(text=joined, source_type=source_type, report=report)  # type: ignore[arg-type]
@@ -413,3 +526,28 @@ class CorpusCleaner:
                     "[corpus-cleaner] No pattern matched for block — passing through unchanged"
                 )
         return text
+
+    def _strip_noise_pages(
+        self,
+        pages: list[PageText],
+        doc_name: str,
+        warnings: list[str],
+    ) -> tuple[list[PageText], int]:
+        kept: list[PageText] = []
+        discarded = 0
+        for page in pages:
+            if _is_index_page(page.text):
+                reason = "back-of-book index"
+            elif _is_backer_page(page.text):
+                reason = "backer-list"
+            else:
+                kept.append(page)
+                continue
+            msg = (
+                f"[corpus-cleaner] Discarded structural noise page {page.page_num}"
+                f" ({reason}) in '{doc_name}'"
+            )
+            _log.warning(msg)
+            warnings.append(msg)
+            discarded += 1
+        return kept, discarded
