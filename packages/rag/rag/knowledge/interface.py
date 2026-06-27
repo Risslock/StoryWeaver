@@ -29,7 +29,7 @@ class IngestionConfig:
     enable_breadcrumbs: bool = True
     enable_contextual_summaries: bool = False
     cleaning: bool = True
-    extraction_mode: Literal["text", "vision", "docling"] = "text"
+    extraction_mode: Literal["text", "vision", "docling", "docling_text"] = "text"
 
 
 class ChunkEnrichment(BaseModel):

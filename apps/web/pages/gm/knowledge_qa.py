@@ -132,10 +132,10 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
                     )
                 with gr.Row(visible=False) as extraction_row:
                     extraction_dd = gr.Dropdown(
-                        choices=["docling", "text", "vision"],
+                        choices=["docling", "docling_text", "text", "vision"],
                         value="docling",
                         label="Extraction mode (PDF only)",
-                        info="'docling' uses Docling for structured extraction (recommended). 'vision' uses a local Ollama vision model. 'text' is the legacy pymupdf4llm extractor.",
+                        info="'docling': Docling extraction + HybridChunker (recommended). 'docling_text': Docling extraction + KNOWLEDGE_CHUNKING_STRATEGY (e.g. agentic). 'vision': Ollama vision model. 'text': legacy pymupdf4llm.",
                         elem_id="gm-knowledge-extraction-mode",
                     )
                 upload_btn = gr.Button(

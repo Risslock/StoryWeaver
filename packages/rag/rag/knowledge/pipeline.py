@@ -250,6 +250,15 @@ class IngestionPipeline:
             from rag.knowledge.ingestor import DoclingIngestor
             return await DoclingIngestor().extract(file_path, config, on_page_batch=on_page_batch)
 
+        if format == "pdf" and config.extraction_mode == "docling_text":
+            from rag.knowledge.ingestor import DoclingIngestor
+            from rag.knowledge.chunker import create_chunker
+            full_text = await DoclingIngestor().extract_markdown(file_path, config, on_page_batch=on_page_batch)
+            chunker = create_chunker()
+            _log.info("[pipeline] docling_text: chunking with strategy=%s", chunker.strategy_name)
+            chunks = await chunker.async_chunk(full_text)
+            return full_text, chunks
+
         if format == "pdf" and config.extraction_mode == "vision":
             vision_model = os.environ.get("KNOWLEDGE_VISION_MODEL", "blaifa/Nanonets-OCR-s")
             timeout_secs = int(os.environ.get("KNOWLEDGE_VISION_TIMEOUT_SECS", "120"))

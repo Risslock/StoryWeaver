@@ -706,3 +706,94 @@ class DoclingIngestor:
         )
 
         return full_text, all_bodies, breadcrumbs
+
+    async def extract_markdown(
+        self,
+        file_path: str,
+        config: object,
+        on_page_batch: object = None,
+    ) -> str:
+        """Extract full Markdown text from a PDF using Docling, without chunking.
+
+        Used by extraction_mode='docling_text' to decouple Docling's superior PDF
+        parsing (no furniture, no image placeholders, clean table markdown) from
+        HybridChunker, so any KNOWLEDGE_CHUNKING_STRATEGY can be applied instead.
+        Returns the concatenated export_to_markdown() output across all page batches.
+        """
+        from rag.knowledge.interface import IngestionAbortError
+
+        try:
+            from docling.document_converter import DocumentConverter, PdfFormatOption  # type: ignore[import-untyped]
+            from docling.datamodel.pipeline_options import PdfPipelineOptions  # type: ignore[import-untyped]
+        except ImportError as exc:
+            raise IngestionAbortError(
+                "docling is required for extraction_mode='docling_text'. "
+                "Add docling>=2.0.0 to packages/rag/pyproject.toml."
+            ) from exc
+
+        page_batch_size = int(os.getenv("KNOWLEDGE_DOCLING_PAGE_BATCH_SIZE", "10"))
+
+        pipeline_opts = PdfPipelineOptions()
+        pipeline_opts.do_ocr = False
+        pipeline_opts.images_scale = 0.5
+        pipeline_opts.generate_page_images = False
+        pipeline_opts.generate_picture_images = False
+
+        converter = DocumentConverter(
+            format_options={"pdf": PdfFormatOption(pipeline_options=pipeline_opts)}
+        )
+
+        try:
+            import fitz  # type: ignore[import-untyped]
+            fitz_doc = fitz.open(file_path)
+            total_pages = len(fitz_doc)
+            fitz_doc.close()
+        except Exception as exc:
+            raise IngestionAbortError(
+                f"Cannot determine page count for '{file_path}': {exc}"
+            ) from exc
+
+        _log.info(
+            "[docling] Starting text extraction: %s (%d pages, batch_size=%d)",
+            file_path, total_pages, page_batch_size,
+        )
+
+        parts: list[str] = []
+
+        for batch_start in range(1, total_pages + 1, page_batch_size):
+            batch_end = min(batch_start + page_batch_size - 1, total_pages)
+            _log.info("[docling] Converting pages %d-%d / %d", batch_start, batch_end, total_pages)
+
+            result = converter.convert(
+                str(file_path),
+                page_range=(batch_start, batch_end),
+                raises_on_error=False,
+            )
+
+            if result.errors:
+                error_msgs = "; ".join(str(e) for e in result.errors)
+                _log.error(
+                    "[docling] Conversion errors on pages %d-%d: %s",
+                    batch_start, batch_end, error_msgs,
+                )
+                raise IngestionAbortError(
+                    f"Docling conversion failed on pages {batch_start}-{batch_end}: {error_msgs}"
+                )
+
+            try:
+                md = result.document.export_to_markdown()
+                if md:
+                    parts.append(md)
+            except Exception:
+                pass
+
+            if on_page_batch is not None:
+                import asyncio
+                if asyncio.iscoroutinefunction(on_page_batch):
+                    await on_page_batch(batch_end, total_pages)
+                else:
+                    on_page_batch(batch_end, total_pages)
+
+        full_text = "\n\n".join(parts)
+        _log.info("[docling] Text extraction complete: %d chars", len(full_text))
+        return full_text

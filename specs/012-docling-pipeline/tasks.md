@@ -129,6 +129,24 @@ description: "Implementation tasks for the Docling ingestion pipeline adoption"
 
 ---
 
+## Phase 8: User Story 5 — Docling Extraction + Configurable Chunking (Priority: P2)
+
+**Goal**: `extraction_mode="docling_text"` uses Docling for PDF→Markdown extraction and hands the resulting text to the active `KNOWLEDGE_CHUNKING_STRATEGY` chunker. Enables benchmark isolation of extraction quality vs. chunking strategy.
+
+**Independent Test**: Set `KNOWLEDGE_CHUNKING_STRATEGY=agentic`, select `extraction_mode="docling_text"` in the UI, ingest a test PDF. Verify: zero image placeholders in any chunk, chunk boundaries match agentic output (not HybridChunker), `extraction_mode` metadata = `"docling_text"`, breadcrumbs populated by BreadcrumbExtractor.
+
+- [X] T021 [US5] Add `"docling_text"` to `extraction_mode` Literal in `IngestionConfig` in `packages/rag/rag/knowledge/interface.py`
+
+- [X] T022 [US5] Add `DoclingIngestor.extract_markdown(file_path, config, on_page_batch=None) -> str` to `packages/rag/rag/knowledge/ingestor.py` — runs the same Docling page-batch converter loop as `extract()` but skips `DoclingChunker`; accumulates `result.document.export_to_markdown()` per batch into a joined string; calls `on_page_batch(batch_end, total_pages)` after each batch (same progress pattern as `extract()`); returns the full concatenated Markdown text
+
+- [X] T023 [US5] Add `"docling_text"` branch in `IngestionPipeline._extract()` in `packages/rag/rag/knowledge/pipeline.py` — calls `DoclingIngestor().extract_markdown(file_path, config, on_page_batch=on_page_batch)` then `create_chunker().async_chunk(full_text)`; returns `(full_text, chunks)` as a 2-tuple so the pipeline follows the legacy post-processing path (quality gate + BreadcrumbExtractor); logs the active chunking strategy name
+
+- [X] T024 [P] [US5] Add `"docling_text"` to the extraction mode dropdown in `apps/web/pages/gm/knowledge_qa.py` — include a description string that explains "Docling extraction + KNOWLEDGE_CHUNKING_STRATEGY"; keep `"docling"` as the default value
+
+**Checkpoint**: Ingesting with `extraction_mode="docling_text"` and `KNOWLEDGE_CHUNKING_STRATEGY=agentic` produces chunks with `extraction_mode="docling_text"` in metadata, no image placeholders, and chunk count consistent with agentic chunker output (not HybridChunker).
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

@@ -118,6 +118,26 @@ A developer can switch the ingestion pipeline's enrichment LLM and embedding mod
 
 ---
 
+### User Story 5 — Docling Extraction with Configurable Chunking Strategy (Priority: P2)
+
+A developer can select `extraction_mode="docling_text"` to use Docling's superior PDF-to-Markdown conversion (no image placeholders, no furniture, clean table markdown) while applying any `KNOWLEDGE_CHUNKING_STRATEGY` (heading, semantic, agentic) instead of HybridChunker. This enables benchmark comparisons between Docling extraction + agentic chunking vs. Docling extraction + HybridChunker, isolating the contribution of each layer independently.
+
+**Why this priority**: The spike validated Docling extraction and HybridChunker together as a unit. It is an open empirical question whether the Docling extraction layer alone (with agentic chunking) outperforms the combined pymupdf4llm + agentic baseline. This mode allows that question to be answered without code changes — only `.env` and UI selection.
+
+**Independent Test**: Set `KNOWLEDGE_CHUNKING_STRATEGY=agentic` and select `extraction_mode="docling_text"` in the GM UI. Ingest ED4_Players_Guide. Verify: (a) extraction uses Docling (no image placeholder lines in any chunk); (b) chunking uses AgenticChunker (chunk boundaries match agentic output, not HybridChunker token boundaries); (c) breadcrumbs are produced by BreadcrumbExtractor (not HybridChunker `meta.headings`); (d) `extraction_mode` metadata field in ChromaDB is `"docling_text"`.
+
+**Acceptance Scenarios**:
+
+1. **Given** `extraction_mode="docling_text"` and `KNOWLEDGE_CHUNKING_STRATEGY=agentic`, **When** a PDF is ingested, **Then** the extraction step calls `DoclingIngestor.extract_markdown()` and the chunking step calls `AgenticChunker` — not HybridChunker.
+
+2. **Given** `extraction_mode="docling_text"`, **When** chunks are stored, **Then** each chunk carries `extraction_mode: "docling_text"` in ChromaDB metadata (not `"docling"` or `"text"`).
+
+3. **Given** `extraction_mode="docling_text"`, **When** the pipeline runs, **Then** the quality gate (stub merge, giant split) and BreadcrumbExtractor are applied — the same post-processing as the `"text"` path. HybridChunker heading metadata is NOT available in this mode; breadcrumbs come from BreadcrumbExtractor.
+
+4. **Given** `extraction_mode="docling_text"` is selected in the GM Knowledge Q&A UI, **When** a PDF is uploaded, **Then** the UI sends `extraction_mode="docling_text"` to the ingestion service and the pipeline runs accordingly.
+
+---
+
 ### Edge Cases
 
 - What if Docling's furniture detection incorrectly classifies a frontmatter or copyright page as body content? The affected chunks will carry the copyright text as body text; a follow-up audit against the spike edge-case checklist should confirm no leakage into the main corpus.
@@ -184,6 +204,12 @@ A developer can switch the ingestion pipeline's enrichment LLM and embedding mod
 - **FR-025**: Provider selection for enrichment and embedding MUST be implemented as factory functions — one for the enrichment LLM (`get_knowledge_enrich_provider()`) and one for the embedding function (`get_knowledge_embed_fn()`). These factories read the provider env vars (FR-020, FR-021) and instantiate the correct implementation. All direct `OllamaProvider()` and `OllamaEmbedFn()` instantiations in the knowledge ingestion pipeline (`pipeline.py`, `retriever.py`, and any other knowledge-package call site) MUST be replaced with calls to these factories. This follows the existing `get_image_provider()` pattern in `packages/imagegen/imagegen/factory.py`.
 - **FR-026**: `HF_API_KEY` is required when any knowledge pipeline provider is set to `"huggingface"`. If `HF_API_KEY` is absent or blank at startup and a HuggingFace provider is selected, the pipeline MUST log an ERROR — `"HF_API_KEY is required when KNOWLEDGE_ENRICH_PROVIDER=huggingface"` (or equivalent for embed) — and abort before making any external API calls.
 - **FR-027**: `.env.example` MUST document all new provider and model env vars (`KNOWLEDGE_ENRICH_PROVIDER`, `KNOWLEDGE_EMBED_PROVIDER`, `KNOWLEDGE_ENRICH_MODEL`, `KNOWLEDGE_EMBED_MODEL`) with commented examples showing both the Ollama and HuggingFace configurations side by side, so a developer can switch between them by editing a single block.
+
+**Hybrid Extraction Mode — Docling + Configurable Chunking**
+
+- **FR-028**: A new `extraction_mode` value `"docling_text"` MUST be supported. When selected, the pipeline MUST use `DoclingIngestor.extract_markdown()` to obtain clean Markdown text via Docling (same page-batch loop as `"docling"` mode, same `KNOWLEDGE_DOCLING_PAGE_BATCH_SIZE` env var), then delegate chunking to the active `KNOWLEDGE_CHUNKING_STRATEGY` chunker (heading / semantic / agentic) via `create_chunker()`. The result MUST be a 2-tuple `(full_text, chunks)`, which causes the pipeline to apply the quality gate and BreadcrumbExtractor on the same path as `"text"` mode.
+- **FR-029**: Chunks produced by the `"docling_text"` path MUST carry `extraction_mode: "docling_text"` in ChromaDB metadata — distinct from `"docling"` (HybridChunker path) and `"text"` (pymupdf4llm path) — so benchmark filtering can isolate this configuration.
+- **FR-030**: The `"docling_text"` option MUST appear in the GM Knowledge Q&A UI extraction mode dropdown alongside the existing options, with a description that explains the Docling extraction + configurable chunking combination.
 
 ### Key Entities
 
