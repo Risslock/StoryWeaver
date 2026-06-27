@@ -9,6 +9,9 @@ dependencies = [
     "chromadb>=0.4",
     "pymupdf4llm",
     "pydantic-ai>=0.0.1",
+    "docling>=2.0.0",
+    "transformers>=4.40",
+    "httpx>=0.27",
 ]
 
 [build-system]

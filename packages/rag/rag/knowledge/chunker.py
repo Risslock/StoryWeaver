@@ -1,12 +1,20 @@
-"""Heading-based Markdown chunker with table-atomic units and configurable size cap."""
+"""Heading-based Markdown chunker with table-atomic units and configurable size cap.
+
+DEPRECATED(012): HeadingChunker is superseded by DoclingIngestor + HybridChunker for the active
+PDF ingestion path (extraction_mode="docling", feature 012, spike PR #19).
+HeadingChunker is retained for the legacy text and vision extraction paths.
+"""
 
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 import warnings
 from abc import ABC, abstractmethod
+
+_log = logging.getLogger(__name__)
 
 _DEFAULT_MAX_TOKENS = 800
 _DEFAULT_OVERLAP_TOKENS = 50
@@ -68,6 +76,10 @@ class HeadingChunker(BaseChunker):
         max_tokens: int | None = None,
         overlap_tokens: int | None = None,
     ) -> None:
+        _log.warning(
+            "HeadingChunker is deprecated (feature 012). "
+            "Use extraction_mode='docling' to chunk via HybridChunker instead."
+        )
         self._max_tokens = max_tokens or int(
             os.environ.get("KNOWLEDGE_MAX_CHUNK_TOKENS", str(_DEFAULT_MAX_TOKENS))
         )

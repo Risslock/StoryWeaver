@@ -1,6 +1,7 @@
 """ChromaDB-backed knowledge retriever with multi-query expansion and RRF ranking.
 
-All embeddings are pre-computed via OllamaEmbedFn before being passed to ChromaDB.
+All embeddings are pre-computed by the active embed function (Ollama or HuggingFace,
+selected via KNOWLEDGE_EMBED_PROVIDER) before being passed to ChromaDB.
 No embedding function is registered on the collection — this avoids ChromaDB 0.5+
 protocol requirements that break custom embedding classes.
 """
@@ -13,7 +14,7 @@ from typing import Any
 
 from core.errors import ProviderUnavailableError
 
-from rag.knowledge.embedder import get_embed_fn
+from rag.knowledge.factory import get_knowledge_embed_fn, get_knowledge_enrich_provider
 from rag.knowledge.interface import KnowledgeChunk, KnowledgeRetriever
 from rag.knowledge.vector_store import (
     GLOBAL_COLLECTION,
@@ -41,8 +42,8 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
         await self._store.delete_by_doc(col_name, doc_id)
 
     async def _embed_query(self, query: str) -> list[float]:
-        """Pre-compute a single query embedding via Ollama."""
-        embed_fn = get_embed_fn()
+        """Pre-compute a single query embedding via the configured provider."""
+        embed_fn = get_knowledge_embed_fn()
         vectors = await embed_fn.embed([query])
         return vectors[0]
 
@@ -54,12 +55,11 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
         top_k: int = 8,
     ) -> list[KnowledgeChunk]:
         from rag.knowledge.enricher import ChunkEnricher
-        from llm.providers.ollama import OllamaProvider
 
         from core.config import settings as _cfg
 
         llm_model = os.environ.get("KNOWLEDGE_LLM_MODEL", _cfg.knowledge_llm_model)
-        enricher = ChunkEnricher(OllamaProvider(model=llm_model))
+        enricher = ChunkEnricher(get_knowledge_enrich_provider(llm_model))
 
         expansion_count = int(os.environ.get("KNOWLEDGE_EXPANSION_COUNT", str(_cfg.knowledge_expansion_count)))
         top_k = int(os.environ.get("KNOWLEDGE_TOP_K", str(top_k or _cfg.knowledge_top_k)))

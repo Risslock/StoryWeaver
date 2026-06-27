@@ -204,12 +204,20 @@ def _repair_dropcap(text: str) -> str:
 
 
 def _strip_image_placeholders(text: str) -> str:
-    """FR-003: Remove pymupdf4llm image alt-text markup blocks."""
+    """FR-003: Remove pymupdf4llm image alt-text markup blocks.
+
+    DEPRECATED(012): Docling output does not contain image placeholder markup.
+    This rule is a no-op on DoclingIngestor output (feature 012, spike PR #19).
+    """
     return _IMAGE_PLACEHOLDER_RE.sub("", text)
 
 
 def _strip_page_numbers(text: str) -> str:
-    """FR-004: Remove isolated digit-only lines (PDF footer page numbers)."""
+    """FR-004: Remove isolated digit-only lines (PDF footer page numbers).
+
+    DEPRECATED(012): Docling output does not contain isolated page-number lines.
+    This rule is a no-op on DoclingIngestor output (feature 012, spike PR #19).
+    """
     return _PAGE_NUMBER_RE.sub("", text)
 
 

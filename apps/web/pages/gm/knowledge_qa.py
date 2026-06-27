@@ -28,6 +28,15 @@ def _progress_bar(done: int, total: int, width: int = 10) -> str:
 def _format_status(doc: KnowledgeDocument) -> str:
     if doc.ingestion_status == "ready":
         return "✅ ready"
+    if doc.ingestion_status == "extracting":
+        age = datetime.now(UTC) - doc.updated_at.replace(tzinfo=UTC)
+        if age > timedelta(minutes=_STALE_MINUTES):
+            return "⚠️ stalled"
+        total = doc.chunk_count
+        done = doc.chunks_processed
+        if total is not None and done is not None:
+            return f"⏳ extracting pages {done}/{total} {_progress_bar(done, total)}"
+        return "⏳ extracting…"
     if doc.ingestion_status == "processing":
         age = datetime.now(UTC) - doc.updated_at.replace(tzinfo=UTC)
         if age > timedelta(minutes=_STALE_MINUTES):
@@ -35,7 +44,7 @@ def _format_status(doc: KnowledgeDocument) -> str:
         total = doc.chunk_count
         done = doc.chunks_processed
         if total is not None and done is not None and done > 0:
-            return f"⏳ {done}/{total} {_progress_bar(done, total)}"
+            return f"⏳ enriching {done}/{total} {_progress_bar(done, total)}"
         if total is not None:
             return f"⏳ enriching ({total} chunks)…"
         return "⏳ processing"
@@ -123,10 +132,10 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
                     )
                 with gr.Row(visible=False) as extraction_row:
                     extraction_dd = gr.Dropdown(
-                        choices=["text", "vision"],
-                        value="text",
+                        choices=["docling", "text", "vision"],
+                        value="docling",
                         label="Extraction mode (PDF only)",
-                        info="'vision' uses a local Ollama vision model (blaifa/Nanonets-OCR-s by default) for better layout fidelity.",
+                        info="'docling' uses Docling for structured extraction (recommended). 'vision' uses a local Ollama vision model. 'text' is the legacy pymupdf4llm extractor.",
                         elem_id="gm-knowledge-extraction-mode",
                     )
                 upload_btn = gr.Button(
@@ -219,11 +228,16 @@ def build_knowledge_qa_page(session_state: gr.State) -> None:
                 answer_text = answer
                 citation_lines = []
                 for c in chunks[:5]:
-                    excerpt = c.text[:200].rstrip()
-                    if len(c.text) > 200:
+                    # Strip leading breadcrumb from text (it's stored in C-effective format)
+                    body = c.text
+                    if c.breadcrumb and body.startswith(c.breadcrumb):
+                        body = body[len(c.breadcrumb):].lstrip()
+                    excerpt = body[:200].rstrip()
+                    if len(body) > 200:
                         excerpt += "…"
+                    breadcrumb_line = f"*{c.breadcrumb}*\n" if c.breadcrumb else ""
                     citation_lines.append(
-                        f"> **{c.doc_title} — {c.headline}** *({c.topic})*\n> {excerpt}"
+                        f"> **{c.doc_title} — {c.headline}** *({c.topic})*\n{breadcrumb_line}> {excerpt}"
                     )
                 citations_md = "\n\n".join(citation_lines)
 

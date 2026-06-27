@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     images_dir: str = str(_repo_root / "data" / "images")
 
     # Knowledge Q&A (RAG) settings
+    knowledge_enrich_provider: str = "ollama"
+    knowledge_embed_provider: str = "ollama"
     knowledge_embed_model: str = "nomic-embed-text"
     knowledge_enrich_model: str = "llama3.2"   # fast small model for chunk enrichment
     knowledge_llm_model: str = "llama3.1"      # larger model for Q&A answers

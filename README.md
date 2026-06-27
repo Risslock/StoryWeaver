@@ -157,10 +157,10 @@ The most technically involved feature is the two-tier RAG system that answers na
 flowchart TD
     subgraph INGEST["Ingestion Pipeline"]
         PDF["PDF / Markdown\nDocument"] -->
-        EXTRACT["pymupdf4llm\nText + table extraction\nImage → caption fallback"] -->
-        CHUNK["Heading-Based Chunker\nAtomic tables, page-aware\nboundaries"] -->
+        EXTRACT["Docling DocumentConverter\nLayout ML · table extraction\nPage-batch processing"] -->
+        CHUNK["HybridChunker\nTokenizer-aware splits\nbreadcrumbs from meta.headings"] -->
         ENRICH["LLM Chunk Enrichment\nPydantic-AI structured output\nheadline · summary · topic · access_level"] -->
-        EMBED["Embedding\nnomic-embed-text via Ollama\n(OllamaEmbedFn — pre-computed)"] -->
+        EMBED["Embedding\nOllama or HuggingFace Inference API\n(pre-computed — provider-selectable)"] -->
         STORE_VEC["ChromaDB\nTwo-tier collections"]
     end
 
@@ -195,8 +195,9 @@ flowchart TD
 - **Multi-query expansion**: the user's question is rewritten into 3 alternative phrasings to improve recall across different terminology.
 - **Reciprocal Rank Fusion**: merges results from multiple queries into a single ranked list without requiring score normalization.
 - **Access-level filtering**: enforced at retrieval time, not just UI level — player queries never surface GM-only chunks.
-- **Dual extraction paths**: `extraction_mode="text"` (default) uses pymupdf4llm with corpus cleaning rules for encoding repair, drop-cap rejoining, image-placeholder stripping, and structural noise detection. `extraction_mode="vision"` renders each PDF page at 144 DPI and passes it to a local Ollama vision model (set `KNOWLEDGE_VISION_MODEL`). Switching extraction mode requires full re-ingestion; `extraction_mode` is stored per-chunk in metadata.
-- **Quality gate**: after chunking, stubs < `KNOWLEDGE_MIN_CHUNK_CHARS` (default 150) are merged into adjacent chunks, and giants > `KNOWLEDGE_MAX_CHUNK_CHARS` (default 15 000) are re-split. This runs on both text and vision paths.
+- **Three extraction paths**: `extraction_mode="docling"` (recommended) uses Docling's neural layout analysis — zero image placeholders, structured Markdown tables, breadcrumbs from `meta.headings`. `extraction_mode="text"` (legacy) uses pymupdf4llm with corpus cleaning rules. `extraction_mode="vision"` renders pages at 144 DPI via a local Ollama vision model. Switching extraction mode requires re-ingestion; `extraction_mode` is stored per-chunk in metadata.
+- **Provider-selectable LLM and embeddings**: `KNOWLEDGE_ENRICH_PROVIDER` and `KNOWLEDGE_EMBED_PROVIDER` select between `ollama` (local) and `huggingface` (cloud Inference API). The pipeline aborts immediately with an ERROR log if any required env var is absent — no silent fallback. HuggingFace 429 rate limits trigger exponential-backoff retry before surfacing as failures.
+- **Quality gate**: after chunking, stubs < `KNOWLEDGE_MIN_CHUNK_CHARS` (default 150) are merged into adjacent chunks, and giants > `KNOWLEDGE_MAX_CHUNK_CHARS` (default 15 000) are re-split. This runs on all extraction paths.
 
 ---
 
@@ -314,10 +315,10 @@ StoryWeaver is an **unofficial, fan-made companion tool**. *Earthdawn* is a trad
 | Agent framework | **Pydantic-AI** | Per-entity agents, typed tool schemas — see [ADR-005](docs/adr/ADR-005-agent-framework.md) |
 | LLM (local) | **Ollama** | Default; OpenAI-compatible REST API |
 | LLM (cloud) | **Anthropic · OpenAI · HuggingFace** | Via `LLM_PROVIDER` env var |
-| Embeddings | **`nomic-embed-text` via Ollama** | Custom `OllamaEmbedFn`; pre-computed before ChromaDB calls on both ingestion and retrieval paths |
+| Embeddings | **`nomic-embed-text` (Ollama)** or **`BAAI/bge-m3` / `all-MiniLM-L6-v2` (HF)** | Provider-selectable via `KNOWLEDGE_EMBED_PROVIDER`; pre-computed before ChromaDB calls |
 | Vector store (local) | **ChromaDB** | File-backed persistent store |
 | Vector store (cloud) | **pgvector** | Postgres extension (wiring planned) |
-| PDF extraction | **pymupdf4llm** | Tables → GFM Markdown; images → caption fallback |
+| PDF extraction | **Docling** | Neural layout analysis; structured tables; page-batch processing; ~30× faster than pymupdf4llm baseline |
 | Image gen (default) | **HuggingFace Inference API** | Free tier — FLUX.1-schnell |
 | Image gen (local) | **ComfyUI** | Requires local ComfyUI server |
 | DB (local) | **SQLite** | WAL mode; via SQLAlchemy 2.x + aiosqlite |
@@ -403,7 +404,7 @@ uv sync
 
 # 3. Pull required local models
 ollama pull llama3.1
-ollama pull nomic-embed-text   # required for Knowledge Q&A
+ollama pull nomic-embed-text   # required for Knowledge Q&A (set KNOWLEDGE_EMBED_MODEL=nomic-embed-text)
 
 # 4. Configure
 cp .env.example .env

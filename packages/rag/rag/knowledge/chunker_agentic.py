@@ -1,4 +1,9 @@
-"""AgenticChunker: LLM proposition-boundary chunking strategy."""
+"""AgenticChunker: LLM proposition-boundary chunking strategy.
+
+DEPRECATED(012): AgenticChunker is superseded by DoclingIngestor + HybridChunker for the active
+PDF ingestion path (extraction_mode="docling", feature 012, spike PR #19).
+AgenticChunker is retained for the legacy text and vision extraction paths.
+"""
 
 from __future__ import annotations
 
@@ -137,6 +142,10 @@ class AgenticChunker(BaseChunker):
         skip_tokens: int | None = None,
         prose_threshold: float | None = None,
     ) -> None:
+        _log.warning(
+            "AgenticChunker is deprecated (feature 012). "
+            "Use extraction_mode='docling' to chunk via HybridChunker instead."
+        )
         self._llm_provider = llm_provider
         self._max_tokens = max_tokens or int(
             os.environ.get("KNOWLEDGE_MAX_CHUNK_TOKENS", str(_DEFAULT_MAX_TOKENS))
