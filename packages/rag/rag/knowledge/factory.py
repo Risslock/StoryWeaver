@@ -8,7 +8,8 @@ blank, or unrecognised — ensuring fast, clear failures rather than silent misc
 from __future__ import annotations
 
 import logging
-import os
+
+from core.config import settings as _cfg
 
 _log = logging.getLogger(__name__)
 
@@ -33,8 +34,7 @@ def get_knowledge_enrich_provider(model: str) -> object:
         _log.error("KNOWLEDGE_ENRICH_MODEL is required but not set")
         raise EnvironmentError("KNOWLEDGE_ENRICH_MODEL is required but not set")
 
-    from core.config import settings as _cfg
-    provider_name = (os.environ.get("KNOWLEDGE_ENRICH_PROVIDER") or _cfg.knowledge_enrich_provider).strip()
+    provider_name = _cfg.knowledge_enrich_provider.strip()
     if not provider_name:
         _log.error("KNOWLEDGE_ENRICH_PROVIDER is required but not set")
         raise EnvironmentError("KNOWLEDGE_ENRICH_PROVIDER is required but not set")
@@ -53,11 +53,10 @@ def get_knowledge_enrich_provider(model: str) -> object:
     if provider_name == "ollama":
         from llm.providers.ollama import OllamaProvider  # type: ignore[import-untyped]
 
-        base_url = os.environ.get("OLLAMA_BASE_URL", _cfg.ollama_base_url)
-        return OllamaProvider(model=model, base_url=base_url)
+        return OllamaProvider(model=model, base_url=_cfg.ollama_base_url)
 
     # provider_name == "huggingface"
-    api_key = os.environ.get("HF_API_KEY", "").strip()
+    api_key = _cfg.hf_api_key.strip()
     if not api_key:
         _log.error(
             "HF_API_KEY is required when KNOWLEDGE_ENRICH_PROVIDER=huggingface but not set"
@@ -83,13 +82,12 @@ def get_knowledge_embed_fn() -> object:
     Raises:
         EnvironmentError: if any required env var is absent, blank, or unrecognised
     """
-    from core.config import settings as _cfg
-    embed_model = (os.environ.get("KNOWLEDGE_EMBED_MODEL") or _cfg.knowledge_embed_model).strip()
+    embed_model = _cfg.knowledge_embed_model.strip()
     if not embed_model:
         _log.error("KNOWLEDGE_EMBED_MODEL is required but not set")
         raise EnvironmentError("KNOWLEDGE_EMBED_MODEL is required but not set")
 
-    provider_name = (os.environ.get("KNOWLEDGE_EMBED_PROVIDER") or _cfg.knowledge_embed_provider).strip()
+    provider_name = _cfg.knowledge_embed_provider.strip()
     if not provider_name:
         _log.error("KNOWLEDGE_EMBED_PROVIDER is required but not set")
         raise EnvironmentError("KNOWLEDGE_EMBED_PROVIDER is required but not set")
@@ -108,11 +106,10 @@ def get_knowledge_embed_fn() -> object:
     if provider_name == "ollama":
         from rag.knowledge.embedder import OllamaEmbedFn
 
-        base_url = os.environ.get("OLLAMA_BASE_URL", _cfg.ollama_base_url)
-        return OllamaEmbedFn(model=embed_model, base_url=base_url)
+        return OllamaEmbedFn(model=embed_model, base_url=_cfg.ollama_base_url)
 
     # provider_name == "huggingface"
-    api_key = os.environ.get("HF_API_KEY", "").strip()
+    api_key = _cfg.hf_api_key.strip()
     if not api_key:
         _log.error(
             "HF_API_KEY is required when KNOWLEDGE_EMBED_PROVIDER=huggingface but not set"

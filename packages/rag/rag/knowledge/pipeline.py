@@ -9,7 +9,6 @@ if ingestion fails mid-document.
 from __future__ import annotations
 
 import logging
-import os
 import uuid
 from datetime import UTC, datetime
 
@@ -32,8 +31,8 @@ from rag.knowledge.vector_store import (
 _log = logging.getLogger(__name__)
 _backend = SQLiteBackend(settings.database_url)
 
-KNOWLEDGE_MIN_CHUNK_CHARS = int(os.getenv("KNOWLEDGE_MIN_CHUNK_CHARS", "150"))
-KNOWLEDGE_MAX_CHUNK_CHARS = int(os.getenv("KNOWLEDGE_MAX_CHUNK_CHARS", "15000"))
+KNOWLEDGE_MIN_CHUNK_CHARS = settings.knowledge_min_chunk_chars
+KNOWLEDGE_MAX_CHUNK_CHARS = settings.knowledge_max_chunk_chars
 
 
 async def _apply_quality_gate(
@@ -153,14 +152,12 @@ class IngestionPipeline:
             total = len(chunks)
             await self._set_status(doc_id, "processing", chunk_count=total, chunks_processed=0)
 
-            enrich_model = (os.environ.get("KNOWLEDGE_ENRICH_MODEL") or settings.knowledge_enrich_model).strip()
+            enrich_model = settings.knowledge_enrich_model.strip()
             if not enrich_model:
                 _log.error("KNOWLEDGE_ENRICH_MODEL is required but not set")
                 raise EnvironmentError("KNOWLEDGE_ENRICH_MODEL is required but not set")
 
-            batch_size = int(
-                os.environ.get("KNOWLEDGE_ENRICH_BATCH_SIZE", str(settings.knowledge_enrich_batch_size))
-            )
+            batch_size = settings.knowledge_enrich_batch_size
 
             enricher = ChunkEnricher(get_knowledge_enrich_provider(enrich_model))
             embed_fn = get_knowledge_embed_fn()
@@ -260,8 +257,8 @@ class IngestionPipeline:
             return full_text, chunks
 
         if format == "pdf" and config.extraction_mode == "vision":
-            vision_model = os.environ.get("KNOWLEDGE_VISION_MODEL", "blaifa/Nanonets-OCR-s")
-            timeout_secs = int(os.environ.get("KNOWLEDGE_VISION_TIMEOUT_SECS", "120"))
+            vision_model = settings.knowledge_vision_model
+            timeout_secs = settings.knowledge_vision_timeout_secs
             from llm.providers.ollama import OllamaVisionProvider
             from rag.knowledge.ingestor import VisionPdfIngestor
             provider = OllamaVisionProvider(model=vision_model, timeout_secs=timeout_secs)

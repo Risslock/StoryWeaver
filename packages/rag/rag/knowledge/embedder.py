@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
-import os
+from core.config import settings as _cfg
 import time
 import urllib.request
 
@@ -131,8 +131,4 @@ def get_embed_fn() -> OllamaEmbedFn:
         "get_embed_fn() is deprecated (feature 012). "
         "Use get_knowledge_embed_fn() from rag.knowledge.factory instead."
     )
-    from core.config import settings as _cfg
-
-    model = os.environ.get("KNOWLEDGE_EMBED_MODEL", _cfg.knowledge_embed_model)
-    base_url = os.environ.get("OLLAMA_BASE_URL", _cfg.ollama_base_url)
-    return OllamaEmbedFn(model=model, base_url=base_url)
+    return OllamaEmbedFn(model=_cfg.knowledge_embed_model, base_url=_cfg.ollama_base_url)

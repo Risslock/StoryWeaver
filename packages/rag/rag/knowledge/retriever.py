@@ -9,10 +9,14 @@ protocol requirements that break custom embedding classes.
 from __future__ import annotations
 
 import logging
-import os
+import uuid
 from typing import Any
 
+from core.config import settings as _cfg
 from core.errors import ProviderUnavailableError
+from core.models import Campaign
+from sqlalchemy import select
+from storage.sqlite.adapter import SQLiteBackend
 
 from rag.knowledge.factory import get_knowledge_embed_fn, get_knowledge_enrich_provider
 from rag.knowledge.interface import KnowledgeChunk, KnowledgeRetriever
@@ -22,7 +26,28 @@ from rag.knowledge.vector_store import (
     campaign_collection,
 )
 
+_backend = SQLiteBackend(_cfg.database_url)
+
 _log = logging.getLogger(__name__)
+
+
+def _rerank_repr(c: KnowledgeChunk, max_body: int = 300) -> str:
+    """Build a reranker representation using enriched metadata + body snippet.
+
+    headline + summary give the LLM high-quality semantic signal without consuming
+    all available context; body snippet adds literal-match anchors for fact questions.
+    """
+    parts: list[str] = []
+    if c.headline:
+        parts.append(c.headline)
+    if c.summary:
+        parts.append(c.summary)
+    body = c.text
+    if c.breadcrumb and body.startswith(c.breadcrumb):
+        body = body[len(c.breadcrumb):].lstrip()
+    if body:
+        parts.append(body[:max_body])
+    return "\n".join(parts)
 
 
 class ChromaKnowledgeRetriever(KnowledgeRetriever):
@@ -47,6 +72,19 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
         vectors = await embed_fn.embed([query])
         return vectors[0]
 
+    async def _get_game_system(self, campaign_id: str) -> str | None:
+        """Return the campaign's game_system string, or None if not found."""
+        try:
+            async with await _backend.get_session() as db:
+                result = await db.execute(
+                    select(Campaign).where(Campaign.id == uuid.UUID(campaign_id))
+                )
+                campaign = result.scalar_one_or_none()
+                return campaign.game_system if campaign else None
+        except Exception as exc:
+            _log.debug("[retriever] could not fetch game_system for campaign %s: %s", campaign_id, exc)
+            return None
+
     async def search(
         self,
         query: str,
@@ -56,25 +94,31 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
     ) -> list[KnowledgeChunk]:
         from rag.knowledge.enricher import ChunkEnricher
 
-        from core.config import settings as _cfg
+        enricher = ChunkEnricher(get_knowledge_enrich_provider(_cfg.knowledge_llm_model))
 
-        llm_model = os.environ.get("KNOWLEDGE_LLM_MODEL", _cfg.knowledge_llm_model)
-        enricher = ChunkEnricher(get_knowledge_enrich_provider(llm_model))
+        expansion_count = _cfg.knowledge_expansion_count
+        top_k = top_k or _cfg.knowledge_top_k
+        rrf_k = _cfg.knowledge_rrf_k
 
-        expansion_count = int(os.environ.get("KNOWLEDGE_EXPANSION_COUNT", str(_cfg.knowledge_expansion_count)))
-        top_k = int(os.environ.get("KNOWLEDGE_TOP_K", str(top_k or _cfg.knowledge_top_k)))
-        rrf_k = int(os.environ.get("KNOWLEDGE_RRF_K", str(_cfg.knowledge_rrf_k)))
+        game_system = await self._get_game_system(campaign_id) if campaign_id else None
+        _log.debug("[retriever] game_system=%s", game_system)
 
         try:
-            alternatives = await enricher.expand_query(query)
+            alternatives = await enricher.expand_query(
+                query, n=expansion_count, setting_context=game_system
+            )
         except ProviderUnavailableError:
             alternatives = []
 
-        queries = [query] + alternatives[:expansion_count]
+        queries = [query] + alternatives
 
         where: dict[str, Any] | None = None
         if role == "player":
             where = {"access_level": {"$eq": "player_visible"}}
+
+        collections = [GLOBAL_COLLECTION]
+        if campaign_id:
+            collections.append(campaign_collection(campaign_id))
 
         result_sets: list[list[tuple[str, dict[str, Any], str]]] = []
 
@@ -84,9 +128,6 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
             except ProviderUnavailableError:
                 raise
 
-            collections = [GLOBAL_COLLECTION]
-            if campaign_id:
-                collections.append(campaign_collection(campaign_id))
             for col_name in collections:
                 try:
                     res = await self._store.query(
@@ -125,7 +166,7 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
 
         sorted_ids = sorted(rrf_scores, key=lambda cid: rrf_scores[cid], reverse=True)
 
-        retrieval_k = min(top_k * 2, len(sorted_ids))
+        retrieval_k = min(top_k + 4, len(sorted_ids))
         candidates: list[KnowledgeChunk] = []
         for chunk_id in sorted_ids[:retrieval_k]:
             meta, doc = chunk_data[chunk_id]
@@ -148,7 +189,7 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
 
         if len(candidates) > 1:
             try:
-                order = await enricher.rerank(query, [c.text for c in candidates])
+                order = await enricher.rerank(query, [_rerank_repr(c) for c in candidates])
                 candidates = [candidates[i] for i in order if i < len(candidates)]
             except ProviderUnavailableError:
                 pass

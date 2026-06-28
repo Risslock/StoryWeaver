@@ -12,8 +12,10 @@ from rag.knowledge.chunker import BaseChunker, create_chunker
 
 _log = logging.getLogger(__name__)
 
-KNOWLEDGE_VISION_MAX_RETRIES = int(os.getenv("KNOWLEDGE_VISION_MAX_RETRIES", "1"))
-KNOWLEDGE_VISION_TIMEOUT_SECS = int(os.getenv("KNOWLEDGE_VISION_TIMEOUT_SECS", "120"))
+from core.config import settings as _cfg
+
+KNOWLEDGE_VISION_MAX_RETRIES = _cfg.knowledge_vision_max_retries
+KNOWLEDGE_VISION_TIMEOUT_SECS = _cfg.knowledge_vision_timeout_secs
 
 _VISION_EXTRACTION_PROMPT = (
     "Extract all text from this image as structured Markdown. "
@@ -620,7 +622,7 @@ class DoclingIngestor:
                 "Add docling>=2.0.0 to packages/rag/pyproject.toml."
             ) from exc
 
-        page_batch_size = int(os.getenv("KNOWLEDGE_DOCLING_PAGE_BATCH_SIZE", "10"))
+        page_batch_size = _cfg.knowledge_docling_page_batch_size
 
         pipeline_opts = PdfPipelineOptions()
         pipeline_opts.do_ocr = False
@@ -731,7 +733,7 @@ class DoclingIngestor:
                 "Add docling>=2.0.0 to packages/rag/pyproject.toml."
             ) from exc
 
-        page_batch_size = int(os.getenv("KNOWLEDGE_DOCLING_PAGE_BATCH_SIZE", "10"))
+        page_batch_size = _cfg.knowledge_docling_page_batch_size
 
         pipeline_opts = PdfPipelineOptions()
         pipeline_opts.do_ocr = False

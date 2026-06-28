@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-import os
+from core.config import settings as _cfg
 import re
 from dataclasses import dataclass, field
 from typing import Literal
@@ -266,9 +266,7 @@ class CorpusCleaner:
             )
 
         if frontmatter_threshold is None:
-            frontmatter_threshold = int(
-                os.environ.get("KNOWLEDGE_CLEANING_FRONTMATTER_PAGES", "10")
-            )
+            frontmatter_threshold = _cfg.knowledge_cleaning_frontmatter_pages
 
         profile = _PROFILES[source_type]
         warnings: list[str] = []
