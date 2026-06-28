@@ -15,6 +15,8 @@ _ENRICH_SYSTEM = (
 
 _EXPAND_SYSTEM = (
     "You are a query expansion assistant for a tabletop RPG knowledge base. "
+    "Generate retrieval-diverse phrasings that maximise the chance of finding relevant rules, "
+    "lore, or stats in a PDF rulebook index. "
     "Always respond with a single valid JSON object and nothing else."
 )
 
@@ -103,11 +105,14 @@ Question: {question}"""
 # ── Query expansion ────────────────────────────────────────────────────────────
 
 _EXPAND_PROMPT = """\
-Generate exactly 3 alternative phrasings of the following question to improve retrieval
-from a tabletop RPG knowledge base. The alternatives should vary in vocabulary and phrasing
-while preserving the same intent.
+Generate {n} alternative search phrasing(s) for the following question to improve retrieval
+from a tabletop RPG rulebook. Each alternative should take a different angle:
 
-Return a JSON object with exactly one key: "alternatives" — a list of 3 strings.
+- Use game-specific or rulebook terminology the original question may have paraphrased.
+- Decompose into a precise keyword lookup (mechanic name, stat, action type, rule keyword).
+- Shift to a closely related concept that would appear on the same rulebook page or section.
+{setting_line}
+Return a JSON object with exactly one key: "alternatives" — a list of exactly {n} string(s).
 
 Question: {question}
 
@@ -115,8 +120,8 @@ Respond with ONLY the JSON object."""
 
 _EXPAND_RETRY_PROMPT = """\
 Your previous response was not valid JSON or did not match the required schema.
-Return ONLY a JSON object with one key: "alternatives" — a list of exactly 3 strings.
-
+Return ONLY a JSON object with one key: "alternatives" — a list of exactly {n} string(s).
+{setting_line}
 Question: {question}"""
 
 _CONTEXTUAL_SUMMARY_SYSTEM = (
@@ -133,6 +138,12 @@ Passage:
 {chunk_text}
 
 Write one or two sentences situating this passage within the document for search retrieval."""
+
+def _format_setting_line(setting_context: str | None) -> str:
+    if not setting_context:
+        return ""
+    return f"This knowledge base is for: {setting_context}. Use terminology specific to that game system when rephrasing.\n"
+
 
 _ENRICH_FALLBACK = ChunkEnrichment(
     headline="Untitled section",
@@ -210,20 +221,32 @@ class ChunkEnricher:
             pass
         return list(range(n))
 
-    async def expand_query(self, question: str) -> list[str]:
-        """Return 3 alternative phrasings of the question, falling back to empty list."""
-        prompt = _EXPAND_PROMPT.format(question=question)
+    async def expand_query(
+        self,
+        question: str,
+        n: int = 3,
+        setting_context: str | None = None,
+    ) -> list[str]:
+        """Return n alternative phrasings of the question, falling back to empty list.
+
+        setting_context: game system identifier (e.g. "earthdawn_4e") from the campaign
+        record; when provided the LLM uses game-specific terminology when rephrasing.
+        """
+        if n <= 0:
+            return []
+        setting_line = _format_setting_line(setting_context)
+        prompt = _EXPAND_PROMPT.format(n=n, question=question, setting_line=setting_line)
         raw = await self._llm.generate(prompt, system=_EXPAND_SYSTEM)
         try:
             result = QueryExpansion.model_validate_json(_extract_json(raw))
-            return result.alternatives[:3]
+            return result.alternatives[:n]
         except (ValidationError, ValueError):
             pass
-        retry_prompt = _EXPAND_RETRY_PROMPT.format(question=question)
+        retry_prompt = _EXPAND_RETRY_PROMPT.format(n=n, question=question, setting_line=setting_line)
         try:
             raw2 = await self._llm.generate(retry_prompt, system=_EXPAND_SYSTEM)
             result = QueryExpansion.model_validate_json(_extract_json(raw2))
-            return result.alternatives[:3]
+            return result.alternatives[:n]
         except (ValidationError, ValueError, ProviderUnavailableError):
             return []
 

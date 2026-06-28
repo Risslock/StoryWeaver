@@ -44,15 +44,36 @@ class Settings(BaseSettings):
     images_dir: str = str(_repo_root / "data" / "images")
 
     # Knowledge Q&A (RAG) settings
+    knowledge_enrich_provider: str = "ollama"
+    knowledge_embed_provider: str = "ollama"
     knowledge_embed_model: str = "nomic-embed-text"
     knowledge_enrich_model: str = "llama3.2"   # fast small model for chunk enrichment
     knowledge_llm_model: str = "llama3.1"      # larger model for Q&A answers
     knowledge_max_chunk_tokens: int = 800
     knowledge_chunk_overlap_tokens: int = 50
     knowledge_top_k: int = 8
-    knowledge_rrf_k: int = 60
+    knowledge_rrf_k: int = 30
     knowledge_expansion_count: int = 3
-    knowledge_enrich_batch_size: int = 5       # chunks per enrichment LLM call
+    knowledge_enrich_batch_size: int = 5
+
+    # Knowledge Pipeline — Chunking (legacy text/vision paths)
+    knowledge_chunking_strategy: str = "agentic"
+    knowledge_min_chunk_chars: int = 150
+    knowledge_max_chunk_chars: int = 15000
+    knowledge_agentic_batch_sections: int = 3
+    knowledge_agentic_skip_tokens: int = 400
+    knowledge_agentic_prose_threshold: float = 0.3
+    knowledge_agentic_system_prompt: str = ""
+    knowledge_agentic_user_prompt_prefix: str = ""
+    knowledge_semantic_breakpoint_percentile: int = 95
+    knowledge_semantic_min_chunk_tokens: int = 50
+
+    # Knowledge Pipeline — Docling / Vision / Cleaning
+    knowledge_docling_page_batch_size: int = 10
+    knowledge_vision_model: str = "blaifa/Nanonets-OCR-s"
+    knowledge_vision_timeout_secs: int = 120
+    knowledge_vision_max_retries: int = 1
+    knowledge_cleaning_frontmatter_pages: int = 10
 
     @model_validator(mode="after")
     def _resolve_db_path(self) -> "Settings":

@@ -9,7 +9,6 @@ if ingestion fails mid-document.
 from __future__ import annotations
 
 import logging
-import os
 import uuid
 from datetime import UTC, datetime
 
@@ -20,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy import update as sa_update
 from storage.sqlite.adapter import SQLiteBackend
 
-from rag.knowledge.embedder import get_embed_fn
+from rag.knowledge.factory import get_knowledge_embed_fn, get_knowledge_enrich_provider
 from rag.knowledge.enricher import ChunkEnricher
 from rag.knowledge.interface import ChunkEnrichment, IngestionAbortError, IngestionConfig
 from rag.knowledge.vector_store import (
@@ -32,8 +31,8 @@ from rag.knowledge.vector_store import (
 _log = logging.getLogger(__name__)
 _backend = SQLiteBackend(settings.database_url)
 
-KNOWLEDGE_MIN_CHUNK_CHARS = int(os.getenv("KNOWLEDGE_MIN_CHUNK_CHARS", "150"))
-KNOWLEDGE_MAX_CHUNK_CHARS = int(os.getenv("KNOWLEDGE_MAX_CHUNK_CHARS", "15000"))
+KNOWLEDGE_MIN_CHUNK_CHARS = settings.knowledge_min_chunk_chars
+KNOWLEDGE_MAX_CHUNK_CHARS = settings.knowledge_max_chunk_chars
 
 
 async def _apply_quality_gate(
@@ -118,36 +117,60 @@ class IngestionPipeline:
             config = IngestionConfig()
         await self._set_status(doc_id, "processing")
         try:
-            from rag.knowledge.chunker import create_chunker
-            _log.info(
-                "Ingestion started — chunking strategy: %s, doc_id: %s",
-                create_chunker().strategy_name,
-                doc_id,
-            )
+            if config.extraction_mode == "docling":
+                _log.info("Ingestion started — chunking strategy: docling/HybridChunker, doc_id: %s", doc_id)
+            else:
+                from rag.knowledge.chunker import create_chunker
+                _log.info(
+                    "Ingestion started — chunking strategy: %s, doc_id: %s",
+                    create_chunker().strategy_name,
+                    doc_id,
+                )
             # Phase 1 — Extract: file → full text + raw text chunks (all at once)
-            full_text, chunks = await self._extract(file_path, format, config)
+            _log.info("[pipeline] Phase 1/4 — extracting '%s' (mode=%s)", file_path, config.extraction_mode)
+
+            async def _on_page_batch(pages_done: int, total_pages: int) -> None:
+                await self._set_status(
+                    doc_id, "extracting", chunk_count=total_pages, chunks_processed=pages_done
+                )
+
+            extracted = await self._extract(file_path, format, config, on_page_batch=_on_page_batch)
+            if len(extracted) == 3:
+                full_text, chunks, docling_breadcrumbs = extracted  # type: ignore[misc]
+            else:
+                full_text, chunks = extracted  # type: ignore[misc]
+                docling_breadcrumbs = None
+            _log.info("[pipeline] Extraction done — %d raw chunks", len(chunks))
 
             # Phase 1b — Quality gate: merge stubs, split giants
-            chunks = await _apply_quality_gate(chunks)
+            # Skip for docling path: HybridChunker is already token-aware and applying the
+            # gate would desync chunks from their paired breadcrumbs list.
+            if docling_breadcrumbs is None:
+                chunks = await _apply_quality_gate(chunks)
+                _log.info("[pipeline] Quality gate done — %d chunks to ingest", len(chunks))
 
             total = len(chunks)
             await self._set_status(doc_id, "processing", chunk_count=total, chunks_processed=0)
 
-            enrich_model = os.environ.get("KNOWLEDGE_ENRICH_MODEL", settings.knowledge_enrich_model)
-            batch_size = int(
-                os.environ.get("KNOWLEDGE_ENRICH_BATCH_SIZE", str(settings.knowledge_enrich_batch_size))
-            )
-            from llm.providers.ollama import OllamaProvider
+            enrich_model = settings.knowledge_enrich_model.strip()
+            if not enrich_model:
+                _log.error("KNOWLEDGE_ENRICH_MODEL is required but not set")
+                raise EnvironmentError("KNOWLEDGE_ENRICH_MODEL is required but not set")
 
-            enricher = ChunkEnricher(OllamaProvider(model=enrich_model))
-            embed_fn = get_embed_fn()
+            batch_size = settings.knowledge_enrich_batch_size
+
+            enricher = ChunkEnricher(get_knowledge_enrich_provider(enrich_model))
+            embed_fn = get_knowledge_embed_fn()
             doc_title = await self._get_doc_title(doc_id)
             collection_name = (
                 GLOBAL_COLLECTION if scope == "global" else campaign_collection(campaign_id or "")
             )
 
             # Phase 2 — Breadcrumbs: compute once for all chunks before batching
-            if config.enable_breadcrumbs:
+            if docling_breadcrumbs is not None:
+                # Docling path: breadcrumbs come from HybridChunker meta.headings
+                all_breadcrumbs = docling_breadcrumbs
+            elif config.enable_breadcrumbs:
                 from rag.knowledge.breadcrumb import BreadcrumbExtractor
                 all_breadcrumbs = BreadcrumbExtractor().extract(full_text, chunks, doc_title)
             else:
@@ -156,9 +179,16 @@ class IngestionPipeline:
             stored = 0
             batches = [chunks[i : i + batch_size] for i in range(0, total, batch_size)]
 
+            num_batches = len(batches)
             for batch_idx, batch in enumerate(batches):
                 chunk_offset = batch_idx * batch_size
                 batch_breadcrumbs = all_breadcrumbs[chunk_offset : chunk_offset + len(batch)]
+
+                _log.info(
+                    "[pipeline] Batch %d/%d — enriching %d chunks (chunks %d–%d of %d)",
+                    batch_idx + 1, num_batches, len(batch),
+                    chunk_offset + 1, chunk_offset + len(batch), total,
+                )
 
                 # Phase 3 — Enrich: LLM assigns headline / summary / topic / access_level
                 enrichments = await enricher.enrich_batch(batch)
@@ -171,7 +201,11 @@ class IngestionPipeline:
                 else:
                     contextual_summaries = [""] * len(batch)
 
-                # Phase 5 — Embed: compound texts → float vectors (Ollama)
+                # Phase 5 — Embed: compound texts → float vectors
+                _log.info(
+                    "[pipeline] Batch %d/%d — embedding %d chunks",
+                    batch_idx + 1, num_batches, len(batch),
+                )
                 ids, compound_texts, metadatas = self._build_records(
                     doc_id, doc_title, batch, enrichments,
                     batch_breadcrumbs, contextual_summaries,
@@ -181,9 +215,17 @@ class IngestionPipeline:
                 embeddings = await embed_fn.embed(compound_texts)
 
                 # Phase 6 — Store: upsert this batch immediately so it is queryable now
+                _log.info(
+                    "[pipeline] Batch %d/%d — storing to ChromaDB",
+                    batch_idx + 1, num_batches,
+                )
                 await self._store.upsert(collection_name, ids, embeddings, compound_texts, metadatas)
 
                 stored += len(batch)
+                _log.info(
+                    "[pipeline] Batch %d/%d done — %d/%d chunks stored",
+                    batch_idx + 1, num_batches, stored, total,
+                )
                 await self._set_progress(doc_id, stored)
 
             await self._set_status(doc_id, "ready", chunk_count=stored)
@@ -197,10 +239,26 @@ class IngestionPipeline:
 
     # ------------------------------------------------------------------ helpers
 
-    async def _extract(self, file_path: str, format: str, config: IngestionConfig) -> tuple[str, list[str]]:
+    async def _extract(
+        self, file_path: str, format: str, config: IngestionConfig,
+        on_page_batch: object = None,
+    ) -> tuple[str, list[str]] | tuple[str, list[str], list[str]]:
+        if format == "pdf" and config.extraction_mode == "docling":
+            from rag.knowledge.ingestor import DoclingIngestor
+            return await DoclingIngestor().extract(file_path, config, on_page_batch=on_page_batch)
+
+        if format == "pdf" and config.extraction_mode == "docling_text":
+            from rag.knowledge.ingestor import DoclingIngestor
+            from rag.knowledge.chunker import create_chunker
+            full_text = await DoclingIngestor().extract_markdown(file_path, config, on_page_batch=on_page_batch)
+            chunker = create_chunker()
+            _log.info("[pipeline] docling_text: chunking with strategy=%s", chunker.strategy_name)
+            chunks = await chunker.async_chunk(full_text)
+            return full_text, chunks
+
         if format == "pdf" and config.extraction_mode == "vision":
-            vision_model = os.environ.get("KNOWLEDGE_VISION_MODEL", "blaifa/Nanonets-OCR-s")
-            timeout_secs = int(os.environ.get("KNOWLEDGE_VISION_TIMEOUT_SECS", "120"))
+            vision_model = settings.knowledge_vision_model
+            timeout_secs = settings.knowledge_vision_timeout_secs
             from llm.providers.ollama import OllamaVisionProvider
             from rag.knowledge.ingestor import VisionPdfIngestor
             provider = OllamaVisionProvider(model=vision_model, timeout_secs=timeout_secs)
@@ -240,7 +298,7 @@ class IngestionPipeline:
             breadcrumb = breadcrumbs[local_idx] if local_idx < len(breadcrumbs) else ""
             ctx_summary = contextual_summaries[local_idx] if local_idx < len(contextual_summaries) else ""
 
-            # original_text includes breadcrumb prefix so KnowledgeChunk.text displays it
+            # FR-011: C-effective format — breadcrumb prefix when non-empty, body-only otherwise
             original_text = f"{breadcrumb}\n\n{raw_text}" if breadcrumb else raw_text
 
             # Compound text order per contracts/ingestion-pipeline.md

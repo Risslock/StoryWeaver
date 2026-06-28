@@ -1,10 +1,16 @@
-"""AgenticChunker: LLM proposition-boundary chunking strategy."""
+"""AgenticChunker: LLM proposition-boundary chunking strategy.
+
+DEPRECATED(012): AgenticChunker is superseded by DoclingIngestor + HybridChunker for the active
+PDF ingestion path (extraction_mode="docling", feature 012, spike PR #19).
+AgenticChunker is retained for the legacy text and vision extraction paths.
+"""
 
 from __future__ import annotations
 
 import logging
-import os
 from typing import cast
+
+from core.config import settings as _cfg
 
 from pydantic import BaseModel, ValidationError
 
@@ -17,24 +23,53 @@ _DEFAULT_MAX_TOKENS = 800
 _DEFAULT_BATCH_SECTIONS = 3
 _DEFAULT_AGENTIC_SKIP_TOKENS = 400
 
-_SYSTEM_PROMPT = "You are a document chunker for a tabletop RPG knowledge base."
+_DEFAULT_SYSTEM_PROMPT = (
+    "You are an expert document chunker for a tabletop RPG rulebook. "
+    "Your goal is to produce self-contained, retrievable chunks where each chunk "
+    "answers exactly one question a player or GM might ask about the game."
+)
 
 # Multi-section prompt: the LLM sees N sections at once and decides both where to split
 # within sections and whether adjacent sections should be merged into a single chunk.
 # Returning no boundary between section k and section k+1 merges them — critical for RPG
 # rulebooks where two short adjacent sections often describe a single mechanic together.
-_BATCH_USER_PROMPT_TEMPLATE = (
+_DEFAULT_BATCH_USER_PROMPT_TEMPLATE = (
     "Given the following sections from a tabletop RPG rulebook, identify where new chunks "
-    "should begin. Sections that together describe a single mechanic or rule should be "
-    "merged — do not place a boundary between them. Return ONLY a JSON object with a "
-    "single key 'chunks' containing a list of chunk start positions. Each position is an "
-    "object with 'section' (0-based section index) and 'start_sentence' (0-based sentence "
-    "index within that section). Do not include position section=0 / start_sentence=0 — "
-    "the first chunk always starts there implicitly. If a section continues the prior "
-    "topic, omit its start position so it merges with the previous chunk. "
-    'If no splits are needed return {{"chunks": []}}.\n\n'
+    "should begin. Each chunk must be independently useful to someone asking a specific "
+    "question about the game.\n\n"
+    "MERGE (do NOT split) when:\n"
+    "- A heading section is followed by short sub-sections (< 5 sentences each) that "
+    "elaborate on the same concept — keep parent and all children together\n"
+    "- A race, discipline, or creature description (prose) is followed by its Game "
+    "Information block (attribute values, movement rate, karma modifier, racial traits, "
+    "abilities) — ALWAYS keep these in one chunk\n"
+    "- A table or stat block appears without its own descriptive heading — merge it with "
+    "the closest preceding heading or prose that labels it\n"
+    "- Sequential sub-sections each describe one aspect of a shared parent topic (e.g. "
+    "Dexterity, Strength, Toughness under Attributes) and each is too short to answer "
+    "a question on its own\n\n"
+    "SPLIT when:\n"
+    "- A clearly distinct top-level topic begins (a different race, a different "
+    "discipline, a different game system such as combat, magic, or character creation)\n"
+    "- A section is a complete self-contained reference that answers one standalone "
+    "question (a full gear table, a complete spell description, a full combat rule)\n\n"
+    "Return ONLY a JSON object with key 'chunks' containing chunk start positions. "
+    "Each position: {{\"section\": i, \"start_sentence\": j}} (both 0-based). "
+    "Omit section=0/start_sentence=0. "
+    'Return {{"chunks": []}} if no splits are needed.\n\n'
     "{sections_text}"
 )
+
+
+def _get_system_prompt() -> str:
+    return _cfg.knowledge_agentic_system_prompt.strip() or _DEFAULT_SYSTEM_PROMPT
+
+
+def _get_user_prompt_template() -> str:
+    override = _cfg.knowledge_agentic_user_prompt_prefix.strip()
+    if override:
+        return override + "\n\n{sections_text}"
+    return _DEFAULT_BATCH_USER_PROMPT_TEMPLATE
 
 
 class _ChunkBoundary(BaseModel):
@@ -137,19 +172,15 @@ class AgenticChunker(BaseChunker):
         skip_tokens: int | None = None,
         prose_threshold: float | None = None,
     ) -> None:
+        _log.warning(
+            "AgenticChunker is deprecated (feature 012). "
+            "Use extraction_mode='docling' to chunk via HybridChunker instead."
+        )
         self._llm_provider = llm_provider
-        self._max_tokens = max_tokens or int(
-            os.environ.get("KNOWLEDGE_MAX_CHUNK_TOKENS", str(_DEFAULT_MAX_TOKENS))
-        )
-        self._batch_sections = batch_sections or int(
-            os.environ.get("KNOWLEDGE_AGENTIC_BATCH_SECTIONS", str(_DEFAULT_BATCH_SECTIONS))
-        )
-        self._skip_tokens = skip_tokens or int(
-            os.environ.get("KNOWLEDGE_AGENTIC_SKIP_TOKENS", str(_DEFAULT_AGENTIC_SKIP_TOKENS))
-        )
-        self._prose_threshold = prose_threshold or float(
-            os.environ.get("KNOWLEDGE_AGENTIC_PROSE_THRESHOLD", "0.3")
-        )
+        self._max_tokens = max_tokens or _cfg.knowledge_max_chunk_tokens
+        self._batch_sections = batch_sections or _cfg.knowledge_agentic_batch_sections
+        self._skip_tokens = skip_tokens or _cfg.knowledge_agentic_skip_tokens
+        self._prose_threshold = prose_threshold or _cfg.knowledge_agentic_prose_threshold
 
     def _merge_appendage_sections(self, sections: list[str]) -> list[str]:
         result: list[str] = []
@@ -242,7 +273,7 @@ class AgenticChunker(BaseChunker):
         sections_text = "\n\n".join(
             f"[Section {i}]\n{sec}" for i, sec in enumerate(sections)
         )
-        prompt = _BATCH_USER_PROMPT_TEMPLATE.format(sections_text=sections_text)
+        prompt = _get_user_prompt_template().format(sections_text=sections_text)
 
         try:
             result = cast(
@@ -250,7 +281,7 @@ class AgenticChunker(BaseChunker):
                 await llm.generate_structured(  # type: ignore[union-attr]
                     prompt=prompt,
                     response_type=_ChunkBoundaryResponse,
-                    system=_SYSTEM_PROMPT,
+                    system=_get_system_prompt(),
                 ),
             )
         except ProviderUnavailableError:
@@ -285,7 +316,5 @@ class AgenticChunker(BaseChunker):
         return expanded or list(sections)
 
     def _get_default_llm(self) -> object:
-        from core.config import settings
         from llm.providers.ollama import OllamaProvider
-        model = os.environ.get("KNOWLEDGE_ENRICH_MODEL", settings.knowledge_enrich_model)
-        return OllamaProvider(model=model)
+        return OllamaProvider(model=_cfg.knowledge_enrich_model)

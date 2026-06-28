@@ -1,12 +1,21 @@
-"""Heading-based Markdown chunker with table-atomic units and configurable size cap."""
+"""Heading-based Markdown chunker with table-atomic units and configurable size cap.
+
+DEPRECATED(012): HeadingChunker is superseded by DoclingIngestor + HybridChunker for the active
+PDF ingestion path (extraction_mode="docling", feature 012, spike PR #19).
+HeadingChunker is retained for the legacy text and vision extraction paths.
+"""
 
 from __future__ import annotations
 
 import asyncio
-import os
+import logging
 import re
 import warnings
+
+from core.config import settings as _cfg
 from abc import ABC, abstractmethod
+
+_log = logging.getLogger(__name__)
 
 _DEFAULT_MAX_TOKENS = 800
 _DEFAULT_OVERLAP_TOKENS = 50
@@ -68,12 +77,12 @@ class HeadingChunker(BaseChunker):
         max_tokens: int | None = None,
         overlap_tokens: int | None = None,
     ) -> None:
-        self._max_tokens = max_tokens or int(
-            os.environ.get("KNOWLEDGE_MAX_CHUNK_TOKENS", str(_DEFAULT_MAX_TOKENS))
+        _log.warning(
+            "HeadingChunker is deprecated (feature 012). "
+            "Use extraction_mode='docling' to chunk via HybridChunker instead."
         )
-        self._overlap_tokens = overlap_tokens or int(
-            os.environ.get("KNOWLEDGE_CHUNK_OVERLAP_TOKENS", str(_DEFAULT_OVERLAP_TOKENS))
-        )
+        self._max_tokens = max_tokens or _cfg.knowledge_max_chunk_tokens
+        self._overlap_tokens = overlap_tokens or _cfg.knowledge_chunk_overlap_tokens
         self._max_chars = self._max_tokens * _APPROX_CHARS_PER_TOKEN
         self._overlap_chars = self._overlap_tokens * _APPROX_CHARS_PER_TOKEN
 
@@ -215,7 +224,7 @@ def create_chunker(
     Raises:
         ValueError: If the env var is set to an unrecognised strategy name.
     """
-    strategy = os.environ.get("KNOWLEDGE_CHUNKING_STRATEGY", "agentic").strip().lower()
+    strategy = _cfg.knowledge_chunking_strategy.strip().lower()
     if strategy == "heading":
         return HeadingChunker()
     if strategy == "semantic":

@@ -1,13 +1,22 @@
-"""SemanticChunker: embedding-similarity breakpoint chunking strategy."""
+"""SemanticChunker: embedding-similarity breakpoint chunking strategy.
+
+DEPRECATED(012): SemanticChunker is superseded by DoclingIngestor + HybridChunker for the active
+PDF ingestion path (extraction_mode="docling", feature 012, spike PR #19).
+SemanticChunker is retained for the legacy text and vision extraction paths.
+"""
 
 from __future__ import annotations
 
+import logging
 import math
-import os
 import re
+
+from core.config import settings as _cfg
 
 from rag.knowledge.chunker import BaseChunker
 from rag.knowledge.chunker import estimate_tokens as _estimate_tokens
+
+_log = logging.getLogger(__name__)
 
 _DEFAULT_MAX_TOKENS = 800
 _DEFAULT_BREAKPOINT_PERCENTILE = 95
@@ -94,22 +103,14 @@ class SemanticChunker(BaseChunker):
         breakpoint_percentile: int | None = None,
         min_chunk_tokens: int | None = None,
     ) -> None:
+        _log.warning(
+            "SemanticChunker is deprecated (feature 012). "
+            "Use extraction_mode='docling' to chunk via HybridChunker instead."
+        )
         self._embed_fn = embed_fn
-        self._max_tokens = max_tokens or int(
-            os.environ.get("KNOWLEDGE_MAX_CHUNK_TOKENS", str(_DEFAULT_MAX_TOKENS))
-        )
-        self._breakpoint_percentile = breakpoint_percentile or int(
-            os.environ.get(
-                "KNOWLEDGE_SEMANTIC_BREAKPOINT_PERCENTILE",
-                str(_DEFAULT_BREAKPOINT_PERCENTILE),
-            )
-        )
-        self._min_chunk_tokens = min_chunk_tokens or int(
-            os.environ.get(
-                "KNOWLEDGE_SEMANTIC_MIN_CHUNK_TOKENS",
-                str(_DEFAULT_MIN_CHUNK_TOKENS),
-            )
-        )
+        self._max_tokens = max_tokens or _cfg.knowledge_max_chunk_tokens
+        self._breakpoint_percentile = breakpoint_percentile or _cfg.knowledge_semantic_breakpoint_percentile
+        self._min_chunk_tokens = min_chunk_tokens or _cfg.knowledge_semantic_min_chunk_tokens
 
     def chunk(self, text: str) -> list[str]:
         """Synchronous chunk — runs the async version in a new event loop."""

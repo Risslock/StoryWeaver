@@ -1,11 +1,19 @@
-"""BreadcrumbExtractor: deterministic ATX-heading scan to produce per-chunk breadcrumb paths."""
+"""BreadcrumbExtractor: deterministic ATX-heading scan to produce per-chunk breadcrumb paths.
+
+DEPRECATED(012): This extractor is superseded by DoclingIngestor, which derives breadcrumbs
+directly from HybridChunker chunk.meta.headings (feature 012, spike PR #19).
+BreadcrumbExtractor is retained for the legacy text and vision extraction paths.
+"""
 
 from __future__ import annotations
 
+import logging
 import re
 
 _ATX_HEADING = re.compile(r"^(#{1,3})\s+(.*)")
 _MD_NOISE_RE = re.compile(r"[*_`#]")
+
+_log = logging.getLogger(__name__)
 
 
 class BreadcrumbExtractor:
@@ -21,7 +29,15 @@ class BreadcrumbExtractor:
     """
 
     def extract(self, md_text: str, chunks: list[str], doc_name: str) -> list[str]:
-        """Return a list of breadcrumb strings, one per chunk."""
+        """Return a list of breadcrumb strings, one per chunk.
+
+        DEPRECATED(012): Use DoclingIngestor (extraction_mode="docling") to obtain
+        breadcrumbs from chunk.meta.headings without this post-hoc scan.
+        """
+        _log.warning(
+            "BreadcrumbExtractor is deprecated (feature 012). "
+            "Switch to extraction_mode='docling' to use HybridChunker heading metadata directly."
+        )
         heading_timeline: list[tuple[int, str]] = self._build_heading_timeline(md_text, doc_name)
         return [self._breadcrumb_for_chunk(chunk, md_text, heading_timeline, doc_name) for chunk in chunks]
 
