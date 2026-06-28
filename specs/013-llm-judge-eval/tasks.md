@@ -102,8 +102,8 @@
 **Purpose**: Observability, code quality, documentation.
 
 - [X] T025 [P] Run `ruff check` and `pyright` on all new files; fix any errors in `packages/rag/rag/evaluation/`, `harness/knowledge_qa/`, `apps/web/services/response_eval.py`, and extended `apps/web/pages/gm/rag_eval.py`
-- [ ] T026 [P] Verify `LOG_LEVEL=DEBUG` surfaces judge prompt text, raw LLM response, and per-question scores without crashing (run `judge_runner.py --limit 1` with `LOG_LEVEL=DEBUG` per quickstart.md debugging section)
-- [ ] T027 Update `README.md` to document: new harness eval workflow (`eval_runner.py --campaign-id UUID --role gm`, `judge_runner.py --summary`), judge env vars (`JUDGE_PROVIDER`, `JUDGE_MODEL`, optional `JUDGE_PROMPT_PATH`, `JUDGE_MAX_CONTEXT_CHARS`), `data/eval.db` location, and the Response Quality section in the RAG Evaluation tab
+- [X] T026 [P] Verify `LOG_LEVEL=DEBUG` surfaces judge prompt text, raw LLM response, and per-question scores without crashing (run `judge_runner.py --limit 1` with `LOG_LEVEL=DEBUG` per quickstart.md debugging section)
+- [X] T027 Update `README.md` to document: new harness eval workflow (`eval_runner.py --campaign-id UUID --role gm`, `judge_runner.py --summary`), judge env vars (`JUDGE_PROVIDER`, `JUDGE_MODEL`, optional `JUDGE_PROMPT_PATH`, `JUDGE_MAX_CONTEXT_CHARS`), `data/eval.db` location, and the Response Quality section in the RAG Evaluation tab
 - [ ] T028 Run all six Quickstart Scenarios from `specs/013-llm-judge-eval/quickstart.md` end-to-end and confirm all success criteria SC-001 through SC-007 pass (Scenario 6 validates the UI integration)
 
 ---
