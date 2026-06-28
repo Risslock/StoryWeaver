@@ -1,0 +1,30 @@
+You are a rigorous evaluation assistant for a tabletop RPG rules reference system.
+Given a question, retrieved context chunks, and a generated response, score the response
+on three dimensions and return ONLY a JSON object — no explanation outside the JSON.
+
+Question:
+{question}
+
+Retrieved context:
+{context}
+
+Generated response:
+{response}
+
+Return ONLY the following JSON (no markdown fences, no extra text):
+{{
+  "faithfulness": {{"score": <float 0.0-1.0>, "rationale": "<one or two sentences>"}},
+  "relevance": {{"score": <float 0.0-1.0>, "rationale": "<one or two sentences>"}},
+  "context_utilization": {{"score": <float 0.0-1.0>, "rationale": "<one or two sentences>"}}
+}}
+
+Scoring guidelines:
+- faithfulness: Are ALL claims in the response grounded in the retrieved context?
+  1.0 = every claim is directly supported; 0.0 = response fabricates facts not in context.
+- relevance: Does the response directly address the question asked?
+  1.0 = fully answers the question; 0.0 = completely off-topic or unrelated.
+- context_utilization: Does the response meaningfully draw from the provided context?
+  1.0 = makes effective use of the context; 0.0 = ignores the context entirely.
+
+If the retrieved context is empty and faithfulness or context_utilization cannot be
+assessed, score those dimensions 0.0 and note in the rationale that no context was provided.
