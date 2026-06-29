@@ -28,7 +28,7 @@ StoryWeaver helps players and gamemasters run richer tabletop RPG campaigns. Sta
 - **Scene and portrait generation** via local (ComfyUI) or cloud (HuggingFace FLUX.1) image models
 - A **living story history** with role-scoped access (GMs see everything, players see public events)
 - A **Game Knowledge Q&A** system — ask natural-language questions about rules or campaign lore; cited sources surface in a collapsible accordion
-- A **GM-only RAG Evaluation tab** — upload a JSONL test file, run MRR/nDCG/Recall@k retrieval evaluation with live progress, and drill into per-question chunk details
+- A **GM-only RAG Evaluation tab** — upload a JSONL test file, run MRR/nDCG/Recall@k retrieval evaluation with live progress, drill into per-question chunk details, and score generated responses with an LLM judge (faithfulness / relevance / context utilization)
 
 ### 2. An engineering portfolio
 
@@ -42,7 +42,7 @@ Every architectural decision in this codebase was made deliberately and is docum
 | **Agent design with Pydantic-AI** | [`packages/agents/`](packages/agents/) — per-entity digital twins, typed tool schemas |
 | **Storage abstraction** | [`packages/storage/`](packages/storage/) — SQLite → Postgres with one env var |
 | **Architecture Decision Records** | [`docs/adr/`](docs/adr/) — documented tradeoffs, alternatives rejected |
-| **Harness-driven quality** | [`harness/`](harness/) — deterministic eval suites with composite 0–10 scoring |
+| **Harness-driven quality** | [`harness/`](harness/) — deterministic eval suites, retrieval metrics, and LLM-as-judge response scoring |
 
 ---
 
@@ -480,8 +480,14 @@ KNOWLEDGE_VISION_MAX_RETRIES=1             # retry attempts before IngestionAbor
 KNOWLEDGE_MIN_CHUNK_CHARS=150              # stubs below this are merged into adjacent chunk
 KNOWLEDGE_MAX_CHUNK_CHARS=15000            # giants above this are re-split via the active chunker
 
-# Logging level (DEBUG surfaces RAG eval run start/end and per-question errors)
+# Logging level (DEBUG surfaces RAG eval run start/end, judge prompt/response, and per-question scores)
 LOG_LEVEL=INFO
+
+# LLM-as-judge response evaluation (feature 013)
+JUDGE_PROVIDER=ollama            # "ollama" | "claude"
+JUDGE_MODEL=llama3.1             # e.g. llama3.1, claude-sonnet-4-6
+# ANTHROPIC_API_KEY=...          # required when JUDGE_PROVIDER=claude
+# OLLAMA_BASE_URL=http://localhost:11434  # default
 ```
 
 ---
@@ -500,6 +506,22 @@ uv run pytest tests/integration/test_story_history.py -v
 # Harness eval runner (deterministic agent/tool scenarios)
 uv run python harness/runner.py --all
 uv run python harness/runner.py --dir harness/scenarios/gm_agent/
+
+# LLM-as-judge response evaluation (feature 013)
+# Step 1 — generate answers and write unscored records to data/eval.db
+uv run python harness/knowledge_qa/eval_runner.py \
+  --questions harness/knowledge_qa/rag_gold_standard.jsonl \
+  --campaign-id <UUID> --role gm
+
+# Step 2 — score with judge (requires JUDGE_PROVIDER + JUDGE_MODEL env vars)
+JUDGE_PROVIDER=ollama JUDGE_MODEL=llama3.1 \
+  uv run python harness/knowledge_qa/judge_runner.py --run-id <RUN_ID>
+
+# Or use --force to re-score already-scored records
+uv run python harness/knowledge_qa/judge_runner.py --run-id <RUN_ID> --force
+
+# Unit tests for evaluation package
+uv run pytest packages/rag/tests/evaluation/ -v
 
 # Lint + type check
 uv run ruff check .
@@ -523,6 +545,7 @@ uv run pyright
 - [x] M8 — Game Knowledge Q&A (two-tier RAG, PDF ingestion, LLM enrichment, RRF)
 - [x] M9 — RAG Evaluation tab + Q&A sources accordion (MRR/nDCG/Recall@k, drill-down, GM-only)
 - [x] M10 — Contextual retrieval & breadcrumbs (per-category benchmarking, breadcrumb injection, opt-in contextual summaries, `source_type` metadata, `IngestionConfig` API)
+- [x] M11 — LLM-as-judge response evaluation (faithfulness/relevance/context-utilization scoring via CLI harness + Gradio RAG Evaluation tab; `data/eval.db` persistence; Ollama and Claude judge providers)
 
 ### Planned
 - [ ] **System-agnostic core** — second rule system beyond Earthdawn

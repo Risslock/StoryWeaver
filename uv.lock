@@ -5714,11 +5714,13 @@ name = "storyweaver-rag"
 version = "0.1.0"
 source = { editable = "packages/rag" }
 dependencies = [
+    { name = "aiosqlite" },
     { name = "chromadb" },
     { name = "docling" },
     { name = "httpx" },
     { name = "pydantic-ai" },
     { name = "pymupdf4llm" },
+    { name = "sqlalchemy" },
     { name = "storyweaver-core" },
     { name = "storyweaver-llm" },
     { name = "storyweaver-storage" },
@@ -5728,11 +5730,13 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiosqlite", specifier = ">=0.20" },
     { name = "chromadb", specifier = ">=0.4" },
     { name = "docling", specifier = ">=2.0.0" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "pydantic-ai", specifier = ">=0.0.1" },
     { name = "pymupdf4llm" },
+    { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "storyweaver-core", editable = "packages/core" },
     { name = "storyweaver-llm", editable = "packages/llm" },
     { name = "storyweaver-storage", editable = "packages/storage" },
