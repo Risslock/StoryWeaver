@@ -55,6 +55,7 @@ def _make_input(record_id: int = 1, response: str = "") -> EvaluationInput:
         record_id=record_id,
         run_id="integration-test",
         question="What is a dwarf in Earthdawn 4th Edition?",
+        reference_answer="A dwarf is one of the eight Name-giver races in Earthdawn 4E with a Strength bonus.",
         generated_response=response,
         context_chunks=[
             "Dwarfs are one of the eight Name-giver races in Earthdawn. "
@@ -74,6 +75,7 @@ async def test_real_judge_returns_scored_status() -> None:
     assert 0.0 <= result.score.faithfulness.score <= 1.0
     assert 0.0 <= result.score.relevance.score <= 1.0
     assert 0.0 <= result.score.context_utilization.score <= 1.0
+    assert 0.0 <= result.score.answer_correctness.score <= 1.0
     assert 0.0 <= result.score.aggregate <= 1.0
 
 
@@ -93,3 +95,4 @@ async def test_real_judge_rationales_are_nonempty() -> None:
         assert result.score.faithfulness.rationale.strip()
         assert result.score.relevance.rationale.strip()
         assert result.score.context_utilization.rationale.strip()
+        assert result.score.answer_correctness.rationale.strip()

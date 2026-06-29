@@ -119,6 +119,7 @@ async def _run(args: argparse.Namespace) -> None:
     for i, q in enumerate(questions, 1):
         question_text = q.get("question", "")
         category = q.get("category")
+        reference_answer = q.get("reference_answer", "")
 
         try:
             answer, chunks = await ask_question(question_text, campaign_uuid, args.role)
@@ -138,6 +139,7 @@ async def _run(args: argparse.Namespace) -> None:
             campaign_id=campaign_id_str,
             role=args.role,
             question=question_text,
+            reference_answer=reference_answer,
             question_source="gold_standard",
             question_category=category,
             generated_response=answer,

@@ -43,8 +43,9 @@ def test_judge_score_aggregate() -> None:
         faithfulness=DimensionScore(score=0.8, rationale="good"),
         relevance=DimensionScore(score=0.6, rationale="ok"),
         context_utilization=DimensionScore(score=0.7, rationale="fine"),
+        answer_correctness=DimensionScore(score=0.5, rationale="partial"),
     )
-    expected = (0.8 + 0.6 + 0.7) / 3
+    expected = (0.8 + 0.6 + 0.7 + 0.5) / 4
     assert abs(score.aggregate - expected) < 1e-9
 
 
@@ -53,6 +54,7 @@ def test_judge_score_aggregate_all_ones() -> None:
         faithfulness=DimensionScore(score=1.0, rationale="perfect"),
         relevance=DimensionScore(score=1.0, rationale="perfect"),
         context_utilization=DimensionScore(score=1.0, rationale="perfect"),
+        answer_correctness=DimensionScore(score=1.0, rationale="perfect"),
     )
     assert abs(score.aggregate - 1.0) < 1e-9
 
@@ -69,6 +71,7 @@ def test_judge_result_scored() -> None:
         faithfulness=DimensionScore(score=0.9, rationale="x"),
         relevance=DimensionScore(score=0.8, rationale="x"),
         context_utilization=DimensionScore(score=0.7, rationale="x"),
+        answer_correctness=DimensionScore(score=0.6, rationale="x"),
     )
     result = JudgeResult(
         record_id=1,

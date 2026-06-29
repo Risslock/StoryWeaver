@@ -32,6 +32,7 @@ class ResponseEvalRecord(_EvalBase):
     campaign_id: Mapped[str] = mapped_column(String, nullable=False)
     role: Mapped[str] = mapped_column(String, nullable=False)
     question: Mapped[str] = mapped_column(Text, nullable=False)
+    reference_answer: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
     question_source: Mapped[str] = mapped_column(String, nullable=False, default="gold_standard")
     question_category: Mapped[str | None] = mapped_column(String, nullable=True)
     generated_response: Mapped[str] = mapped_column(Text, nullable=False, default="")
@@ -45,6 +46,8 @@ class ResponseEvalRecord(_EvalBase):
     judge_relevance_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
     judge_context_utilization: Mapped[float | None] = mapped_column(Float, nullable=True)
     judge_context_utilization_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    judge_answer_correctness: Mapped[float | None] = mapped_column(Float, nullable=True)
+    judge_answer_correctness_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
     judge_aggregate: Mapped[float | None] = mapped_column(Float, nullable=True)
     judge_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     judge_raw_response: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -64,10 +67,26 @@ class EvaluationStore:
         )
 
     async def initialize(self) -> None:
-        """Create tables if they don't exist."""
+        """Create tables if they don't exist, and migrate any missing columns."""
         async with self._engine.begin() as conn:
             await conn.run_sync(_EvalBase.metadata.create_all)
+            await self._migrate(conn)
         _log.info("EvaluationStore initialized")
+
+    async def _migrate(self, conn: object) -> None:
+        """Add columns introduced after the initial schema (idempotent)."""
+        _migrations = [
+            "ALTER TABLE response_eval_records ADD COLUMN reference_answer TEXT",
+            "ALTER TABLE response_eval_records ADD COLUMN judge_answer_correctness REAL",
+            "ALTER TABLE response_eval_records ADD COLUMN judge_answer_correctness_rationale TEXT",
+        ]
+        from sqlalchemy import text
+
+        for stmt in _migrations:
+            try:
+                await conn.execute(text(stmt))  # type: ignore[attr-defined]
+            except Exception:
+                pass  # column already exists — sqlite3.OperationalError: duplicate column name
 
     async def write_record(
         self,
@@ -76,6 +95,7 @@ class EvaluationStore:
         campaign_id: str,
         role: str,
         question: str,
+        reference_answer: str = "",
         question_source: str = "gold_standard",
         question_category: str | None = None,
         generated_response: str = "",
@@ -88,6 +108,7 @@ class EvaluationStore:
             campaign_id=campaign_id,
             role=role,
             question=question,
+            reference_answer=reference_answer,
             question_source=question_source,
             question_category=question_category,
             generated_response=generated_response,
@@ -143,6 +164,8 @@ class EvaluationStore:
         judge_relevance_rationale: str | None = None,
         judge_context_utilization: float | None = None,
         judge_context_utilization_rationale: str | None = None,
+        judge_answer_correctness: float | None = None,
+        judge_answer_correctness_rationale: str | None = None,
         judge_aggregate: float | None = None,
         judge_error: str | None = None,
         judge_raw_response: str | None = None,
@@ -160,6 +183,8 @@ class EvaluationStore:
             "judge_relevance_rationale": judge_relevance_rationale,
             "judge_context_utilization": judge_context_utilization,
             "judge_context_utilization_rationale": judge_context_utilization_rationale,
+            "judge_answer_correctness": judge_answer_correctness,
+            "judge_answer_correctness_rationale": judge_answer_correctness_rationale,
             "judge_aggregate": judge_aggregate,
             "judge_error": judge_error,
             "judge_raw_response": judge_raw_response,

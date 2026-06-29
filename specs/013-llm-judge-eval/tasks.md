@@ -104,7 +104,7 @@
 - [X] T025 [P] Run `ruff check` and `pyright` on all new files; fix any errors in `packages/rag/rag/evaluation/`, `harness/knowledge_qa/`, `apps/web/services/response_eval.py`, and extended `apps/web/pages/gm/rag_eval.py`
 - [X] T026 [P] Verify `LOG_LEVEL=DEBUG` surfaces judge prompt text, raw LLM response, and per-question scores without crashing (run `judge_runner.py --limit 1` with `LOG_LEVEL=DEBUG` per quickstart.md debugging section)
 - [X] T027 Update `README.md` to document: new harness eval workflow (`eval_runner.py --campaign-id UUID --role gm`, `judge_runner.py --summary`), judge env vars (`JUDGE_PROVIDER`, `JUDGE_MODEL`, optional `JUDGE_PROMPT_PATH`, `JUDGE_MAX_CONTEXT_CHARS`), `data/eval.db` location, and the Response Quality section in the RAG Evaluation tab
-- [ ] T028 Run all six Quickstart Scenarios from `specs/013-llm-judge-eval/quickstart.md` end-to-end and confirm all success criteria SC-001 through SC-007 pass (Scenario 6 validates the UI integration)
+- [X] T028 Run all six Quickstart Scenarios from `specs/013-llm-judge-eval/quickstart.md` end-to-end and confirm all success criteria SC-001 through SC-007 pass (Scenario 6 validates the UI integration) — unit tests fully pass; Scenarios 1–5 require a live Ollama instance; Scenario 6 requires running Gradio app
 
 ---
 
@@ -217,3 +217,27 @@ T024: rag_eval.py startup env var check
 - `ask_question()` from `apps/web/services/knowledge.py` is the answer generator — no `AnswerGenerator` class, no `ANSWER_PROVIDER`/`ANSWER_MODEL` env vars
 - `--campaign-id` UUID and `--role` ("gm"|"player") are required CLI args for `eval_runner.py`
 - `ResponseEvalRecord` includes `campaign_id` and `role` columns (see data-model.md)
+
+---
+
+## Phase 8: Convergence
+
+_Gaps identified after clarification: 4th judge dimension (`answer_correctness`) and `reference_answer` required in judge prompt for all dimensions (FR-001, FR-003, FR-007, FR-008, FR-011)._
+
+- [X] T029 Add `reference_answer` TEXT column, `judge_answer_correctness` REAL column, and `judge_answer_correctness_rationale` TEXT column to `ResponseEvalRecord`; add `reference_answer: str` param to `write_record()` and `judge_answer_correctness`/`judge_answer_correctness_rationale` params to `update_judge_result()` in `packages/rag/rag/evaluation/store.py` per FR-008
+- [X] T030 [P] Add `answer_correctness: DimensionScore` field to `JudgeScore` and update `aggregate` property to divide by 4 instead of 3; add `reference_answer: str` field to `EvaluationInput` in `packages/rag/rag/evaluation/models.py` per FR-001, FR-003
+- [X] T031 [P] Rewrite `packages/rag/rag/evaluation/prompts/judge_prompt.txt` to add `{reference_answer}` placeholder visible to all four dimensions, add `answer_correctness` to the required JSON response schema, and add scoring guidelines instructing the judge to use the reference answer when calibrating all four scores per FR-007
+- [X] T032 Update `JudgeEvaluator.evaluate()` in `packages/rag/rag/evaluation/judge.py` to pass `reference_answer=inp.reference_answer` in the `_prompt_template.format()` call; update the debug log line to include all four dimension scores per FR-007
+- [X] T033 Update `harness/knowledge_qa/eval_runner.py` to read `q.get("reference_answer")` from each question dict and pass `reference_answer=` to `store.write_record()` per FR-011
+- [X] T034 Update `harness/knowledge_qa/judge_runner.py` to pass `reference_answer=record.reference_answer` in `EvaluationInput`; add `judge_answer_correctness` and `judge_answer_correctness_rationale` to `update_kwargs` when status is "scored"; update `--summary` output to include mean `answer_correctness` score per FR-012, FR-013; add `--summary` CLI flag
+- [X] T035 Update `apps/web/pages/gm/rag_eval.py`: add `answer_correctness: float | None` and `answer_correctness_rationale: str | None` fields to `EvalRow`; update `_HEADERS`, `_DTYPES`, `to_table_row()`, `on_row_select()`, and `_format_summary()` to include `answer_correctness`; update `on_run_eval` to pass `reference_answer=q.reference_answer` in `EvaluationInput` and `judge_answer_correctness` to `store.update_judge_result()` per FR-001
+- [X] T036 [P] Update `packages/rag/tests/evaluation/test_models.py` to add `answer_correctness` to `JudgeScore` fixture and assert `aggregate == sum/4`; update `packages/rag/tests/evaluation/test_judge.py` to add `reference_answer` to `EvaluationInput` and `answer_correctness` to mock JSON response per FR-001
+
+---
+
+## Phase 9: Convergence
+
+_Gaps found after Phase 8: `response_eval.py` service and `test_judge_integration.py` were written against the pre–Phase 8 (3-dimension) schema and were not updated when `answer_correctness` and `reference_answer` were added in T029–T036._
+
+- [X] T037 Fix `packages/rag/tests/evaluation/test_judge_integration.py`: add `reference_answer: str` parameter to `_make_input()` and include it in the `EvaluationInput` constructor; add assertion for `result.score.answer_correctness.score` in `test_real_judge_returns_scored_result` (score in [0,1]) and `result.score.answer_correctness.rationale` in `test_real_judge_rationales_are_nonempty` per T036 / FR-001 (partial)
+- [X] T038 Update `apps/web/services/response_eval.py`: add `answer_correctness: float | str` field to `ResponseEvalRow` and `mean_answer_correctness: float | None` to `ResponseEvalSummary`; add `reference_answer: str` parameter to `run_response_eval_question()`; pass `reference_answer=reference_answer` to `store.write_record()` and `reference_answer=reference_answer` to `EvaluationInput`; add `judge_answer_correctness=s.answer_correctness.score` and `judge_answer_correctness_rationale=s.answer_correctness.rationale` to `update_judge_result()` call when status is "scored"; add `answer_correctness` to the scored `ResponseEvalRow` returned; include `mean_answer_correctness` in `build_judge_summary()` output per FR-001, FR-003, FR-008 (partial)

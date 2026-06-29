@@ -31,4 +31,4 @@
 
 ## Notes
 
-All items pass. Eight clarifications integrated on 2026-06-28 (concurrency model, judge output format, evaluation record store, harness integration pattern, re-run behavior, run-scoped targeting, generation pipeline reuse via ask_question(), campaign_id and role as CLI args). Spec is ready for `/speckit-converge` to update plan and tasks.
+All items pass. Eight clarifications integrated on 2026-06-28 (concurrency model, judge output format, evaluation record store, harness integration pattern, re-run behavior, run-scoped targeting, generation pipeline reuse via ask_question(), campaign_id and role as CLI args). One additional clarification on 2026-06-28: 4th judge dimension (answer_correctness) added; reference answer now required in judge prompt for all dimensions. Spec is ready for `/speckit-converge` to update plan and tasks.

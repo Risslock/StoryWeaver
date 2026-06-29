@@ -38,6 +38,7 @@ class JudgeScore(BaseModel):
     faithfulness: DimensionScore
     relevance: DimensionScore
     context_utilization: DimensionScore
+    answer_correctness: DimensionScore
 
     @property
     def aggregate(self) -> float:
@@ -45,7 +46,8 @@ class JudgeScore(BaseModel):
             self.faithfulness.score
             + self.relevance.score
             + self.context_utilization.score
-        ) / 3
+            + self.answer_correctness.score
+        ) / 4
 
 
 class JudgeStatus(StrEnum):
@@ -61,6 +63,7 @@ class EvaluationInput(BaseModel):
     record_id: int
     run_id: str
     question: str
+    reference_answer: str
     generated_response: str
     context_chunks: list[str]
     context_truncated: bool

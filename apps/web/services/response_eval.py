@@ -21,6 +21,7 @@ class ResponseEvalRow:
     faithfulness: float | str
     relevance: float | str
     context_utilization: float | str
+    answer_correctness: float | str
     aggregate: float | str
     status: str
 
@@ -32,6 +33,7 @@ class ResponseEvalRow:
             self.faithfulness,
             self.relevance,
             self.context_utilization,
+            self.answer_correctness,
             self.aggregate,
             self.status,
         ]
@@ -49,6 +51,7 @@ class ResponseEvalSummary:
     mean_faithfulness: float | None
     mean_relevance: float | None
     mean_context_utilization: float | None
+    mean_answer_correctness: float | None
     mean_aggregate: float | None
     run_id: str
 
@@ -62,6 +65,7 @@ async def run_response_eval_question(
     store: object,
     run_id: str,
     index: int,
+    reference_answer: str = "",
 ) -> ResponseEvalRow:
     """Run one question through the full eval pipeline and return a result row.
 
@@ -83,7 +87,7 @@ async def run_response_eval_question(
     try:
         answer, chunks = await ask_question(question, campaign_id, role)
     except Exception as exc:
-        _log.warning("ask_question failed for %r: %s", question[:60], exc)
+        _log.error("ask_question failed for %r: %s", question[:60], exc)
         answer = ""
         chunks = []
 
@@ -95,6 +99,7 @@ async def run_response_eval_question(
         campaign_id=str(campaign_id),
         role=role,
         question=question,
+        reference_answer=reference_answer,
         question_source="ui",
         question_category=category,
         generated_response=answer,
@@ -107,6 +112,7 @@ async def run_response_eval_question(
         record_id=record.id,
         run_id=run_id,
         question=question,
+        reference_answer=reference_answer,
         generated_response=answer,
         context_chunks=context_chunks_list,
         context_truncated=False,
@@ -128,6 +134,8 @@ async def run_response_eval_question(
             judge_relevance_rationale=s.relevance.rationale,
             judge_context_utilization=s.context_utilization.score,
             judge_context_utilization_rationale=s.context_utilization.rationale,
+            judge_answer_correctness=s.answer_correctness.score,
+            judge_answer_correctness_rationale=s.answer_correctness.rationale,
             judge_aggregate=s.aggregate,
         )
     elif result.error:
@@ -144,6 +152,7 @@ async def run_response_eval_question(
             faithfulness=round(s.faithfulness.score, 3),
             relevance=round(s.relevance.score, 3),
             context_utilization=round(s.context_utilization.score, 3),
+            answer_correctness=round(s.answer_correctness.score, 3),
             aggregate=round(s.aggregate, 3),
             status="scored",
         )
@@ -155,6 +164,7 @@ async def run_response_eval_question(
         faithfulness="—",
         relevance="—",
         context_utilization="—",
+        answer_correctness="—",
         aggregate="—",
         status=status_label,
     )
@@ -182,6 +192,7 @@ def build_judge_summary(
         mean_faithfulness=_mean([r.faithfulness for r in scored_rows]),
         mean_relevance=_mean([r.relevance for r in scored_rows]),
         mean_context_utilization=_mean([r.context_utilization for r in scored_rows]),
+        mean_answer_correctness=_mean([r.answer_correctness for r in scored_rows]),
         mean_aggregate=_mean([r.aggregate for r in scored_rows]),
         run_id=run_id,
     )

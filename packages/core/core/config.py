@@ -75,6 +75,10 @@ class Settings(BaseSettings):
     knowledge_vision_max_retries: int = 1
     knowledge_cleaning_frontmatter_pages: int = 10
 
+    # LLM-as-Judge Response Evaluation (feature 013)
+    judge_provider: str = ""
+    judge_model: str = ""
+
     @model_validator(mode="after")
     def _resolve_db_path(self) -> "Settings":
         self.database_url = _resolve_sqlite_url(self.database_url)

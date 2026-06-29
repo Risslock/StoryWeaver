@@ -57,6 +57,12 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Score at most N records (for smoke tests)",
     )
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        default=False,
+        help="Print mean scores per dimension after scoring",
+    )
     return parser.parse_args()
 
 
@@ -104,6 +110,7 @@ async def _run(args: argparse.Namespace) -> None:
             record_id=record.id,
             run_id=record.run_id,
             question=record.question,
+            reference_answer=record.reference_answer or "",
             generated_response=record.generated_response or "",
             context_chunks=context_chunks,
             context_truncated=bool(record.judge_context_truncated),
@@ -126,6 +133,8 @@ async def _run(args: argparse.Namespace) -> None:
                 judge_relevance_rationale=s.relevance.rationale,
                 judge_context_utilization=s.context_utilization.score,
                 judge_context_utilization_rationale=s.context_utilization.rationale,
+                judge_answer_correctness=s.answer_correctness.score,
+                judge_answer_correctness_rationale=s.answer_correctness.rationale,
                 judge_aggregate=s.aggregate,
             )
             scored += 1
@@ -161,6 +170,22 @@ async def _run(args: argparse.Namespace) -> None:
     total_scored = counts.get("scored", 0)
     pct = 100 * total_scored / total_in_run if total_in_run else 0.0
     print(f"\nCoverage: {total_scored}/{total_in_run} scored ({pct:.1f}%)")
+
+    # Per-dimension summary for scored records
+    scored_records = await store.get_by_run_id(args.run_id)
+    scored_rows = [r for r in scored_records if r.judge_status == "scored"]
+    if scored_rows:
+
+        def _mean_field(rows: list, attr: str) -> float:
+            vals = [getattr(r, attr) for r in rows if getattr(r, attr) is not None]
+            return sum(vals) / len(vals) if vals else 0.0
+
+        print("\nMean scores (scored records):")
+        print(f"  faithfulness:      {_mean_field(scored_rows, 'judge_faithfulness'):.3f}")
+        print(f"  relevance:         {_mean_field(scored_rows, 'judge_relevance'):.3f}")
+        print(f"  context_util:      {_mean_field(scored_rows, 'judge_context_utilization'):.3f}")
+        print(f"  answer_correctness:{_mean_field(scored_rows, 'judge_answer_correctness'):.3f}")
+        print(f"  aggregate:         {_mean_field(scored_rows, 'judge_aggregate'):.3f}")
 
 
 def main() -> None:

@@ -66,44 +66,40 @@ class JudgeEvaluator:
 
         prompt = self._prompt_template.format(
             question=inp.question,
+            reference_answer=inp.reference_answer,
             context=context,
             response=inp.generated_response,
         )
 
-        raw: str = ""
         try:
-            raw = await self._provider.generate(prompt)  # type: ignore[attr-defined]
-            _log.debug("record_id=%d judge raw response length=%d", inp.record_id, len(raw))
+            score = await self._provider.generate_structured(prompt, JudgeScore)  # type: ignore[attr-defined]
+        except ValidationError as exc:
+            _log.warning("record_id=%d judge parse error: %s", inp.record_id, exc)
+            return JudgeResult(
+                record_id=inp.record_id,
+                status=JudgeStatus.parse_error,
+                error=str(exc),
+                judge_provider=self._judge_provider_name,
+                judge_model=self._judge_model_name,
+            )
         except Exception as exc:
             _log.warning("record_id=%d judge provider error: %s", inp.record_id, exc)
             return JudgeResult(
                 record_id=inp.record_id,
                 status=JudgeStatus.error,
                 error=str(exc),
-                raw_response=raw or None,
-                judge_provider=self._judge_provider_name,
-                judge_model=self._judge_model_name,
-            )
-
-        try:
-            score = JudgeScore.model_validate_json(raw)
-        except (ValidationError, ValueError) as exc:
-            _log.warning("record_id=%d judge parse error: %s", inp.record_id, exc)
-            return JudgeResult(
-                record_id=inp.record_id,
-                status=JudgeStatus.parse_error,
-                error=str(exc),
-                raw_response=raw,
                 judge_provider=self._judge_provider_name,
                 judge_model=self._judge_model_name,
             )
 
         _log.info(
-            "record_id=%d scored faithfulness=%.3f relevance=%.3f context_util=%.3f agg=%.3f",
+            "record_id=%d scored faithfulness=%.3f relevance=%.3f "
+            "context_util=%.3f correctness=%.3f agg=%.3f",
             inp.record_id,
             score.faithfulness.score,
             score.relevance.score,
             score.context_utilization.score,
+            score.answer_correctness.score,
             score.aggregate,
         )
         return JudgeResult(
