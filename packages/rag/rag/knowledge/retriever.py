@@ -20,6 +20,7 @@ from storage.sqlite.adapter import SQLiteBackend
 
 from rag.knowledge.factory import get_knowledge_embed_fn, get_knowledge_enrich_provider
 from rag.knowledge.interface import KnowledgeChunk, KnowledgeRetriever
+from rag.knowledge.lexical_store import SQLiteLexicalStore
 from rag.knowledge.vector_store import (
     GLOBAL_COLLECTION,
     ChromaVectorStore,
@@ -55,6 +56,7 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
 
     def __init__(self, chroma_path: str | None = None) -> None:
         self._store = ChromaVectorStore(chroma_path) if chroma_path else ChromaVectorStore()
+        self._lexical_store = SQLiteLexicalStore()
 
     async def delete_chunks_by_doc(
         self,
@@ -65,6 +67,7 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
         """Delete all chunks for a document from the appropriate collection."""
         col_name = GLOBAL_COLLECTION if scope == "global" else campaign_collection(campaign_id or "")
         await self._store.delete_by_doc(col_name, doc_id)
+        await self._lexical_store.delete_by_doc(doc_id)
 
     async def _embed_query(self, query: str) -> list[float]:
         """Pre-compute a single query embedding via the configured provider."""
@@ -120,7 +123,12 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
         if campaign_id:
             collections.append(campaign_collection(campaign_id))
 
-        result_sets: list[list[tuple[str, dict[str, Any], str]]] = []
+        def _col_scope(col_name: str) -> str:
+            return "global" if col_name == GLOBAL_COLLECTION else campaign_id
+
+        # (signal, ranked) — signal is "vector" or "lexical"; tracked so matched_signals
+        # can record provenance and each list's weight can differ per FR-005/FR-010.
+        tagged_result_sets: list[tuple[str, list[tuple[str, dict[str, Any], str]]]] = []
 
         for q in queries:
             try:
@@ -138,7 +146,7 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
                         include=["documents", "metadatas", "distances"],
                     )
                     if res is None:
-                        result_sets.append([])
+                        tagged_result_sets.append(("vector", []))
                         continue
                     ranked: list[tuple[str, dict[str, Any], str]] = []
                     for chunk_id, meta, doc in zip(
@@ -148,23 +156,54 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
                         strict=False,
                     ):
                         ranked.append((str(chunk_id), dict(meta), str(doc)))
-                    result_sets.append(ranked)
+                    tagged_result_sets.append(("vector", ranked))
                 except ProviderUnavailableError:
                     raise
                 except Exception as exc:
                     _log.warning("ChromaDB query failed for collection %r: %s", col_name, exc)
-                    result_sets.append([])
+                    tagged_result_sets.append(("vector", []))
+
+        if _cfg.hybrid_search_enabled:
+            # Lexical search runs once per collection against the original query only —
+            # not the expanded alternatives (research.md Decision 3).
+            for col_name in collections:
+                try:
+                    lexical_ranked = await self._lexical_store.query(
+                        query, _col_scope(col_name), role, top_k
+                    )
+                    tagged_result_sets.append(("lexical", lexical_ranked))
+                except ProviderUnavailableError as exc:
+                    _log.warning("Lexical query failed for collection %r: %s", col_name, exc)
+                    tagged_result_sets.append(("lexical", []))
+
+        # Weight multipliers only apply when hybrid search is enabled, so the disabled
+        # path stays byte-for-byte identical to pre-014 regardless of configured weights.
+        vector_weight = _cfg.hybrid_search_vector_weight if _cfg.hybrid_search_enabled else 1.0
+        keyword_weight = _cfg.hybrid_search_keyword_weight if _cfg.hybrid_search_enabled else 1.0
 
         rrf_scores: dict[str, float] = {}
         chunk_data: dict[str, tuple[dict[str, Any], str]] = {}
+        matched_signals: dict[str, set[str]] = {}
 
-        for ranked in result_sets:
+        for signal, ranked in tagged_result_sets:
+            weight = vector_weight if signal == "vector" else keyword_weight
             for rank, (chunk_id, meta, doc) in enumerate(ranked):
-                rrf_scores[chunk_id] = rrf_scores.get(chunk_id, 0.0) + 1.0 / (rrf_k + rank + 1)
+                contribution = weight / (rrf_k + rank + 1)
+                rrf_scores[chunk_id] = rrf_scores.get(chunk_id, 0.0) + contribution
+                matched_signals.setdefault(chunk_id, set()).add(signal)
                 if chunk_id not in chunk_data:
                     chunk_data[chunk_id] = (meta, doc)
+                _log.debug(
+                    "[retriever] signal=%s chunk_id=%s rank=%d weight=%.2f contribution=%.6f",
+                    signal, chunk_id, rank, weight, contribution,
+                )
 
         sorted_ids = sorted(rrf_scores, key=lambda cid: rrf_scores[cid], reverse=True)
+        _log.debug(
+            "[retriever] fused %d candidates; matched_signals=%s",
+            len(sorted_ids),
+            {cid: sorted(sigs) for cid, sigs in matched_signals.items()},
+        )
 
         retrieval_k = min(top_k + 4, len(sorted_ids))
         candidates: list[KnowledgeChunk] = []
@@ -184,6 +223,7 @@ class ChromaKnowledgeRetriever(KnowledgeRetriever):
                     rrf_score=rrf_scores[chunk_id],
                     breadcrumb=str(meta.get("breadcrumb", "")),
                     source_type=str(meta.get("source_type", "rulebook")),
+                    matched_signals=sorted(matched_signals.get(chunk_id, set())),
                 )
             )
 
