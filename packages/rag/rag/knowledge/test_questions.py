@@ -12,6 +12,7 @@ class TestQuestion(BaseModel):
     keywords: list[str]
     reference_answer: str
     category: str
+    exact_term: bool = False
 
 
 def load_test_questions(file_path: str) -> list[TestQuestion]:
@@ -39,6 +40,7 @@ def load_test_questions(file_path: str) -> list[TestQuestion]:
                 keywords=list(data["keywords"]),  # type: ignore[arg-type]
                 reference_answer=str(data["reference_answer"]),
                 category=str(data["category"]),
+                exact_term=bool(data.get("exact_term", False)),
             ))
 
     return questions

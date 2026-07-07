@@ -32,6 +32,7 @@ class RetrievalEvalResult(BaseModel):
     k: int
     retrieved_chunks: list[KnowledgeChunk]
     keyword_ranks: dict[str, int | None]
+    is_exact_term: bool = False
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -43,6 +44,7 @@ class EvalSummary(BaseModel):
     total_questions: int
     k: int
     category_scores: dict[str, CategoryMetrics] = {}
+    exact_term_scores: CategoryMetrics | None = None
 
 
 # ── Metric functions ──────────────────────────────────────────────────────────
@@ -102,6 +104,7 @@ def evaluate_question(
             k=k,
             retrieved_chunks=chunks,
             keyword_ranks={},
+            is_exact_term=test.exact_term,
         )
 
     mrr_scores = [calculate_mrr(kw, chunks) for kw in keywords]
@@ -131,6 +134,7 @@ def evaluate_question(
         k=k,
         retrieved_chunks=chunks,
         keyword_ranks=keyword_ranks,
+        is_exact_term=test.exact_term,
     )
 
 
@@ -179,6 +183,17 @@ def aggregate_results(results: list[RetrievalEvalResult]) -> EvalSummary:
             question_count=gn,
         )
 
+    exact_term_results = [r for r in results if r.is_exact_term]
+    exact_term_scores: CategoryMetrics | None = None
+    if exact_term_results:
+        gn = len(exact_term_results)
+        exact_term_scores = CategoryMetrics(
+            mean_mrr=sum(r.mrr for r in exact_term_results) / gn,
+            mean_ndcg=sum(r.ndcg for r in exact_term_results) / gn,
+            mean_recall_at_k=sum(r.recall_at_k for r in exact_term_results) / gn,
+            question_count=gn,
+        )
+
     return EvalSummary(
         mean_mrr=sum(r.mrr for r in results) / n,
         mean_ndcg=sum(r.ndcg for r in results) / n,
@@ -186,4 +201,5 @@ def aggregate_results(results: list[RetrievalEvalResult]) -> EvalSummary:
         total_questions=n,
         k=results[0].k,
         category_scores=category_scores,
+        exact_term_scores=exact_term_scores,
     )
