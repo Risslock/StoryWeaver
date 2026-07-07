@@ -198,6 +198,7 @@ flowchart TD
 - **Three extraction paths**: `extraction_mode="docling"` (recommended) uses Docling's neural layout analysis — zero image placeholders, structured Markdown tables, breadcrumbs from `meta.headings`. `extraction_mode="text"` (legacy) uses pymupdf4llm with corpus cleaning rules. `extraction_mode="vision"` renders pages at 144 DPI via a local Ollama vision model. Switching extraction mode requires re-ingestion; `extraction_mode` is stored per-chunk in metadata.
 - **Provider-selectable LLM and embeddings**: `KNOWLEDGE_ENRICH_PROVIDER` and `KNOWLEDGE_EMBED_PROVIDER` select between `ollama` (local) and `huggingface` (cloud Inference API). The pipeline aborts immediately with an ERROR log if any required env var is absent — no silent fallback. HuggingFace 429 rate limits trigger exponential-backoff retry before surfacing as failures.
 - **Quality gate**: after chunking, stubs < `KNOWLEDGE_MIN_CHUNK_CHARS` (default 150) are merged into adjacent chunks, and giants > `KNOWLEDGE_MAX_CHUNK_CHARS` (default 15 000) are re-split. This runs on all extraction paths.
+- **Hybrid search (feature 014)**: an opt-in lexical (BM25, via SQLite FTS5) signal joins the same weighted-RRF fusion step as the multi-query vector lists. Toggle with `HYBRID_SEARCH_ENABLED` — disabled by default, byte-for-byte identical to vector-only retrieval. Each `KnowledgeChunk` exposes `matched_signals` (`"vector"` and/or `"lexical"`) so fusion behavior is debuggable per chunk. The lexical index (`knowledge_lexical` FTS5 table, same SQLite DB as the rest of the app) stays in sync automatically during ingestion/delete; pre-existing collections are backfilled once via `python -m rag.knowledge.backfill_lexical_index`, with no re-embedding required.
 
 ---
 
@@ -488,6 +489,11 @@ JUDGE_PROVIDER=ollama            # "ollama" | "claude"
 JUDGE_MODEL=llama3.1             # e.g. llama3.1, claude-sonnet-4-6
 # ANTHROPIC_API_KEY=...          # required when JUDGE_PROVIDER=claude
 # OLLAMA_BASE_URL=http://localhost:11434  # default
+
+# Hybrid search (feature 014): lexical (BM25 via SQLite FTS5) + vector signal fusion
+HYBRID_SEARCH_ENABLED=false
+# HYBRID_SEARCH_KEYWORD_WEIGHT=1.0        # per-list weight for lexical results; must be > 0.0
+# HYBRID_SEARCH_VECTOR_WEIGHT=1.0         # per-list weight for vector results; must be > 0.0
 ```
 
 ---
@@ -512,6 +518,9 @@ uv run python harness/runner.py --dir harness/scenarios/gm_agent/
 uv run python harness/knowledge_qa/eval_runner.py \
   --questions harness/knowledge_qa/rag_gold_standard.jsonl \
   --campaign-id <UUID> --role gm
+# rag_gold_standard.jsonl questions may carry an "exact_term": true tag (feature 014)
+# marking rule/item/spell-name or numeric-value questions, aggregated as a separate
+# exact_term subset alongside the standard category breakdown
 
 # Step 2 — score with judge (requires JUDGE_PROVIDER + JUDGE_MODEL env vars)
 JUDGE_PROVIDER=ollama JUDGE_MODEL=llama3.1 \
@@ -519,6 +528,13 @@ JUDGE_PROVIDER=ollama JUDGE_MODEL=llama3.1 \
 
 # Or use --force to re-score already-scored records
 uv run python harness/knowledge_qa/judge_runner.py --run-id <RUN_ID> --force
+
+# Hybrid search (feature 014): one-time backfill of the lexical index for existing collections
+uv run python -m rag.knowledge.backfill_lexical_index
+
+# Gold standard benchmark, toggling hybrid search via config only (no code changes)
+HYBRID_SEARCH_ENABLED=false uv run pytest harness/knowledge_qa/test_gold_standard.py -v
+HYBRID_SEARCH_ENABLED=true uv run pytest harness/knowledge_qa/test_gold_standard.py -v
 
 # Unit tests for evaluation package
 uv run pytest packages/rag/tests/evaluation/ -v
@@ -546,6 +562,7 @@ uv run pyright
 - [x] M9 — RAG Evaluation tab + Q&A sources accordion (MRR/nDCG/Recall@k, drill-down, GM-only)
 - [x] M10 — Contextual retrieval & breadcrumbs (per-category benchmarking, breadcrumb injection, opt-in contextual summaries, `source_type` metadata, `IngestionConfig` API)
 - [x] M11 — LLM-as-judge response evaluation (faithfulness/relevance/context-utilization scoring via CLI harness + Gradio RAG Evaluation tab; `data/eval.db` persistence; Ollama and Claude judge providers)
+- [x] M12 — Hybrid search (BM25 lexical signal via SQLite FTS5 fused with vector search through weighted RRF; togglable via config; one-time backfill CLI for pre-existing collections; exact-term gold-standard subset for measurable comparison)
 
 ### Planned
 - [ ] **System-agnostic core** — second rule system beyond Earthdawn
