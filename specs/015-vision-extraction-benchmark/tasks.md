@@ -77,10 +77,10 @@ Story labels ([US1]–[US4]) are kept for traceability, but at runtime the legs 
 
 **Independent Test**: `benchmark_results.jsonl` has a Docling record with current held-fixed config; `eval.db` has a scored Docling `run_id`; spot-check counts recorded for Docling.
 
-- [ ] T015 [US2] Clean-slate the corpus doc from both stores (`ChromaVectorStore.delete_by_doc` + lexical `delete_by_doc`), then ingest ED4_Players_Guide with `IngestionConfig(extraction_mode="docling_text")` (NOT plain `"docling"` — that uses Docling's own HybridChunker instead of the shared `create_chunker()` the vision path uses; `docling_text` keeps the chunker held-fixed, see quickstart.md); confirm completion and `extraction_mode="docling_text"` tagging.
-- [ ] T016 [US2] Run the retrieval benchmark with `BENCHMARK_EXTRACTION_MODE=docling_text` (`pytest harness/knowledge_qa/test_gold_standard.py -k recall_sanity -s`) → appends the Docling retrieval record.
-- [ ] T017 [US2] Run `eval_runner.py … --run-id docling-015` then `judge_runner.py --run-id docling-015 --summary` (greedy) → record the Docling judge aggregate mean in `results.md`.
-- [ ] T018 [US4] Run `python harness/knowledge_qa/spot_check.py --extraction-mode docling_text` and record complete-opening / coherent-table counts in `results.md` (must be done now — the Docling collection is replaced in Phase 4).
+- [X] T015 [US2] Clean-slate the corpus doc from both stores (`ChromaVectorStore.delete_by_doc` + lexical `delete_by_doc`), then ingest ED4_Players_Guide with `IngestionConfig(extraction_mode="docling_text")` (NOT plain `"docling"` — that uses Docling's own HybridChunker instead of the shared `create_chunker()` the vision path uses; `docling_text` keeps the chunker held-fixed, see quickstart.md); confirm completion and `extraction_mode="docling_text"` tagging.
+- [X] T016 [US2] Run the retrieval benchmark with `BENCHMARK_EXTRACTION_MODE=docling_text` (`pytest harness/knowledge_qa/test_gold_standard.py -k recall_sanity -s`) → appends the Docling retrieval record.
+- [X] T017 [US2] Run `eval_runner.py … --run-id docling-015` then `judge_runner.py --run-id docling-015 --summary` (greedy) → record the Docling judge aggregate mean in `results.md`.
+- [X] T018 [US4] Run `python harness/knowledge_qa/spot_check.py --extraction-mode docling_text` and record complete-opening / coherent-table counts in `results.md` (must be done now — the Docling collection is replaced in Phase 4).
 
 **Checkpoint**: Docling baseline fully captured; safe to overwrite the collection.
 
