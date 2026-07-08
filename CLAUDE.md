@@ -1,5 +1,5 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at specs/014-hybrid-search/plan.md
+at specs/015-vision-extraction-benchmark/plan.md
 <!-- SPECKIT END -->
