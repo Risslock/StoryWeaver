@@ -17,6 +17,13 @@ _log = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
+# Some large chunk-enrichment / boundary-detection prompts (agentic chunker
+# quality-gate re-splits especially) take 60-150s under greedy decoding
+# (KNOWLEDGE_EVAL_TEMPERATURE=0.0, feature 015). 60s was observed to be too
+# tight; 180s gives comfortable margin without masking a truly unreachable host
+# (ConnectError fires immediately regardless of this timeout).
+_GENERATE_TIMEOUT_SECS = 180.0
+
 
 class OllamaProvider(LLMProvider):
     def __init__(
@@ -41,7 +48,7 @@ class OllamaProvider(LLMProvider):
         }
 
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=_GENERATE_TIMEOUT_SECS) as client:
                 response = await client.post(
                     f"{self._base_url}/v1/chat/completions",
                     json=payload,
@@ -51,6 +58,10 @@ class OllamaProvider(LLMProvider):
                 return str(data["choices"][0]["message"]["content"])
         except httpx.ConnectError as exc:
             raise ProviderUnavailableError(f"Cannot reach Ollama at {self._base_url}") from exc
+        except httpx.TimeoutException as exc:
+            raise ProviderUnavailableError(
+                f"Ollama did not respond within {_GENERATE_TIMEOUT_SECS}s"
+            ) from exc
         except httpx.HTTPStatusError as exc:
             raise ProviderUnavailableError(f"Ollama returned {exc.response.status_code}") from exc
 
@@ -74,7 +85,7 @@ class OllamaProvider(LLMProvider):
         }
 
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=_GENERATE_TIMEOUT_SECS) as client:
                 response = await client.post(
                     f"{self._base_url}/v1/chat/completions",
                     json=payload,
@@ -85,6 +96,10 @@ class OllamaProvider(LLMProvider):
                 return response_type.model_validate_json(raw)
         except httpx.ConnectError as exc:
             raise ProviderUnavailableError(f"Cannot reach Ollama at {self._base_url}") from exc
+        except httpx.TimeoutException as exc:
+            raise ProviderUnavailableError(
+                f"Ollama did not respond within {_GENERATE_TIMEOUT_SECS}s"
+            ) from exc
         except httpx.HTTPStatusError as exc:
             raise ProviderUnavailableError(f"Ollama returned {exc.response.status_code}") from exc
 
