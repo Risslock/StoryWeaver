@@ -18,11 +18,15 @@ _log = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 # Some large chunk-enrichment / boundary-detection prompts (agentic chunker
-# quality-gate re-splits especially) take 60-150s under greedy decoding
+# quality-gate re-splits, and batch-enrichment of large vision-extracted
+# chunks especially) take well over 60s under greedy decoding
 # (KNOWLEDGE_EVAL_TEMPERATURE=0.0, feature 015). 60s was observed to be too
-# tight; 180s gives comfortable margin without masking a truly unreachable host
-# (ConnectError fires immediately regardless of this timeout).
-_GENERATE_TIMEOUT_SECS = 180.0
+# tight, then 180s also proved too tight for one batch-enrichment call during
+# the vision-extraction ingestion leg (a ~109-min run to reach that point,
+# making a tight timeout expensive to fail on). 600s gives generous margin
+# without masking a truly unreachable host (ConnectError fires immediately
+# regardless of this timeout).
+_GENERATE_TIMEOUT_SECS = 600.0
 
 
 class OllamaProvider(LLMProvider):
