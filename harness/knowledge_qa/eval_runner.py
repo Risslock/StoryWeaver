@@ -22,6 +22,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 import uuid
 from datetime import UTC, datetime
@@ -78,6 +79,29 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _resolve_extraction_mode() -> str:
+    """Read BENCHMARK_EXTRACTION_MODE (feature 015 run-attribution, FR-011).
+
+    Defaults to "unknown" with a WARNING when unset — mirrors test_gold_standard.py
+    so a retrieval record and its paired eval run carry the same attribution.
+    """
+    mode = os.environ.get("BENCHMARK_EXTRACTION_MODE", "").strip()
+    if not mode:
+        _log.warning(
+            "BENCHMARK_EXTRACTION_MODE is not set — recording extraction_mode='unknown'. "
+            "Set it to 'docling' or 'vision' to attribute this run to an extraction path."
+        )
+        return "unknown"
+    return mode
+
+
+def _resolve_decoding() -> str:
+    """Return 'greedy' when knowledge_eval_temperature is 0.0, else 'sampled' (FR-018)."""
+    from core.config import settings as _cfg
+
+    return "greedy" if _cfg.knowledge_eval_temperature == 0.0 else "sampled"
+
+
 def _load_questions(path: str) -> list[dict]:
     questions = []
     with open(path, encoding="utf-8") as fh:
@@ -108,9 +132,13 @@ async def _run(args: argparse.Namespace) -> None:
     store = EvaluationStore(args.db_path)
     await store.initialize()
 
+    extraction_mode = _resolve_extraction_mode()
+    decoding = _resolve_decoding()
+
     _log.info("run_id=%s questions=%d campaign_id=%s role=%s", run_id, len(questions), campaign_id_str, args.role)
     print(f"\neval_runner  run_id={run_id}  questions={len(questions)}")
-    print(f"             campaign_id={campaign_id_str}  role={args.role}\n")
+    print(f"             campaign_id={campaign_id_str}  role={args.role}")
+    print(f"             extraction_mode={extraction_mode}  decoding={decoding}\n")
 
     ok = 0
     empty = 0
@@ -144,6 +172,8 @@ async def _run(args: argparse.Namespace) -> None:
             question_category=category,
             generated_response=answer,
             context_chunks_json=context_chunks_json,
+            extraction_mode=extraction_mode,
+            decoding=decoding,
         )
 
         status_char = "." if answer.strip() else "E"

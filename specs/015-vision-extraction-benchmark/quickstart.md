@@ -21,12 +21,14 @@ Between the two runs the ONLY difference is `extraction_mode` (`"docling"` vs `"
 ## Run A — Docling baseline (fresh, current settings)
 
 1. **Clean-slate** the corpus doc from both stores (vector + lexical `delete_by_doc`) so no stale chunks remain.
-2. **Ingest** ED4_Players_Guide with `IngestionConfig(extraction_mode="docling")`. Confirm it completes and chunks are tagged `extraction_mode="docling"`.
+2. **Ingest** ED4_Players_Guide with `IngestionConfig(extraction_mode="docling_text")` — **not** plain `"docling"`. Confirm it completes and chunks are tagged `extraction_mode="docling_text"`.
+
+   > **Chunker-parity correction**: plain `extraction_mode="docling"` routes through Docling's own `HybridChunker`, a *different* chunker than the one the vision path uses. `VisionPdfIngestor` always calls the shared `create_chunker()` (the app's configurable `KNOWLEDGE_CHUNKING_STRATEGY`, currently `agentic`) — and so does `extraction_mode="docling_text"`. Using plain `"docling"` as the baseline would silently change **two** variables (extraction *and* chunker) instead of one. `docling_text` is also what the currently-ingested production collection already uses, so it is the correct, already-representative baseline.
 3. **Retrieval benchmark**:
    ```bash
-   BENCHMARK_EXTRACTION_MODE=docling pytest harness/knowledge_qa/test_gold_standard.py -k recall_sanity -s
+   BENCHMARK_EXTRACTION_MODE=docling_text pytest harness/knowledge_qa/test_gold_standard.py -k recall_sanity -s
    ```
-   → appends a `benchmark_results.jsonl` record with `extraction_mode=docling`, `decoding=greedy`.
+   → appends a `benchmark_results.jsonl` record with `extraction_mode=docling_text`, `decoding=greedy`.
 4. **Answer generation + judge**:
    ```bash
    python harness/knowledge_qa/eval_runner.py --questions harness/knowledge_qa/rag_gold_standard.jsonl \
@@ -59,7 +61,7 @@ Between the two runs the ONLY difference is `extraction_mode` (`"docling"` vs `"
 from harness.knowledge_qa.test_gold_standard import compare_benchmark_runs
 compare_benchmark_runs(-2, -1)   # prints extraction_mode per run + ΔMRR/ΔnDCG/ΔRecall per category + global
 ```
-Confirm the header shows `extraction_mode=docling` (A) vs `extraction_mode=vision` (B) and that all held-fixed config matches.
+Confirm the header shows `extraction_mode=docling_text` (A) vs `extraction_mode=vision` (B) and that all held-fixed config matches.
 
 **Answer-quality delta**: `judge_delta = vision aggregate mean − docling aggregate mean` (from the two `--summary` outputs).
 

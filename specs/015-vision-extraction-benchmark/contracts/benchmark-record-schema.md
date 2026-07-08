@@ -15,7 +15,7 @@ Make every benchmark run attributable to the extraction path that produced its c
 
 | Source | Value |
 |--------|-------|
-| Env var `BENCHMARK_EXTRACTION_MODE` | `"vision"` \| `"docling"` (operator-set at run time; R1) |
+| Env var `BENCHMARK_EXTRACTION_MODE` | `"vision"` \| `"docling_text"` (operator-set at run time; R1 — baseline uses `docling_text`, not plain `docling`, to keep the chunker held-fixed) |
 | Settings `knowledge_eval_temperature` | `float`, default `0.0` → `decoding = "greedy"` when `0.0` else `"sampled"` |
 
 If `BENCHMARK_EXTRACTION_MODE` is unset: value is `"unknown"` and a WARNING is logged. The record is still written.

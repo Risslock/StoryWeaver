@@ -14,7 +14,7 @@ One append-only JSON line per retrieval-benchmark run, written by `run_gold_stan
 
 | Field | Type | Meaning |
 |-------|------|---------|
-| `extraction_mode` | `str` (`"vision"` \| `"docling"` \| `"unknown"`) | Which ingestion path produced the collection this run queried (from `BENCHMARK_EXTRACTION_MODE`; R1). The single independent variable. |
+| `extraction_mode` | `str` (`"vision"` \| `"docling_text"` \| `"unknown"`) | Which ingestion path produced the collection this run queried (from `BENCHMARK_EXTRACTION_MODE`; R1). The single independent variable. Baseline uses `"docling_text"`, not plain `"docling"`, to keep the chunker held-fixed (see research.md R1 correction). |
 | `decoding` | `str` (`"greedy"` \| `"sampled"`) | `"greedy"` when `knowledge_eval_temperature == 0.0`, else `"sampled"`. Records the FR-018 determinism setting. |
 
 **Validation / rules**:

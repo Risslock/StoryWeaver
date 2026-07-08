@@ -31,6 +31,7 @@ class AnthropicProvider(LLMProvider):
         payload: dict[object, object] = {
             "model": self._model,
             "max_tokens": 1024,
+            "temperature": settings.knowledge_eval_temperature,
             "messages": [{"role": "user", "content": prompt}],
         }
         if system:

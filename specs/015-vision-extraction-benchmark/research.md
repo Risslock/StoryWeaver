@@ -6,7 +6,9 @@ Resolves the open decisions implied by the Technical Context. Each entry: **Deci
 
 ## R1 — How is a benchmark run attributed to an extraction path?
 
-**Decision**: The operator sets an environment variable `BENCHMARK_EXTRACTION_MODE` (`"vision"` | `"docling"`) at benchmark time; `run_gold_standard_benchmark()` reads it and writes it onto the `benchmark_results.jsonl` record as `"extraction_mode"`. `eval_runner.py` reads the same variable and stamps it onto the eval run. If the variable is unset, default to `"unknown"` and log a WARNING (the record is still written, but the comparison will flag it).
+**Decision**: The operator sets an environment variable `BENCHMARK_EXTRACTION_MODE` (`"vision"` | `"docling_text"`) at benchmark time; `run_gold_standard_benchmark()` reads it and writes it onto the `benchmark_results.jsonl` record as `"extraction_mode"`. `eval_runner.py` reads the same variable and stamps it onto the eval run. If the variable is unset, default to `"unknown"` and log a WARNING (the record is still written, but the comparison will flag it).
+
+> **Correction found during implementation**: the baseline `IngestionConfig.extraction_mode` value is `"docling_text"`, not plain `"docling"`. Plain `"docling"` routes through Docling's own `HybridChunker`; `"docling_text"` and `"vision"` both route through the shared `create_chunker()` (the app's configurable `KNOWLEDGE_CHUNKING_STRATEGY`). Using plain `"docling"` as the baseline would have changed two variables (extraction *and* chunker) instead of one — see plan.md Constraints and quickstart.md Run A.
 
 **Rationale**: The retrieval harness only queries the live collection; it has no intrinsic knowledge of how that collection was ingested. The extraction path is a property of the *ingestion run*, not the retriever. An explicit operator-supplied variable matches the existing "operator drives the run" model (same as `GOLD_STANDARD_PATH`), is trivially auditable, and keeps the two record sinks (retrieval JSONL + eval.db) consistent with a single source of truth.
 

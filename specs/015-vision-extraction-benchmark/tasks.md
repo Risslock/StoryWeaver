@@ -17,7 +17,7 @@ Both extraction paths write to the **same** `knowledge_global` collection, and e
 ```
 Foundational code changes (Phase 2)  →  built once, block everything
    ↓
-DOCLING LEG:  clean → ingest(docling) → retrieval bench → eval+judge → spot-check(docling)
+DOCLING LEG:  clean → ingest(docling_text) → retrieval bench → eval+judge → spot-check(docling_text)
    ↓
 VISION LEG:   clean → ingest(vision)  → retrieval bench → eval+judge → spot-check(vision)
    ↓
@@ -37,8 +37,8 @@ Story labels ([US1]–[US4]) are kept for traceability, but at runtime the legs 
 
 **Purpose**: Confirm the environment and lock the held-fixed baseline before any run.
 
-- [ ] T001 [P] Verify Ollama is reachable and all required models are pulled: vision `blaifa/Nanonets-OCR-s`, embed `nomic-embed-text`, enrich `llama3.2`, answer `llama3.1`, and `JUDGE_MODEL`; record versions in a new `specs/015-vision-extraction-benchmark/results.md` scratch doc.
-- [ ] T002 Record the current held-fixed config snapshot (values of `knowledge_enrich_model`, `knowledge_embed_model`, retrieval `top_k`, `hybrid_search_enabled/_keyword_weight/_vector_weight`, `gold_standard_path`) into `results.md` so comparability (FR-011) can be verified later.
+- [X] T001 [P] Verify Ollama is reachable and all required models are pulled: vision `blaifa/Nanonets-OCR-s`, embed `nomic-embed-text`, enrich `llama3.2`, answer `llama3.1`, and `JUDGE_MODEL`; record versions in a new `specs/015-vision-extraction-benchmark/results.md` scratch doc.
+- [X] T002 Record the current held-fixed config snapshot (values of `knowledge_enrich_model`, `knowledge_embed_model`, retrieval `top_k`, `hybrid_search_enabled/_keyword_weight/_vector_weight`, `gold_standard_path`) into `results.md` so comparability (FR-011) can be verified later.
 
 ---
 
@@ -48,24 +48,24 @@ Story labels ([US1]–[US4]) are kept for traceability, but at runtime the legs 
 
 **Determinism — greedy decoding (FR-018, contracts/eval-determinism.md)**
 
-- [ ] T003 Add `knowledge_eval_temperature: float = 0.0` to `Settings` in packages/core/core/config.py with startup range validation (0.0–2.0, fail-fast on out-of-range, mirroring the 014 hybrid-weight validator).
-- [ ] T004 [P] Mirror `KNOWLEDGE_EVAL_TEMPERATURE=0.0` in `.env.example` (documented, per-feature section) and in local `.env`.
-- [ ] T005 Thread `temperature` into `OllamaProvider.generate()` payload in packages/llm/llm/providers/ollama.py, resolved from `knowledge_eval_temperature` with an optional per-call override.
-- [ ] T006 Thread `temperature` into `OllamaProvider.generate_structured()` payload in packages/llm/llm/providers/ollama.py (keep `response_format`), same resolution as T005.
-- [ ] T007 Ensure the `claude` judge path passes `temperature=0` through the Anthropic provider call in packages/llm/llm/providers/anthropic.py (so the opt-in cloud judge is equally deterministic).
-- [ ] T008 [P] Unit test: `temperature` is present in the Ollama `generate`/`generate_structured` payloads and defaults to 0.0 for eval, in packages/llm/tests/test_ollama_temperature.py.
+- [X] T003 Add `knowledge_eval_temperature: float = 0.0` to `Settings` in packages/core/core/config.py with startup range validation (0.0–2.0, fail-fast on out-of-range, mirroring the 014 hybrid-weight validator).
+- [X] T004 [P] Mirror `KNOWLEDGE_EVAL_TEMPERATURE=0.0` in `.env.example` (documented, per-feature section) and in local `.env`.
+- [X] T005 Thread `temperature` into `OllamaProvider.generate()` payload in packages/llm/llm/providers/ollama.py, resolved from `knowledge_eval_temperature` with an optional per-call override.
+- [X] T006 Thread `temperature` into `OllamaProvider.generate_structured()` payload in packages/llm/llm/providers/ollama.py (keep `response_format`), same resolution as T005.
+- [X] T007 Ensure the `claude` judge path passes `temperature=0` through the Anthropic provider call in packages/llm/llm/providers/anthropic.py (so the opt-in cloud judge is equally deterministic).
+- [X] T008 [P] Unit test: `temperature` is present in the Ollama `generate`/`generate_structured` payloads and defaults to 0.0 for eval, in packages/llm/tests/test_ollama_temperature.py.
 
 **Run attribution (FR-011, contracts/benchmark-record-schema.md)**
 
-- [ ] T009 Add `extraction_mode` (from `BENCHMARK_EXTRACTION_MODE`, default `"unknown"` + WARNING) and `decoding` (`"greedy"` when temp 0 else `"sampled"`) to the record written by `run_gold_standard_benchmark()` in harness/knowledge_qa/test_gold_standard.py.
-- [ ] T010 Print `extraction_mode` + `decoding` per run in `compare_benchmark_runs()` header in harness/knowledge_qa/test_gold_standard.py.
-- [ ] T011 Add a comparability check in harness/knowledge_qa/test_gold_standard.py that confirms two records differ ONLY in `extraction_mode` (all held-fixed fields equal) and surfaces a mismatch instead of silently comparing.
-- [ ] T012 Stamp `extraction_mode` + `decoding` onto the eval run (record column or run-metadata sidecar) in harness/knowledge_qa/eval_runner.py so the judge aggregate is attributable per `run_id`.
-- [ ] T013 [P] Unit test: the benchmark record carries `extraction_mode`/`decoding` and `compare_benchmark_runs` prints them; missing-field records degrade gracefully — in harness/knowledge_qa/test_gold_standard.py.
+- [X] T009 Add `extraction_mode` (from `BENCHMARK_EXTRACTION_MODE`, default `"unknown"` + WARNING) and `decoding` (`"greedy"` when temp 0 else `"sampled"`) to the record written by `run_gold_standard_benchmark()` in harness/knowledge_qa/test_gold_standard.py.
+- [X] T010 Print `extraction_mode` + `decoding` per run in `compare_benchmark_runs()` header in harness/knowledge_qa/test_gold_standard.py.
+- [X] T011 Add a comparability check in harness/knowledge_qa/test_gold_standard.py that confirms two records differ ONLY in `extraction_mode` (all held-fixed fields equal) and surfaces a mismatch instead of silently comparing.
+- [X] T012 Stamp `extraction_mode` + `decoding` onto the eval run (record column or run-metadata sidecar) in harness/knowledge_qa/eval_runner.py so the judge aggregate is attributable per `run_id`.
+- [X] T013 [P] Unit test: the benchmark record carries `extraction_mode`/`decoding` and `compare_benchmark_runs` prints them; missing-field records degrade gracefully — in harness/knowledge_qa/test_gold_standard.py.
 
 **Spot-check tool (built here so it's ready for each leg; US4)**
 
-- [ ] T014 [P] [US4] Create harness/knowledge_qa/spot_check.py: a read-only CLI (`--extraction-mode`) that samples ≥10 chapter-opening chunks and ≥5 table-bearing chunks (`|…|` rows) from the current collection and prints each for human classification (complete-opening/drop-cap-gap; coherent-table/mangled-table).
+- [X] T014 [P] [US4] Create harness/knowledge_qa/spot_check.py: a read-only CLI (`--extraction-mode`) that samples ≥10 chapter-opening chunks and ≥5 table-bearing chunks (`|…|` rows) from the current collection and prints each for human classification (complete-opening/drop-cap-gap; coherent-table/mangled-table).
 
 **Checkpoint**: Foundation ready — the benchmark legs can now run.
 
@@ -77,10 +77,10 @@ Story labels ([US1]–[US4]) are kept for traceability, but at runtime the legs 
 
 **Independent Test**: `benchmark_results.jsonl` has a Docling record with current held-fixed config; `eval.db` has a scored Docling `run_id`; spot-check counts recorded for Docling.
 
-- [ ] T015 [US2] Clean-slate the corpus doc from both stores (`ChromaVectorStore.delete_by_doc` + lexical `delete_by_doc`), then ingest ED4_Players_Guide with `IngestionConfig(extraction_mode="docling")`; confirm completion and `extraction_mode="docling"` tagging.
-- [ ] T016 [US2] Run the retrieval benchmark with `BENCHMARK_EXTRACTION_MODE=docling` (`pytest harness/knowledge_qa/test_gold_standard.py -k recall_sanity -s`) → appends the Docling retrieval record.
+- [ ] T015 [US2] Clean-slate the corpus doc from both stores (`ChromaVectorStore.delete_by_doc` + lexical `delete_by_doc`), then ingest ED4_Players_Guide with `IngestionConfig(extraction_mode="docling_text")` (NOT plain `"docling"` — that uses Docling's own HybridChunker instead of the shared `create_chunker()` the vision path uses; `docling_text` keeps the chunker held-fixed, see quickstart.md); confirm completion and `extraction_mode="docling_text"` tagging.
+- [ ] T016 [US2] Run the retrieval benchmark with `BENCHMARK_EXTRACTION_MODE=docling_text` (`pytest harness/knowledge_qa/test_gold_standard.py -k recall_sanity -s`) → appends the Docling retrieval record.
 - [ ] T017 [US2] Run `eval_runner.py … --run-id docling-015` then `judge_runner.py --run-id docling-015 --summary` (greedy) → record the Docling judge aggregate mean in `results.md`.
-- [ ] T018 [US4] Run `python harness/knowledge_qa/spot_check.py --extraction-mode docling` and record complete-opening / coherent-table counts in `results.md` (must be done now — the Docling collection is replaced in Phase 4).
+- [ ] T018 [US4] Run `python harness/knowledge_qa/spot_check.py --extraction-mode docling_text` and record complete-opening / coherent-table counts in `results.md` (must be done now — the Docling collection is replaced in Phase 4).
 
 **Checkpoint**: Docling baseline fully captured; safe to overwrite the collection.
 

@@ -54,6 +54,10 @@ class ResponseEvalRecord(_EvalBase):
     judge_context_truncated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[str] = mapped_column(String, nullable=False)
     scored_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Feature 015 — run attribution (which extraction path produced the answered
+    # collection, and whether decoding was greedy) so the judge delta is attributable.
+    extraction_mode: Mapped[str | None] = mapped_column(String, nullable=True)
+    decoding: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class EvaluationStore:
@@ -79,6 +83,8 @@ class EvaluationStore:
             "ALTER TABLE response_eval_records ADD COLUMN reference_answer TEXT",
             "ALTER TABLE response_eval_records ADD COLUMN judge_answer_correctness REAL",
             "ALTER TABLE response_eval_records ADD COLUMN judge_answer_correctness_rationale TEXT",
+            "ALTER TABLE response_eval_records ADD COLUMN extraction_mode TEXT",
+            "ALTER TABLE response_eval_records ADD COLUMN decoding TEXT",
         ]
         from sqlalchemy import text
 
@@ -100,6 +106,8 @@ class EvaluationStore:
         question_category: str | None = None,
         generated_response: str = "",
         context_chunks_json: str = "[]",
+        extraction_mode: str | None = None,
+        decoding: str | None = None,
     ) -> ResponseEvalRecord:
         """Insert a new unscored EvaluationRecord and return it with its assigned id."""
         now = datetime.now(UTC).isoformat()
@@ -115,6 +123,8 @@ class EvaluationStore:
             context_chunks_json=context_chunks_json,
             judge_status="unscored",
             created_at=now,
+            extraction_mode=extraction_mode,
+            decoding=decoding,
         )
         async with self._session_factory() as session:
             session.add(record)

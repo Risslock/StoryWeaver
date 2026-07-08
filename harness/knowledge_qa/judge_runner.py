@@ -174,6 +174,12 @@ async def _run(args: argparse.Namespace) -> None:
     # Per-dimension summary for scored records
     scored_records = await store.get_by_run_id(args.run_id)
     scored_rows = [r for r in scored_records if r.judge_status == "scored"]
+    if scored_records:
+        first = scored_records[0]
+        print(
+            f"\nRun attribution: extraction_mode={first.extraction_mode or 'unknown'}"
+            f"  decoding={first.decoding or 'unknown'}"
+        )
     if scored_rows:
 
         def _mean_field(rows: list, attr: str) -> float:

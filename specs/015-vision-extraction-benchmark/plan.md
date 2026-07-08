@@ -36,7 +36,7 @@ Everything else is a **run procedure** (quickstart): clean-slate re-ingest per p
 **Performance Goals**: None as a gate. Vision ingestion is ~30–90 min/book (one-time, accepted); observed wall-clock is recorded as a decision input (FR-017).
 
 **Constraints**:
-- **One variable only** (FR-009): between the two runs, only `IngestionConfig.extraction_mode` differs (`"docling"` vs `"vision"`); cleaner, chunker, enricher + `llama3.2`, breadcrumbs, embedding model, retrieval `top_k`, hybrid enablement + weights all held at current defaults.
+- **One variable only** (FR-009): between the two runs, only `IngestionConfig.extraction_mode` differs (`"docling_text"` vs `"vision"` — NOT plain `"docling"`, which uses Docling's own `HybridChunker` instead of the shared `create_chunker()` that both `docling_text` and `vision` use; using plain `"docling"` would confound extraction *and* chunker); cleaner, chunker, enricher (`llama3.1`, the actual configured `KNOWLEDGE_ENRICH_MODEL`), breadcrumbs, embedding model, retrieval `top_k`, hybrid enablement + weights all held at current defaults.
 - **Greedy decoding, single pass** (FR-018): temperature 0 on evaluation LLM steps; one ingestion + one eval pass per path; no repeated runs.
 - **Fixed pre-stated tolerances**: judge non-inferiority 1.0 pp; retrieval material-regression 2 pp on global Recall@10 (fixed before interpreting the runs).
 - **Decision rule** (FR-008): global LLM-judge aggregate is the primary gate; retrieval deltas are supporting evidence; a material judge regression forces keep-Docling regardless of retrieval gains.

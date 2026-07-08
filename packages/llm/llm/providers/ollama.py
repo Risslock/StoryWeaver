@@ -33,7 +33,12 @@ class OllamaProvider(LLMProvider):
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
-        payload = {"model": self._model, "messages": messages, "stream": False}
+        payload = {
+            "model": self._model,
+            "messages": messages,
+            "stream": False,
+            "temperature": settings.knowledge_eval_temperature,
+        }
 
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
@@ -64,6 +69,7 @@ class OllamaProvider(LLMProvider):
             "model": self._model,
             "messages": messages,
             "stream": False,
+            "temperature": settings.knowledge_eval_temperature,
             "response_format": {"type": "json_object"},
         }
 
