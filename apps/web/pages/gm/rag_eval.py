@@ -452,9 +452,12 @@ def build_rag_eval_page(session_state: gr.State) -> None:
             if r.retrieved_chunks:
                 lines.append("\n**Top chunks:**\n")
                 for i, chunk in enumerate(r.retrieved_chunks, start=1):
+                    signal_tag = ""
+                    if chunk.matched_signals:
+                        signal_tag = f" `[{'+'.join(chunk.matched_signals)}]`"
                     lines.append(
                         f"\n**{i}. {chunk.doc_title} — {chunk.headline}**"
-                        f" *({chunk.topic})*\n> {chunk.text}\n"
+                        f" *({chunk.topic})*{signal_tag}\n> {chunk.text}\n"
                     )
 
             # Judge section

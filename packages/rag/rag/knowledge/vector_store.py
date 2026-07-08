@@ -130,3 +130,14 @@ class ChromaVectorStore:
             raise
         except Exception as exc:
             raise ProviderUnavailableError(f"ChromaDB get failed: {exc}") from exc
+
+    async def list_collection_names(self) -> list[str]:
+        """Return the names of all collections that exist at this Chroma path."""
+        try:
+            client = self._get_client()
+            cols = await asyncio.to_thread(client.list_collections)
+            return [col.name for col in cols]
+        except ProviderUnavailableError:
+            raise
+        except Exception as exc:
+            raise ProviderUnavailableError(f"ChromaDB list_collections failed: {exc}") from exc

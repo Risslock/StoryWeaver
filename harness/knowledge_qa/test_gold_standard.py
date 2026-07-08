@@ -17,7 +17,6 @@ import urllib.request
 from pathlib import Path
 
 import pytest
-
 from rag.knowledge.evaluator import EvalSummary, aggregate_results, evaluate_question
 from rag.knowledge.test_questions import TestQuestion, load_test_questions
 
@@ -26,6 +25,7 @@ GOLD_STANDARD_PATH = os.environ.get(
     str(Path(__file__).parent / "rag_gold_standard.jsonl"),
 )
 BENCHMARK_RESULTS_PATH = Path(__file__).parent / "benchmark_results.jsonl"
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _ollama_reachable() -> bool:
@@ -35,6 +35,52 @@ def _ollama_reachable() -> bool:
             return True
     except (urllib.error.URLError, OSError):
         return False
+
+
+def _round4(value: float) -> float:
+    return round(value, 4)
+
+
+def _round_metrics(metrics: dict) -> dict:
+    """Round mean_mrr/mean_ndcg/mean_recall_at_k to 4 decimals, matching historical records."""
+    rounded = dict(metrics)
+    for key in ("mean_mrr", "mean_ndcg", "mean_recall_at_k"):
+        if key in rounded and isinstance(rounded[key], float):
+            rounded[key] = _round4(rounded[key])
+    return rounded
+
+
+def _display_gold_standard_path(path: str) -> str:
+    """Store a repo-relative, forward-slash path for portability across machines/OSes."""
+    try:
+        relative = Path(path).resolve().relative_to(_REPO_ROOT)
+        return relative.as_posix()
+    except ValueError:
+        return path
+
+
+def _chunking_params(strategy: str, cfg: object) -> dict[str, object]:
+    """Per-strategy params, matching the historical benchmark_results.jsonl convention."""
+    if strategy == "agentic":
+        return {
+            "batch_sections": cfg.knowledge_agentic_batch_sections,
+            "max_tokens": cfg.knowledge_max_chunk_tokens,
+            "chunking_model": cfg.knowledge_enrich_model,
+            "prose_threshold": cfg.knowledge_agentic_prose_threshold,
+        }
+    if strategy == "semantic":
+        return {
+            "breakpoint_percentile": cfg.knowledge_semantic_breakpoint_percentile,
+            "min_chunk_tokens": cfg.knowledge_semantic_min_chunk_tokens,
+        }
+    if strategy == "heading":
+        return {
+            "max_tokens": cfg.knowledge_max_chunk_tokens,
+            "overlap_tokens": cfg.knowledge_chunk_overlap_tokens,
+        }
+    if strategy == "hybrid_chunker":
+        return {"tokenizer": cfg.knowledge_embed_model, "max_tokens": cfg.knowledge_max_chunk_tokens}
+    return {}
 
 
 async def run_gold_standard_benchmark(k: int = 10) -> EvalSummary:
@@ -82,20 +128,31 @@ async def run_gold_standard_benchmark(k: int = 10) -> EvalSummary:
 
     strategy = create_chunker().strategy_name
     category_scores_serialized = {
-        cat: metrics.model_dump()
+        cat: _round_metrics(metrics.model_dump())
         for cat, metrics in summary.category_scores.items()
     }
+    from core.config import settings as _cfg
+
     record = {
-        "strategy": strategy,
         "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
-        "gold_standard_path": GOLD_STANDARD_PATH,
+        "chunking": {"strategy": strategy, "params": _chunking_params(strategy, _cfg)},
+        "enrich_model": _cfg.knowledge_enrich_model,
+        "embed_model": _cfg.knowledge_embed_model,
+        "gold_standard_path": _display_gold_standard_path(GOLD_STANDARD_PATH),
         "k": k,
         "total_questions": summary.total_questions,
-        "mean_mrr": summary.mean_mrr,
-        "mean_ndcg": summary.mean_ndcg,
-        "mean_recall_at_k": summary.mean_recall_at_k,
+        "mean_mrr": _round4(summary.mean_mrr),
+        "mean_ndcg": _round4(summary.mean_ndcg),
+        "mean_recall_at_k": _round4(summary.mean_recall_at_k),
         "notes": "",
         "category_scores": category_scores_serialized,
+        "hybrid_search_enabled": _cfg.hybrid_search_enabled,
+        "hybrid_search_keyword_weight": _cfg.hybrid_search_keyword_weight,
+        "hybrid_search_vector_weight": _cfg.hybrid_search_vector_weight,
+        "exact_term_scores": (
+            _round_metrics(summary.exact_term_scores.model_dump())
+            if summary.exact_term_scores else None
+        ),
     }
     with open(BENCHMARK_RESULTS_PATH, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(record) + "\n")
@@ -171,7 +228,16 @@ def compare_benchmark_runs(
         f" {'Rcl-A':>7} {'Rcl-B':>7} {'ΔRecall':>8}"
     )
     separator = "-" * len(header)
+
+    def _hybrid_desc(rec: dict) -> str:
+        enabled = rec.get("hybrid_search_enabled", False)
+        kw = rec.get("hybrid_search_keyword_weight", 1.0)
+        vw = rec.get("hybrid_search_vector_weight", 1.0)
+        return f"hybrid_search_enabled={enabled} keyword_weight={kw} vector_weight={vw}"
+
     print(f"\nRun A: {rec_a.get('timestamp', '?')}  |  Run B: {rec_b.get('timestamp', '?')}")
+    print(f"Run A config: {_hybrid_desc(rec_a)}")
+    print(f"Run B config: {_hybrid_desc(rec_b)}")
     print(separator)
     print(header)
     print(separator)
@@ -191,6 +257,13 @@ def compare_benchmark_runs(
 
     for cat in all_cats:
         _row(cat, cats_a.get(cat, {}), cats_b.get(cat, {}))
+
+    print(separator)
+    _row(
+        "exact_term",
+        rec_a.get("exact_term_scores") or {},
+        rec_b.get("exact_term_scores") or {},
+    )
 
     print(separator)
     _row(

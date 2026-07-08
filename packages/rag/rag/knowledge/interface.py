@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from pydantic import BaseModel
@@ -67,6 +67,7 @@ class KnowledgeChunk:
     rrf_score: float
     breadcrumb: str = ""
     source_type: str = "rulebook"
+    matched_signals: list[str] = field(default_factory=list[str])
 
 
 class KnowledgeRetriever(ABC):

@@ -79,9 +79,22 @@ class Settings(BaseSettings):
     judge_provider: str = ""
     judge_model: str = ""
 
+    # ── Hybrid Search (feature 014) ──
+    hybrid_search_enabled: bool = False
+    hybrid_search_keyword_weight: float = 1.0
+    hybrid_search_vector_weight: float = 1.0
+
     @model_validator(mode="after")
     def _resolve_db_path(self) -> "Settings":
         self.database_url = _resolve_sqlite_url(self.database_url)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_hybrid_search_weights(self) -> "Settings":
+        if self.hybrid_search_keyword_weight <= 0.0:
+            raise ValueError("HYBRID_SEARCH_KEYWORD_WEIGHT must be > 0.0")
+        if self.hybrid_search_vector_weight <= 0.0:
+            raise ValueError("HYBRID_SEARCH_VECTOR_WEIGHT must be > 0.0")
         return self
 
 

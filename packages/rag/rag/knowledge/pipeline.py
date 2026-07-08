@@ -19,9 +19,14 @@ from sqlalchemy import select
 from sqlalchemy import update as sa_update
 from storage.sqlite.adapter import SQLiteBackend
 
-from rag.knowledge.factory import get_knowledge_embed_fn, get_knowledge_enrich_provider
 from rag.knowledge.enricher import ChunkEnricher
-from rag.knowledge.interface import ChunkEnrichment, IngestionAbortError, IngestionConfig
+from rag.knowledge.factory import get_knowledge_embed_fn, get_knowledge_enrich_provider
+from rag.knowledge.interface import (
+    ChunkEnrichment,
+    IngestionAbortError,
+    IngestionConfig,
+)
+from rag.knowledge.lexical_store import SQLiteLexicalStore
 from rag.knowledge.vector_store import (
     GLOBAL_COLLECTION,
     ChromaVectorStore,
@@ -97,6 +102,7 @@ class IngestionPipeline:
 
     def __init__(self, chroma_path: str | None = None) -> None:
         self._store = ChromaVectorStore(chroma_path) if chroma_path else ChromaVectorStore()
+        self._lexical_store = SQLiteLexicalStore()
 
     async def run(
         self,
@@ -116,6 +122,7 @@ class IngestionPipeline:
         if config is None:
             config = IngestionConfig()
         await self._set_status(doc_id, "processing")
+        await self._lexical_store.ensure_table()
         try:
             if config.extraction_mode == "docling":
                 _log.info("Ingestion started — chunking strategy: docling/HybridChunker, doc_id: %s", doc_id)
@@ -155,7 +162,7 @@ class IngestionPipeline:
             enrich_model = settings.knowledge_enrich_model.strip()
             if not enrich_model:
                 _log.error("KNOWLEDGE_ENRICH_MODEL is required but not set")
-                raise EnvironmentError("KNOWLEDGE_ENRICH_MODEL is required but not set")
+                raise OSError("KNOWLEDGE_ENRICH_MODEL is required but not set")
 
             batch_size = settings.knowledge_enrich_batch_size
 
@@ -220,6 +227,9 @@ class IngestionPipeline:
                     batch_idx + 1, num_batches,
                 )
                 await self._store.upsert(collection_name, ids, embeddings, compound_texts, metadatas)
+                await self._lexical_store.upsert(
+                    ids, [str(m["original_text"]) for m in metadatas], metadatas
+                )
 
                 stored += len(batch)
                 _log.info(
@@ -248,8 +258,8 @@ class IngestionPipeline:
             return await DoclingIngestor().extract(file_path, config, on_page_batch=on_page_batch)
 
         if format == "pdf" and config.extraction_mode == "docling_text":
-            from rag.knowledge.ingestor import DoclingIngestor
             from rag.knowledge.chunker import create_chunker
+            from rag.knowledge.ingestor import DoclingIngestor
             full_text = await DoclingIngestor().extract_markdown(file_path, config, on_page_batch=on_page_batch)
             chunker = create_chunker()
             _log.info("[pipeline] docling_text: chunking with strategy=%s", chunker.strategy_name)
@@ -260,6 +270,7 @@ class IngestionPipeline:
             vision_model = settings.knowledge_vision_model
             timeout_secs = settings.knowledge_vision_timeout_secs
             from llm.providers.ollama import OllamaVisionProvider
+
             from rag.knowledge.ingestor import VisionPdfIngestor
             provider = OllamaVisionProvider(model=vision_model, timeout_secs=timeout_secs)
             return await VisionPdfIngestor(provider).extract(file_path, config)
