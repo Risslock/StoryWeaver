@@ -133,7 +133,18 @@ Ran `spot_check.py --extraction-mode docling_text` (metadata cross-check passed:
 
 ## Phase 4 — Vision leg
 
-*(pending — filled in when the leg runs)*
+### T019/T020 — Ingestion
+
+Two failed attempts before success, each teaching something real about `KNOWLEDGE_EVAL_TEMPERATURE=0.0` (greedy decoding) interacting with large prompts:
+
+1. **Attempt 1** (180s timeout): vision extraction of all 524 pages succeeded (~109 min), chunking/quality-gate produced 288 chunks, but the first batch-enrichment call exceeded 180s → `ProviderUnavailableError`. Collection left clean (0 chunks — nothing had been upserted yet).
+2. **Attempt 2** (600s timeout, per explicit user direction given the ~109-min cost of retrying): succeeded end-to-end.
+
+**Fix applied**: bumped `OllamaProvider`'s httpx timeout 180s → 600s (`packages/llm/llm/providers/ollama.py`, commit `0fabed8`). This is now the second bump in this feature (60s → 180s → 600s) — greedy decoding on large chunk-enrichment/boundary-detection prompts is consistently slower than Ollama's uncontrolled default temperature was.
+
+- **Result**: `ingestion_status=ready`, **282 chunks**, `extraction_mode=vision` confirmed on every chunk in ChromaDB.
+- **Wall-clock (FR-017)**: successful attempt took **118.6 minutes** (7118.8s) end-to-end (vision extraction + chunking/quality-gate + enrichment/embedding/storage of 282 chunks across 47 batches). This is above the spec's 30–90 min estimate — driven by 524 individual per-page vision-model calls plus greedy-decoding enrichment, not by any single defect.
+- **Smoke query** (SC-001, US1 AC3): `"What is a bonus die?"` → 5 non-empty ranked results, top hit `"Bonus Dice and Step/Action Dice Table"` — relevant and correctly populated.
 
 ## Phase 5 — Comparison & decision
 
