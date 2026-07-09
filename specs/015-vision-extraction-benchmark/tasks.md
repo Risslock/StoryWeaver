@@ -94,8 +94,8 @@ Story labels ([US1]–[US4]) are kept for traceability, but at runtime the legs 
 
 - [X] T019 [US1] Clean-slate the corpus doc again, then ingest ED4_Players_Guide with `IngestionConfig(extraction_mode="vision")` (uses `blaifa/Nanonets-OCR-s`); **record wall-clock time** (FR-017) in `results.md`. Must finish with zero aborted pages — a partial collection is NOT benchmarkable (FR-003); on abort, fix the model and re-run.
 - [X] T020 [US1] Verify every chunk is tagged `extraction_mode="vision"` and a smoke retrieval query returns a non-empty ranked set (SC-001, US1 AC2/AC3).
-- [ ] T021 [US2] Run the retrieval benchmark with `BENCHMARK_EXTRACTION_MODE=vision` → appends the Vision retrieval record.
-- [ ] T022 [US2] Run `eval_runner.py … --run-id vision-015` then `judge_runner.py --run-id vision-015 --summary` (greedy) → record the Vision judge aggregate mean in `results.md`.
+- [X] T021 [US2] Run the retrieval benchmark with `BENCHMARK_EXTRACTION_MODE=vision` → appends the Vision retrieval record.
+- [X] T022 [US2] Run `eval_runner.py … --run-id vision-015` then `judge_runner.py --run-id vision-015 --summary` (greedy) → record the Vision judge aggregate mean in `results.md`.
 - [ ] T023 [US4] Run `python harness/knowledge_qa/spot_check.py --extraction-mode vision` and record complete-opening / coherent-table counts in `results.md`.
 
 **Checkpoint**: Both legs measured; all inputs for the comparison exist.

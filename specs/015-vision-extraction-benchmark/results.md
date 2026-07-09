@@ -146,6 +146,39 @@ Two failed attempts before success, each teaching something real about `KNOWLEDG
 - **Wall-clock (FR-017)**: successful attempt took **118.6 minutes** (7118.8s) end-to-end (vision extraction + chunking/quality-gate + enrichment/embedding/storage of 282 chunks across 47 batches). This is above the spec's 30–90 min estimate — driven by 524 individual per-page vision-model calls plus greedy-decoding enrichment, not by any single defect.
 - **Smoke query** (SC-001, US1 AC3): `"What is a bonus die?"` → 5 non-empty ranked results, top hit `"Bonus Dice and Step/Action Dice Table"` — relevant and correctly populated.
 
+### T021 — Retrieval benchmark
+
+Ran `BENCHMARK_EXTRACTION_MODE=vision pytest harness/knowledge_qa/test_gold_standard.py -k recall_sanity -s`. Sanity gate passed (Recall@10=0.9508 ≥ 0.40).
+
+| Category | Questions | MRR | nDCG | Recall@10 |
+|---|---|---|---|---|
+| direct_fact | 70 | 0.6394 | 0.7008 | 0.9612 |
+| comparison | 14 | 0.4695 | 0.5914 | 0.9714 |
+| holistic | 12 | 0.6194 | 0.6724 | 0.8792 |
+| numeric | 11 | 0.6360 | 0.6531 | 0.8939 |
+| relationship | 11 | 0.6033 | 0.7273 | 1.0000 |
+| **Global** | **118** | **0.6127** | **0.6831** | **0.9508** |
+
+**Comparability confirmed** (`assert_comparable_extraction_runs`, T024 satisfied for the retrieval records): the two fresh benchmark records differ **only** in `extraction_mode` (docling_text vs vision) — all held-fixed fields identical (chunking/enrich_model=llama3.1/embed_model=nomic-embed-text/k=10/hybrid_search config/gold_standard_path/decoding=greedy).
+
+### T022 — Answer-quality (judge)
+
+`eval_runner.py --run-id vision-015` (118/118 questions, 0 errors, 0 empty responses) → `judge_runner.py --run-id vision-015 --summary`. Coverage 118/118 (100%), 0 errors/parse_errors/no_response. Run attribution confirmed: `extraction_mode=vision decoding=greedy`.
+
+| Dimension | Docling-text | Vision | Δ (vision − docling) |
+|---|---|---|---|
+| faithfulness | 0.891 | 0.678 | **−21.3 pp** |
+| relevance | 0.958 | 0.872 | −8.6 pp |
+| context_utilization | 0.785 | 0.565 | **−22.0 pp** |
+| answer_correctness | 0.719 | 0.471 | **−24.8 pp** |
+| **aggregate** | **0.838** | **0.647** | **−19.1 pp** |
+
+**This is a major, unambiguous regression** — every dimension worse, aggregate −19.1pp against a 1.0pp non-inferiority tolerance (FR-008). Notably this happens *despite* vision's slightly better retrieval Recall@10 (0.951 vs 0.935): a clear "good recall, bad answers" gap — vision retrieves relevant-looking chunks, but their text content is evidently less reliable for the answer LLM to construct faithful, correct answers from. See spot-check (T023) for a qualitative look at why.
+
+### T023 — Fidelity spot-check
+
+*(pending)*
+
 ## Phase 5 — Comparison & decision
 
 *(pending)*
