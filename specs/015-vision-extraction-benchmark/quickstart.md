@@ -69,7 +69,7 @@ Confirm the header shows `extraction_mode=docling_text` (A) vs `extraction_mode=
 
 Run the spot-check helper against each collection (sample ≥10 chapter-openings, ≥5 tables) and classify by hand:
 ```bash
-python harness/knowledge_qa/spot_check.py --extraction-mode docling
+python harness/knowledge_qa/spot_check.py --extraction-mode docling_text
 python harness/knowledge_qa/spot_check.py --extraction-mode vision
 ```
 Record complete-opening and coherent-table counts per path.
@@ -88,10 +88,12 @@ Write the recommendation into the results doc / PR with: judge delta (vs 1.0 pp 
 
 ## Success check (maps to SC-001…007)
 
-- [ ] Vision ingestion completed, zero aborted pages, all chunks tagged `vision` (SC-001)
-- [ ] Retrieval metrics produced for both paths on the same gold set (SC-002)
-- [ ] Judge aggregate produced for both paths (SC-003)
-- [ ] One per-category diff table + judge delta exists (SC-004)
-- [ ] Records confirm only `extraction_mode` differs (SC-005)
-- [ ] Spot check: ≥10 openings + ≥5 tables per path recorded (SC-006)
-- [ ] Written recommendation applying the decision rule (SC-007)
+Validated end-to-end on 2026-07-08/09 — see [results.md](results.md) for full detail.
+
+- [X] Vision ingestion completed, zero aborted pages, all chunks tagged `vision` (SC-001) — 282 chunks, `ingestion_status=ready`, `extraction_mode=vision` confirmed on all
+- [X] Retrieval metrics produced for both paths on the same gold set (SC-002) — 118 questions, `gold_standard_path` identical
+- [X] Judge aggregate produced for both paths (SC-003) — docling_text 0.838, vision 0.647
+- [X] One per-category diff table + judge delta exists (SC-004) — `compare_benchmark_runs(-2, -1)` output in results.md
+- [X] Records confirm only `extraction_mode` differs (SC-005) — `assert_comparable_extraction_runs()` passed
+- [X] Spot check: ≥10 openings + ≥5 tables per path recorded (SC-006) — 10 openings + 5 tables sampled per path
+- [X] Written recommendation applying the decision rule (SC-007) — **keep `docling_text`, do not adopt `vision`** (judge aggregate −19.1pp vs 1.0pp tolerance)

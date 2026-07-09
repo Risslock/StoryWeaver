@@ -120,9 +120,9 @@ Story labels ([US1]–[US4]) are kept for traceability, but at runtime the legs 
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T029 [P] Update README.md (Principle I) to note the extraction-path benchmark result and how to reproduce it (link quickstart.md).
-- [ ] T030 [P] Finalize `specs/015-vision-extraction-benchmark/results.md` as the durable record of the run (metrics, deltas, verdict, limitations).
-- [ ] T031 Run the quickstart.md success checklist end-to-end (SC-001…007 all ticked).
+- [X] T029 [P] Update README.md (Principle I) to note the extraction-path benchmark result and how to reproduce it (link quickstart.md).
+- [X] T030 [P] Finalize `specs/015-vision-extraction-benchmark/results.md` as the durable record of the run (metrics, deltas, verdict, limitations).
+- [X] T031 Run the quickstart.md success checklist end-to-end (SC-001…007 all ticked).
 - [ ] T032 Commit, push, and open the PR for `015-vision-extraction-benchmark`.
 
 ---

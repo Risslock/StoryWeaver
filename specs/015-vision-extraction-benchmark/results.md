@@ -2,6 +2,22 @@
 
 Running lab notebook for the benchmark. Filled in as each phase completes (tasks.md).
 
+## Summary (read this first)
+
+**Recommendation: keep `docling_text` as the default PDF extraction path. Do not adopt `vision`.** Full reasoning in [T028](#t028--recommendation).
+
+| Metric | docling_text | vision | Δ (vision − docling) |
+|---|---|---|---|
+| Judge aggregate (primary gate) | 0.838 | 0.647 | **−19.1 pp** (tolerance: 1.0 pp) |
+| Global Recall@10 | 0.9346 | 0.9508 | +1.67 pp |
+| Global MRR | 0.6526 | 0.6130 | −3.96 pp |
+| Global nDCG | 0.7039 | 0.6827 | −2.12 pp |
+| Chapter-opening spot-check | 9/10 clean | 7/10 clean | vision worse |
+| Table spot-check | 3/5 coherent | 1/5 coherent, 1/5 mangled (same table Docling got right) | vision worse |
+| Ingestion wall-clock | ~21-25 min | 118.6 min | vision ~5x slower |
+
+The judge-score regression is decisive per the FR-008 decision rule and is corroborated by concrete, same-content spot-check evidence (not just an aggregate number) — vision did not fix the drop-cap defect it was meant to address, and mangled at least one table Docling extracted cleanly. See [Phase 5](#phase-5--comparison--decision) for the full comparison and [T023](#t023--fidelity-spot-check) for the spot-check detail.
+
 ## T001 — Environment verification (2026-07-07)
 
 Ollama reachable at `http://localhost:11434`. Models pulled (relevant subset):
