@@ -177,8 +177,83 @@ Ran `BENCHMARK_EXTRACTION_MODE=vision pytest harness/knowledge_qa/test_gold_stan
 
 ### T023 — Fidelity spot-check
 
-*(pending)*
+Ran `spot_check.py --extraction-mode vision --preview-chars 1500` (metadata cross-check passed).
+
+**Chapter openings (10 sampled)**:
+
+| chunk_index | breadcrumb | Verdict |
+|---|---|---|
+| 0 | (cover page) | N/A — not real prose |
+| 1 | INTRODUCTION | **drop_cap_gap** — body reads `"O\nnce, long ago..."` (should be "Once, long ago"); the drop-cap letter is isolated on its own line, not rejoined |
+| 3 | EARTHDAWN (fiction intro) | complete_opening ("Anna clutched at Davon...") — but chunk *ends* with a stray orphaned `"T"` on its own line, which is the drop-cap letter belonging to the *next* chunk's heading, split across the chunk boundary |
+| 4 | GAME CONCEPTS | **drop_cap_gap** — body reads `"T\nhis chapter introduces..."` (should be "This chapter"); same defect as chunk 1, and the orphaned "T" noted in chunk 3 appears to be a duplicate/misplaced copy of this same drop-cap letter |
+| 5 | BONUS DICE | complete_opening |
+| 6 | Steps 1 and 2 | complete_opening |
+| 7 | Bonuses and Penalties | complete_opening |
+| 8 | Test Results | complete_opening |
+| 9 | Optional Rules | complete_opening |
+| 10 | EFFECT TESTS | complete_opening |
+
+**7/10 clean, 2/10 clear drop-cap-gap failures, 1/10 N/A.** This is *worse* than the docling_text leg's 9/10 clean rate on the same defect class — directly contradicting the spec-011 hypothesis that vision extraction would fix drop-caps better than text extraction. The vision model appears to visually reproduce the drop-cap layout (isolated large first letter) as literal isolated text rather than reading it as part of the word, and chunk boundaries can split it further.
+
+**Tables (5 sampled)**:
+
+| chunk_index | breadcrumb | Verdict |
+|---|---|---|
+| 0 | (cover/credits) | N/A — not a real table |
+| 5 | BONUS DICE → Step/Action Dice Table | **mangled_table** — the table's own title row became a spurious data row (`\| **Step/Action Dice Table** \|  \|`), and rows are crammed with literal `&nbsp;&nbsp;` HTML-entity padding into single cells instead of being split into proper columns |
+| 30 | Racial Abilities | not verifiable — no table row visible even at 1500-char preview |
+| 42 | Mystic Armor Table | **coherent_table** — clean, correctly-paired 30-row table |
+| 43 | Armor Ratings | not verifiable — no table row visible within preview |
+
+**1/5 clearly coherent, 1/5 clearly mangled, 1/5 N/A, 2/5 unverifiable.** The mangled case (chunk 5, Step/Action Dice Table) is the *same table* sampled from the docling_text leg (there, chunk_index=8, "Bonus Dice"), which was clean and correctly structured — a **direct, same-content regression**: Docling extracted this exact table correctly; vision did not.
+
+**Divergence from aggregate metrics (FR-014)**: this spot-check is *consistent with*, not divergent from, the aggregate judge-score regression (−19.1pp) — it gives a concrete qualitative explanation for it. Vision's slightly higher Recall@10 reflects that *relevant chunks are still being found*, but the drop-cap and table-mangling defects mean the *text content* of those chunks is measurably less reliable for the answer LLM to build faithful, correct answers from — directly explaining why `context_utilization` and `answer_correctness` cratered even as retrieval held up.
 
 ## Phase 5 — Comparison & decision
 
-*(pending)*
+### T024 — Comparability confirmed
+
+`assert_comparable_extraction_runs()` passed on the two fresh records (2026-07-08T14:20:12Z docling_text, 2026-07-09T00:53:23Z vision): every held-fixed field identical (chunking config, enrich_model=llama3.1, embed_model=nomic-embed-text, k=10, hybrid_search_enabled=true/keyword_weight=1.0/vector_weight=1.0, decoding=greedy, gold_standard_path) — only `extraction_mode` differs (SC-005).
+
+### T025 — Per-category retrieval diff
+
+`compare_benchmark_runs(-2, -1)` (A=docling_text, B=vision):
+
+| Category | MRR-A | MRR-B | ΔMRR | nDCG-A | nDCG-B | ΔnDCG | Recall-A | Recall-B | ΔRecall |
+|---|---|---|---|---|---|---|---|---|---|
+| comparison | 0.4724 | 0.4690 | −0.0034 | 0.6098 | 0.5908 | −0.0190 | 1.0000 | 0.9714 | −0.0286 |
+| direct_fact | 0.6769 | 0.6387 | −0.0382 | 0.7208 | 0.7006 | −0.0202 | 0.9429 | 0.9610 | +0.0181 |
+| holistic | 0.7161 | 0.6186 | −0.0975 | 0.7335 | 0.6719 | −0.0616 | 0.9042 | 0.8792 | −0.0250 |
+| numeric | 0.4454 | 0.6364 | **+0.1910** | 0.5281 | 0.6527 | **+0.1246** | 0.7894 | 0.8939 | **+0.1045** |
+| relationship | 0.8652 | 0.6033 | **−0.2619** | 0.8594 | 0.7274 | **−0.1320** | 0.9773 | 1.0000 | +0.0227 |
+| exact_term (n=22) | 0.6845 | 0.8267 | **+0.1422** | 0.7249 | 0.8166 | **+0.0917** | 0.9432 | 0.9848 | +0.0416 |
+| **global** | 0.6526 | 0.6130 | −0.0396 | 0.7039 | 0.6827 | −0.0212 | 0.9346 | 0.9513 | +0.0167 |
+
+**Retrieval picture is genuinely mixed**: vision clearly *wins* on `numeric` and the `exact_term` subset (biggest deltas in the whole table), clearly *loses* on `relationship` (biggest single-category loss) and `holistic`, and is roughly flat elsewhere. Global retrieval is a near-wash (marginally better Recall, marginally worse MRR/nDCG) — retrieval alone would not obviously favor either path.
+
+### T026 — Judge delta vs tolerance
+
+Judge aggregate delta (vision − docling_text) = **0.647 − 0.838 = −0.191 (−19.1 pp)**, against the FR-008 fixed non-inferiority tolerance of **1.0 pp**. This is **19x past tolerance** — not a borderline call. Every judge dimension regressed (see T022 table). Global Recall@10 delta = +1.67pp — within the "no material regression" band (2pp threshold) on its own, but retrieval is the *secondary* signal and does not override the primary gate.
+
+### T027 — Spot-check vs aggregate-metric divergence
+
+No divergence — see T023: the spot-check (2/10 chapter-opening drop-cap failures vs docling's 0/10; 1/5 tables mangled including a *direct same-content regression* on the Step/Action Dice Table) is consistent with and explains the judge-score regression, not in tension with it.
+
+### T028 — Recommendation
+
+**Applying the FR-008 decision rule**: the global LLM-judge aggregate is the primary gate. Vision is recommended as default only if its judge score is non-inferior to Docling within 1.0pp AND global retrieval does not materially regress (2pp threshold). Vision's judge aggregate regressed by −19.1pp — far past the tolerance — so per FR-008 the recommendation is **keep-Docling (`docling_text`) as the default extraction path, regardless of retrieval gains**.
+
+> ## RECOMMENDATION: **`docling_default`** — keep `docling_text` as the default PDF extraction path. Do NOT switch to `vision`.
+>
+> **Primary gate (decisive)**: judge aggregate −19.1pp (0.838 → 0.647), vs a 1.0pp non-inferiority tolerance. Every judge dimension regressed; answer_correctness fell the most (−24.8pp).
+>
+> **Supporting evidence**: global retrieval is a near-wash (Recall@10 +1.67pp, MRR −3.96pp, nDCG −2.12pp) — not itself disqualifying, and would not have overridden the judge gate even if more favorable. Retrieval is genuinely better for `numeric` and exact-term-lookup questions (+10-19pp), suggesting vision has real, narrow strengths — but not enough to outweigh the broad answer-quality collapse.
+>
+> **Qualitative cause (spot-check)**: vision extraction did not fix drop-caps as hypothesized (2/10 sampled openings still show the literal split-letter defect, e.g. `"O\nnce, long ago"`, vs 0/10 for docling_text) and produced a *directly worse* rendering of at least one table that Docling extracted cleanly (Step/Action Dice Table). This gives a concrete mechanism for the judge regression: the answer LLM is working from measurably lower-fidelity context text.
+>
+> **Operational cost**: vision ingestion took 118.6 minutes (successful run) — well above Docling's ~21-25 minutes — and required two code-level reliability fixes (timeout bumps to 180s then 600s) to complete without failing on large-prompt LLM calls. This is a real, independent cost against adopting vision as a default path, on top of the quality regression.
+>
+> **Limitation**: per FR-018, this is a single ingestion + single evaluation pass per path with greedy decoding to minimize variance, not multiple repeated runs — residual local-model nondeterminism is not fully eliminated. However, a −19.1pp aggregate delta is far too large to plausibly be noise at temperature 0; this limitation does not call the verdict into question.
+>
+> **Note for future work**: vision's advantage on `numeric`/exact-term questions and the model/prompt-dependent nature of the drop-cap and table defects suggest vision extraction *could* be revisited with a different vision model, an improved extraction prompt, or a hybrid approach (e.g., vision only for image-heavy/table-heavy sections) — but that is prompt/model tuning, explicitly out of scope for this feature (FR-015) and belongs in backlog spec 016 or a dedicated follow-up, not this benchmark.

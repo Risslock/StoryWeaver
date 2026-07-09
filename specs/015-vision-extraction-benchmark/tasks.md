@@ -96,7 +96,7 @@ Story labels ([US1]–[US4]) are kept for traceability, but at runtime the legs 
 - [X] T020 [US1] Verify every chunk is tagged `extraction_mode="vision"` and a smoke retrieval query returns a non-empty ranked set (SC-001, US1 AC2/AC3).
 - [X] T021 [US2] Run the retrieval benchmark with `BENCHMARK_EXTRACTION_MODE=vision` → appends the Vision retrieval record.
 - [X] T022 [US2] Run `eval_runner.py … --run-id vision-015` then `judge_runner.py --run-id vision-015 --summary` (greedy) → record the Vision judge aggregate mean in `results.md`.
-- [ ] T023 [US4] Run `python harness/knowledge_qa/spot_check.py --extraction-mode vision` and record complete-opening / coherent-table counts in `results.md`.
+- [X] T023 [US4] Run `python harness/knowledge_qa/spot_check.py --extraction-mode vision` and record complete-opening / coherent-table counts in `results.md`.
 
 **Checkpoint**: Both legs measured; all inputs for the comparison exist.
 
@@ -108,11 +108,11 @@ Story labels ([US1]–[US4]) are kept for traceability, but at runtime the legs 
 
 **Independent Test**: A single diff table + judge delta exist; records confirmed to differ only in `extraction_mode`; a written verdict applying the FR-008 rule is recorded.
 
-- [ ] T024 [US3] Run the comparability check (T011) on the two fresh records; confirm they differ ONLY in `extraction_mode` (SC-005). If any held-fixed field differs, redo the offending leg.
-- [ ] T025 [US2] Produce the per-category diff: `compare_benchmark_runs(-2, -1)` (A=docling, B=vision) → capture ΔMRR/ΔnDCG/ΔRecall per category + global into `results.md` (SC-004).
-- [ ] T026 [US2] Compute the judge aggregate delta (vision − docling) and per-dimension deltas from the two `--summary` outputs; note against the fixed 1.0 pp non-inferiority tolerance (SC-003/SC-004).
-- [ ] T027 [US4] Note in `results.md` any divergence between the spot-check verdict and the aggregate-metric verdict (FR-014).
-- [ ] T028 [US2] Write the evidence-backed recommendation (`vision_default` / `docling_default` / `inconclusive`) applying the FR-008 decision rule — judge aggregate primary gate (≥ −1.0 pp), global Recall@10 supporting (≥ −2 pp), judge regression forces keep-Docling — citing all deltas, spot-check counts, vision wall-clock, and the single-pass-nondeterminism limitation (SC-007).
+- [X] T024 [US3] Run the comparability check (T011) on the two fresh records; confirm they differ ONLY in `extraction_mode` (SC-005). If any held-fixed field differs, redo the offending leg.
+- [X] T025 [US2] Produce the per-category diff: `compare_benchmark_runs(-2, -1)` (A=docling, B=vision) → capture ΔMRR/ΔnDCG/ΔRecall per category + global into `results.md` (SC-004).
+- [X] T026 [US2] Compute the judge aggregate delta (vision − docling) and per-dimension deltas from the two `--summary` outputs; note against the fixed 1.0 pp non-inferiority tolerance (SC-003/SC-004).
+- [X] T027 [US4] Note in `results.md` any divergence between the spot-check verdict and the aggregate-metric verdict (FR-014).
+- [X] T028 [US2] Write the evidence-backed recommendation (`vision_default` / `docling_default` / `inconclusive`) applying the FR-008 decision rule — judge aggregate primary gate (≥ −1.0 pp), global Recall@10 supporting (≥ −2 pp), judge regression forces keep-Docling — citing all deltas, spot-check counts, vision wall-clock, and the single-pass-nondeterminism limitation (SC-007).
 
 **Checkpoint**: The decision the whole feature exists to make is recorded.
 
