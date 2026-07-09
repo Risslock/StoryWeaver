@@ -84,6 +84,9 @@ class Settings(BaseSettings):
     hybrid_search_keyword_weight: float = 1.0
     hybrid_search_vector_weight: float = 1.0
 
+    # ── Evaluation Determinism (feature 015) ──
+    knowledge_eval_temperature: float = 0.0
+
     @model_validator(mode="after")
     def _resolve_db_path(self) -> "Settings":
         self.database_url = _resolve_sqlite_url(self.database_url)
@@ -95,6 +98,12 @@ class Settings(BaseSettings):
             raise ValueError("HYBRID_SEARCH_KEYWORD_WEIGHT must be > 0.0")
         if self.hybrid_search_vector_weight <= 0.0:
             raise ValueError("HYBRID_SEARCH_VECTOR_WEIGHT must be > 0.0")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_eval_temperature(self) -> "Settings":
+        if not (0.0 <= self.knowledge_eval_temperature <= 2.0):
+            raise ValueError("KNOWLEDGE_EVAL_TEMPERATURE must be between 0.0 and 2.0")
         return self
 
 

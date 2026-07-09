@@ -17,6 +17,17 @@ _log = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
+# Some large chunk-enrichment / boundary-detection prompts (agentic chunker
+# quality-gate re-splits, and batch-enrichment of large vision-extracted
+# chunks especially) take well over 60s under greedy decoding
+# (KNOWLEDGE_EVAL_TEMPERATURE=0.0, feature 015). 60s was observed to be too
+# tight, then 180s also proved too tight for one batch-enrichment call during
+# the vision-extraction ingestion leg (a ~109-min run to reach that point,
+# making a tight timeout expensive to fail on). 600s gives generous margin
+# without masking a truly unreachable host (ConnectError fires immediately
+# regardless of this timeout).
+_GENERATE_TIMEOUT_SECS = 600.0
+
 
 class OllamaProvider(LLMProvider):
     def __init__(
@@ -33,10 +44,15 @@ class OllamaProvider(LLMProvider):
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
-        payload = {"model": self._model, "messages": messages, "stream": False}
+        payload = {
+            "model": self._model,
+            "messages": messages,
+            "stream": False,
+            "temperature": settings.knowledge_eval_temperature,
+        }
 
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=_GENERATE_TIMEOUT_SECS) as client:
                 response = await client.post(
                     f"{self._base_url}/v1/chat/completions",
                     json=payload,
@@ -46,6 +62,10 @@ class OllamaProvider(LLMProvider):
                 return str(data["choices"][0]["message"]["content"])
         except httpx.ConnectError as exc:
             raise ProviderUnavailableError(f"Cannot reach Ollama at {self._base_url}") from exc
+        except httpx.TimeoutException as exc:
+            raise ProviderUnavailableError(
+                f"Ollama did not respond within {_GENERATE_TIMEOUT_SECS}s"
+            ) from exc
         except httpx.HTTPStatusError as exc:
             raise ProviderUnavailableError(f"Ollama returned {exc.response.status_code}") from exc
 
@@ -64,11 +84,12 @@ class OllamaProvider(LLMProvider):
             "model": self._model,
             "messages": messages,
             "stream": False,
+            "temperature": settings.knowledge_eval_temperature,
             "response_format": {"type": "json_object"},
         }
 
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=_GENERATE_TIMEOUT_SECS) as client:
                 response = await client.post(
                     f"{self._base_url}/v1/chat/completions",
                     json=payload,
@@ -79,6 +100,10 @@ class OllamaProvider(LLMProvider):
                 return response_type.model_validate_json(raw)
         except httpx.ConnectError as exc:
             raise ProviderUnavailableError(f"Cannot reach Ollama at {self._base_url}") from exc
+        except httpx.TimeoutException as exc:
+            raise ProviderUnavailableError(
+                f"Ollama did not respond within {_GENERATE_TIMEOUT_SECS}s"
+            ) from exc
         except httpx.HTTPStatusError as exc:
             raise ProviderUnavailableError(f"Ollama returned {exc.response.status_code}") from exc
 
